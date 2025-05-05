@@ -495,7 +495,10 @@ class CParser(PLYParser):
         ('left', 'GT', 'GE', 'LT', 'LE'),
         ('left', 'RSHIFT', 'LSHIFT'),
         ('left', 'PLUS', 'MINUS'),
-        ('left', 'TIMES', 'DIVIDE', 'MOD')
+        ('left', 'TIMES', 'DIVIDE', 'MOD'),
+        # 添加以下行，赋予最高优先级
+        ('left', 'COMPOUND_STMT_START', 'COMPOUND_STMT_END'),
+        ('left', 'LPAREN', 'RPAREN')  # 普通括号优先级更低
     )
 
     ##
@@ -1530,23 +1533,29 @@ class CParser(PLYParser):
             type=c_ast.TypeDecl(None, None, None, None),
             coord=self._token_coord(p, 1))
 
-    # declaration is a list, statement isn't. To make it consistent, block_item
-    # will always be a list
-    #
     def p_block_item(self, p):
         """ block_item  : declaration
                         | statement
         """
-        p[0] = p[1] if isinstance(p[1], list) else [p[1]]
+        # 确保 block_item 始终是列表形式（declaration 可能是列表，statement 是单元素）
+        if isinstance(p[1], list):
+            p[0] = p[1]  # declaration 可能返回列表（如多个变量声明）
+        else:
+            p[0] = [p[1]]  # statement 转换为单元素列表
 
-    # Since we made block_item a list, this just combines lists
-    #
     def p_block_item_list(self, p):
         """ block_item_list : block_item
                             | block_item_list block_item
         """
-        # Empty block items (plain ';') produce [None], so ignore them
-        p[0] = p[1] if (len(p) == 2 or p[2] == [None]) else p[1] + p[2]
+        if len(p) == 2:
+            # 单个 block_item（可能是列表或单元素）
+            p[0] = p[1]
+        else:
+            # 合并多个 block_item 列表，过滤空语句（如单独的 ';' 产生 [None]）
+            if p[2] == [None]:
+                p[0] = p[1]
+            else:
+                p[0] = p[1] + p[2]
 
     def p_compound_statement_1(self, p):
         """ compound_statement : brace_open block_item_list_opt brace_close """
@@ -1633,6 +1642,20 @@ class CParser(PLYParser):
 
             p[1].exprs.append(p[3])
             p[0] = p[1]
+
+    # 在 p_expression 规则中添加以下条目
+    def p_expression_compound(self, p):
+        '''expression : COMPOUND_STMT_START block_item_list_opt COMPOUND_STMT_END'''
+        # p[2] 是内部的语句列表（block_item_list）
+        # 提取最后一个表达式作为结果值
+        if p[2] is None:
+            p[0] = None
+        else:
+            last_item = p[2][-1] if isinstance(p[2], list) else p[2]
+            if last_item and hasattr(last_item, "expr"):
+                p[0] = last_item.expr  # 假设最后一个语句是表达式语句
+            else:
+                p[0] = self._create_ast_node("CompoundExpression", items=p[2])
 
     def p_parenthesized_compound_expression(self, p):
         """ assignment_expression : LPAREN compound_statement RPAREN """

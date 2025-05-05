@@ -1123,3 +1123,9 @@ class Pragma(Node):
 
     attr_names = ('string', )
 
+# 在 c_ast.py 中添加节点类型
+class CompoundExpression(Node):
+    __slots__ = ('items', 'coord')
+    def __init__(self, items, coord=None):
+        self.items = items
+        self.coord = coord
