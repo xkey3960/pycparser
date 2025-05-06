@@ -104,6 +104,44 @@ class Node(object):
                 nodenames=nodenames,
                 showcoord=showcoord,
                 _my_node_name=child_name)
+    
+    def to_dict(self):
+        """将节点及其子节点转换为字典"""
+        node_dict = {
+            "_type": self.__class__.__name__,
+            "coord": self._format_coord()
+        }
+
+        # 遍历所有属性（根据 __slots__ 动态获取）
+        for attr in self.__slots__:
+            if attr in ('coord', '__weakref__'):
+                continue  # 跳过特殊字段
+            value = getattr(self, attr, None)
+            node_dict[attr] = self._process_value(value)
+
+        return node_dict
+
+    def _format_coord(self):
+        """格式化坐标信息"""
+        if self.coord:
+            return f"{self.coord.file}:{self.coord.line}"
+        return None
+
+    def _process_value(self, value):
+        """递归处理属性值"""
+        if isinstance(value, Node):
+            return value.to_dict()
+        elif isinstance(value, list):
+            return [self._process_item(item) for item in value]
+        else:
+            return value  # 基本类型（str/int/float）直接返回
+
+    def _process_item(self, item):
+        """处理列表项"""
+        if isinstance(item, Node):
+            return item.to_dict()
+        else:
+            return item
 
 
 class NodeVisitor(object):
@@ -597,6 +635,13 @@ class FileAST(Node):
     def __iter__(self):
         for child in (self.ext or []):
             yield child
+    
+    def to_dict(self):
+        node_dict = super().to_dict()
+        # 显式处理 ext 列表（可能需要递归转换）
+        node_dict['ext'] = [child.to_dict() if isinstance(child, Node) else child 
+                            for child in self.ext]
+        return node_dict
 
     attr_names = ()
 
