@@ -419,15 +419,13 @@ class CLexer(object):
     t_CONDOP            = r'\?'
 
     # Delimiters
-    @TOKEN
+    @TOKEN(r'\(\{')
     def t_COMPOUND_STMT_START(self, t):
-        r'\(\{'
         t.type = "COMPOUND_STMT_START"
         return t
 
-    @TOKEN
+    @TOKEN(r'\}\)')
     def t_COMPOUND_STMT_END(self, t):
-        r'\}\)'
         t.type = "COMPOUND_STMT_END"
         return t
 

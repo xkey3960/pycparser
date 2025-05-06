@@ -109,10 +109,11 @@ class CParser(PLYParser):
         self.cparser = yacc.yacc(
             module=self,
             start='translation_unit_or_empty',
-            debug=yacc_debug,
+            debug=True,
             optimize=yacc_optimize,
             tabmodule=yacctab,
-            outputdir=taboutputdir)
+            outputdir=taboutputdir,
+            debugfile="parse.out")
 
         # Stack of scopes for keeping track of symbols. _scope_stack[-1] is
         # the current (topmost) scope. Each scope is a dictionary that
@@ -498,6 +499,7 @@ class CParser(PLYParser):
         ('left', 'TIMES', 'DIVIDE', 'MOD'),
         # 添加以下行，赋予最高优先级
         ('left', 'COMPOUND_STMT_START', 'COMPOUND_STMT_END'),
+        ('left', 'VOID'),
         ('left', 'LPAREN', 'RPAREN')  # 普通括号优先级更低
     )
 
@@ -1601,9 +1603,13 @@ class CParser(PLYParser):
         p[0] = c_ast.For(p[3], p[5], p[7], p[9], self._token_coord(p, 1))
 
     def p_iteration_statement_4(self, p):
-        """ iteration_statement : FOR LPAREN declaration expression_opt SEMI expression_opt RPAREN pragmacomp_or_statement """
+        """ iteration_statement : FOR LPAREN declaration expression_opt SEMI for_iter RPAREN pragmacomp_or_statement """
         p[0] = c_ast.For(c_ast.DeclList(p[3], self._token_coord(p, 1)),
                          p[4], p[6], p[8], self._token_coord(p, 1))
+    
+    def p_for_iter(self, p):
+        '''for_iter : expression_opt'''
+        p[0] = p[1]
 
     def p_jump_statement_1(self, p):
         """ jump_statement  : GOTO ID SEMI """
@@ -1647,6 +1653,7 @@ class CParser(PLYParser):
         if len(p) == 2:
             p[0] = p[1]
         elif p[1] == '({':
+            print("[DEBUG] Parsing compound expression:", p[2])
             p[0] = self._build_compound_expression(p[2], p.lineno(1))
         else:
             if not isinstance(p[1], c_ast.ExprList):
@@ -1654,10 +1661,16 @@ class CParser(PLYParser):
 
             p[1].exprs.append(p[3])
             p[0] = p[1]
-
-    def p_parenthesized_compound_expression(self, p):
-        """ assignment_expression : LPAREN compound_statement RPAREN """
-        p[0] = p[2]
+    
+    # 新增 compound_expression 规则
+    def p_compound_expression(self, p):
+        """ compound_expression : COMPOUND_STMT_START block_item_list_opt COMPOUND_STMT_END"""
+        p[0] = self._build_compound_expression(p[2], p.lineno(1))
+    
+    def p_expression_opt(self, p):
+        '''expression_opt : expression
+                          | empty'''
+        p[0] = p[1] if len(p) > 1 else None
 
     def p_typedef_name(self, p):
         """ typedef_name : TYPEID """
@@ -1666,6 +1679,7 @@ class CParser(PLYParser):
     def p_assignment_expression(self, p):
         """ assignment_expression   : conditional_expression
                                     | unary_expression assignment_operator assignment_expression
+                                    | compound_expression
         """
         if len(p) == 2:
             p[0] = p[1]
@@ -1736,7 +1750,8 @@ class CParser(PLYParser):
         p[0] = p[1]
 
     def p_cast_expression_2(self, p):
-        """ cast_expression : LPAREN type_name RPAREN cast_expression """
+        """ cast_expression : LPAREN type_name RPAREN cast_expression 
+                            | LPAREN VOID RPAREN compound_expression"""
         p[0] = c_ast.Cast(p[2], p[4], self._token_coord(p, 1))
 
     def p_unary_expression_1(self, p):
