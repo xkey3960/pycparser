@@ -171,6 +171,9 @@ class CLexer(object):
         # Conditional operator (?)
         'CONDOP',
 
+        'COMPOUND_STMT_START',      # {(
+        'COMPOUND_STMT_END',        # )}
+
         # Delimiters
         'LPAREN', 'RPAREN',         # ( )
         'LBRACKET', 'RBRACKET',     # [ ]
@@ -416,15 +419,19 @@ class CLexer(object):
     t_CONDOP            = r'\?'
 
     # Delimiters
+    @TOKEN
     def t_COMPOUND_STMT_START(self, t):
         r'\(\{'
         t.type = "COMPOUND_STMT_START"
         return t
-    t_LPAREN            = r'\('
+
+    @TOKEN
     def t_COMPOUND_STMT_END(self, t):
         r'\}\)'
         t.type = "COMPOUND_STMT_END"
         return t
+
+    t_LPAREN            = r'\('
     t_RPAREN            = r'\)'
     t_LBRACKET          = r'\['
     t_RBRACKET          = r'\]'

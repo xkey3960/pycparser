@@ -1629,33 +1629,31 @@ class CParser(PLYParser):
             p[0] = c_ast.EmptyStatement(self._token_coord(p, 2))
         else:
             p[0] = p[1]
+    
+    def _build_compound_expression(self, items, lineno):
+        """ build compound AST node """
+        if not items:
+            return None
+        return c_ast.CompoundExpression(
+            items=items,
+            coord=self._coord(lineno)
+        )
 
     def p_expression(self, p):
         """ expression  : assignment_expression
                         | expression COMMA assignment_expression
+                        | COMPOUND_STMT_START block_item_list_opt COMPOUND_STMT_END
         """
         if len(p) == 2:
             p[0] = p[1]
+        elif p[1] == '({':
+            p[0] = self._build_compound_expression(p[2], p.lineno(1))
         else:
             if not isinstance(p[1], c_ast.ExprList):
                 p[1] = c_ast.ExprList([p[1]], p[1].coord)
 
             p[1].exprs.append(p[3])
             p[0] = p[1]
-
-    # 在 p_expression 规则中添加以下条目
-    def p_expression_compound(self, p):
-        '''expression : COMPOUND_STMT_START block_item_list_opt COMPOUND_STMT_END'''
-        # p[2] 是内部的语句列表（block_item_list）
-        # 提取最后一个表达式作为结果值
-        if p[2] is None:
-            p[0] = None
-        else:
-            last_item = p[2][-1] if isinstance(p[2], list) else p[2]
-            if last_item and hasattr(last_item, "expr"):
-                p[0] = last_item.expr  # 假设最后一个语句是表达式语句
-            else:
-                p[0] = self._create_ast_node("CompoundExpression", items=p[2])
 
     def p_parenthesized_compound_expression(self, p):
         """ assignment_expression : LPAREN compound_statement RPAREN """
