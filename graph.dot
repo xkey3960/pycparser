@@ -1,899 +1,900 @@
+
 digraph G {
     rankdir=LR;
     node [shape=box];
-        
-    unary_operator -> MINUS
-    selection_statement -> IF_LPAREN_expression_RPAREN_statement_ELSE_pragmacomp_or_statement
-    direct_id_declarator -> direct_id_declarator_LBRACKET_type_qualifier_list_opt_assignment_expression_opt_RBRACKET
-    DO_pragmacomp_or_statement_WHILE_LPAREN_expression_RPAREN_SEMI -> pragmacomp_or_statement
-    FOR_LPAREN_declaration_expression_opt_SEMI_for_iter_RPAREN_pragmacomp_or_statement -> FOR
-    ID_COLON_pragmacomp_or_statement -> ID
-    TIMES_type_qualifier_list_opt_pointer -> TIMES
-    ENUM_ID -> ENUM
-    direct_id_declarator -> LPAREN_id_declarator_RPAREN
-    declaration_specifiers_id_declarator -> id_declarator
-    ENUM_brace_open_enumerator_list_brace_close -> brace_close
-    unary_expression -> unary_operator_cast_expression
-    unary_expression -> SIZEOF_unary_expression
-    struct_or_union_brace_open_struct_declaration_list_brace_close -> brace_close
-    identifier_list_opt -> empty
-    struct_or_union_TYPEID -> TYPEID
-    LBRACKET_TIMES_RBRACKET -> LBRACKET
-    direct_id_declarator -> direct_id_declarator_LBRACKET_STATIC_type_qualifier_list_opt_assignment_expression_RBRACKET
-    unified_wstring_literal -> U8STRING_LITERAL
-    storage_class_specifier -> AUTO
-    postfix_expression -> postfix_expression_ARROW_TYPEID
-    block_item_list_opt -> block_item_list
-    direct_typeid_declarator_LPAREN_parameter_type_list_RPAREN -> LPAREN
-    enum_specifier -> ENUM_brace_open_enumerator_list_brace_close
-    specifier_qualifier_list_type_specifier_no_typeid -> type_specifier_no_typeid
-    designation -> designator_list_EQUALS
-    direct_abstract_declarator -> direct_abstract_declarator_LBRACKET_assignment_expression_opt_RBRACKET
-    statement -> jump_statement
-    pointer_direct_id_declarator -> pointer
-    type_specifier_no_typeid -> SIGNED
-    unified_wstring_literal_U16STRING_LITERAL -> U16STRING_LITERAL
-    pppragma_directive_list_pppragma_directive -> pppragma_directive_list
-    pointer_direct_abstract_declarator -> pointer
-    SIZEOF_LPAREN_type_name_RPAREN -> type_name
-    constant -> U8CHAR_CONST
-    external_declaration -> pp_directive
-    _STATIC_ASSERT_LPAREN_constant_expression_COMMA_unified_string_literal_RPAREN -> LPAREN
-    direct_typeid_declarator -> direct_typeid_declarator_LBRACKET_type_qualifier_list_opt_TIMES_RBRACKET
-    init_declarator_list_opt -> empty
-    direct_id_declarator_LBRACKET_type_qualifier_list_opt_TIMES_RBRACKET -> direct_id_declarator
-    SWITCH_LPAREN_expression_RPAREN_pragmacomp_or_statement -> RPAREN
-    abstract_declarator_opt -> empty
-    decl_body -> declaration_specifiers_init_declarator_list_opt
-    LPAREN_type_name_RPAREN_brace_open_initializer_list_brace_close -> initializer_list
-    type_specifier -> enum_specifier
-    specifier_qualifier_list -> specifier_qualifier_list_alignment_specifier
-    direct_typeid_noparen_declarator -> direct_typeid_noparen_declarator_LPAREN_parameter_type_list_RPAREN
-    identifier -> ID
-    binary_expression -> binary_expression_GE_binary_expression
-    labeled_statement -> CASE_constant_expression_COLON_pragmacomp_or_statement
-    block_item_list -> block_item
-    _ALIGNAS_LPAREN_type_name_RPAREN -> type_name
-    jump_statement -> GOTO_ID_SEMI
-    binary_expression_PLUS_binary_expression -> PLUS
-    direct_id_declarator_LBRACKET_STATIC_type_qualifier_list_opt_assignment_expression_RBRACKET -> type_qualifier_list_opt
-    expression -> assignment_expression
-    SIZEOF_unary_expression -> SIZEOF
-    direct_id_declarator_LBRACKET_type_qualifier_list_STATIC_assignment_expression_RBRACKET -> direct_id_declarator
-    DEFAULT_COLON_pragmacomp_or_statement -> pragmacomp_or_statement
-    assignment_operator -> TIMESEQUAL
-    statement -> pppragma_directive
-    _ALIGNOF_LPAREN_type_name_RPAREN -> RPAREN
-    direct_abstract_declarator_LPAREN_parameter_type_list_opt_RPAREN -> parameter_type_list_opt
-    assignment_expression -> compound_expression
-    direct_typeid_declarator -> direct_typeid_declarator_LPAREN_identifier_list_opt_RPAREN
-    parameter_list_COMMA_parameter_declaration -> parameter_declaration
-    binary_expression -> binary_expression_EQ_binary_expression
-    type_qualifier -> VOLATILE
-    binary_expression_CONDOP_expression_COLON_conditional_expression -> binary_expression
-    declaration_specifiers -> declaration_specifiers_type_qualifier
-    LPAREN_type_name_RPAREN_cast_expression -> type_name
-    id_init_declarator_list -> id_init_declarator_list_COMMA_init_declarator
-    LPAREN_type_name_RPAREN_cast_expression -> cast_expression
-    type_qualifier_list_type_qualifier -> type_qualifier_list
-    DO_pragmacomp_or_statement_WHILE_LPAREN_expression_RPAREN_SEMI -> WHILE
-    assignment_operator -> RSHIFTEQUAL
-    offsetof_member_designator_LBRACKET_expression_RBRACKET -> expression
-    primary_expression -> identifier
-    designation_opt_initializer -> initializer
-    offsetof_member_designator_LBRACKET_expression_RBRACKET -> LBRACKET
-    assignment_operator -> ANDEQUAL
-    declaration_specifiers -> declaration_specifiers_function_specifier
-    brace_close -> RBRACE
-    direct_abstract_declarator_LBRACKET_TIMES_RBRACKET -> RBRACKET
-    direct_id_declarator_LPAREN_identifier_list_opt_RPAREN -> RPAREN
-    direct_id_declarator_LBRACKET_type_qualifier_list_opt_assignment_expression_opt_RBRACKET -> direct_id_declarator
-    CONTINUE_SEMI -> CONTINUE
-    designator -> PERIOD_identifier
-    direct_typeid_declarator_LBRACKET_type_qualifier_list_opt_TIMES_RBRACKET -> TIMES
-    statement -> expression_statement
-    unary_operator_cast_expression -> unary_operator
-    cast_expression -> LPAREN_type_name_RPAREN_cast_expression
-    direct_id_declarator -> direct_id_declarator_LBRACKET_type_qualifier_list_opt_TIMES_RBRACKET
-    ENUM_ID_brace_open_enumerator_list_brace_close -> ID
-    specifier_qualifier_list_type_qualifier -> type_qualifier
-    pointer -> TIMES_type_qualifier_list_opt
-    designation_opt -> empty
-    direct_typeid_noparen_declarator_LBRACKET_STATIC_type_qualifier_list_opt_assignment_expression_RBRACKET -> STATIC
-    LPAREN_type_name_RPAREN_cast_expression -> LPAREN
-    direct_typeid_declarator_LBRACKET_type_qualifier_list_opt_assignment_expression_opt_RBRACKET -> type_qualifier_list_opt
-    direct_typeid_noparen_declarator_LBRACKET_type_qualifier_list_opt_TIMES_RBRACKET -> RBRACKET
-    type_specifier -> typedef_name
-    brace_open_initializer_list_COMMA_brace_close -> brace_open
-    direct_typeid_noparen_declarator_LPAREN_identifier_list_opt_RPAREN -> RPAREN
-    id_init_declarator -> id_declarator
-    struct_or_union_brace_open_brace_close -> brace_open
-    DO_pragmacomp_or_statement_WHILE_LPAREN_expression_RPAREN_SEMI -> RPAREN
-    argument_expression_list_COMMA_assignment_expression -> argument_expression_list
-    external_declaration -> static_assert
-    DO_pragmacomp_or_statement_WHILE_LPAREN_expression_RPAREN_SEMI -> SEMI
-    S -> translation_unit_or_empty
-    struct_or_union_ID_brace_open_brace_close -> brace_open
-    function_specifier -> _NORETURN
-    direct_typeid_noparen_declarator -> direct_typeid_noparen_declarator_LBRACKET_type_qualifier_list_opt_assignment_expression_opt_RBRACKET
-    declaration_specifiers_id_declarator_declaration_list_opt_compound_statement -> declaration_list_opt
-    declaration_specifiers_alignment_specifier -> declaration_specifiers
-    enum_specifier -> ENUM_ID
-    unified_wstring_literal -> U32STRING_LITERAL
-    designator_list_designator -> designator
-    declaration_list -> declaration
-    translation_unit_or_empty -> translation_unit
-    unary_expression_assignment_operator_assignment_expression -> unary_expression
-    assignment_operator -> XOREQUAL
-    binary_expression_XOR_binary_expression -> binary_expression
-    direct_typeid_noparen_declarator_LBRACKET_type_qualifier_list_STATIC_assignment_expression_RBRACKET -> STATIC
-    direct_id_declarator -> direct_id_declarator_LPAREN_parameter_type_list_RPAREN
-    initializer -> brace_open_initializer_list_COMMA_brace_close
-    direct_typeid_noparen_declarator_LBRACKET_STATIC_type_qualifier_list_opt_assignment_expression_RBRACKET -> RBRACKET
-    function_definition -> id_declarator_declaration_list_opt_compound_statement
-    postfix_expression -> primary_expression
-    direct_typeid_declarator -> TYPEID
-    translation_unit_external_declaration -> translation_unit
-    pppragma_directive -> PPPRAGMA
-    postfix_expression -> postfix_expression_LPAREN_RPAREN
-    WHILE_LPAREN_expression_RPAREN_pragmacomp_or_statement -> RPAREN
-    postfix_expression_LPAREN_argument_expression_list_RPAREN -> argument_expression_list
-    struct_or_union_specifier -> struct_or_union_TYPEID
-    COLON_constant_expression -> COLON
-    pppragma_directive_list -> pppragma_directive
-    specifier_qualifier_list_struct_declarator_list_opt_SEMI -> SEMI
-    assignment_expression -> conditional_expression
-    unified_string_literal_STRING_LITERAL -> unified_string_literal
-    SWITCH_LPAREN_expression_RPAREN_pragmacomp_or_statement -> LPAREN
-    binary_expression_GT_binary_expression -> GT
-    declaration_list_declaration -> declaration
-    primary_expression -> LPAREN_expression_RPAREN
-    direct_typeid_noparen_declarator_LBRACKET_type_qualifier_list_STATIC_assignment_expression_RBRACKET -> RBRACKET
-    initializer -> brace_open_initializer_list_opt_brace_close
-    type_specifier_no_typeid -> __INT128
-    direct_abstract_declarator_LPAREN_parameter_type_list_opt_RPAREN -> RPAREN
-    cast_expression -> LPAREN_VOID_RPAREN_compound_expression
-    brace_open -> LBRACE
-    PPPRAGMA_PPPRAGMASTR -> PPPRAGMA
-    abstract_declarator -> pointer
-    jump_statement -> RETURN_expression_SEMI
-    struct_or_union -> STRUCT
-    direct_typeid_declarator_LBRACKET_STATIC_type_qualifier_list_opt_assignment_expression_RBRACKET -> STATIC
-    type_qualifier -> RESTRICT
-    id_init_declarator_list_COMMA_init_declarator -> init_declarator
-    struct_or_union_ID_brace_open_struct_declaration_list_brace_close -> brace_open
-    RETURN_SEMI -> RETURN
-    specifier_qualifier_list_struct_declarator_list_opt_SEMI -> specifier_qualifier_list
-    pointer_direct_id_declarator -> direct_id_declarator
-    specifier_qualifier_list_struct_declarator_list_opt_SEMI -> struct_declarator_list_opt
-    _ALIGNOF_LPAREN_type_name_RPAREN -> LPAREN
-    constant -> INT_CONST_DEC
-    binary_expression_OR_binary_expression -> OR
-    IF_LPAREN_expression_RPAREN_statement_ELSE_pragmacomp_or_statement -> LPAREN
-    direct_typeid_declarator_LPAREN_identifier_list_opt_RPAREN -> identifier_list_opt
-    decl_body_SEMI -> decl_body
-    binary_expression_RSHIFT_binary_expression -> binary_expression
-    enumerator_list -> enumerator_list_COMMA_enumerator
-    parameter_type_list -> parameter_list
-    direct_typeid_declarator_LBRACKET_type_qualifier_list_STATIC_assignment_expression_RBRACKET -> direct_typeid_declarator
-    LPAREN_type_name_RPAREN_brace_open_initializer_list_COMMA_brace_close -> type_name
-    binary_expression_LSHIFT_binary_expression -> LSHIFT
-    struct_declaration_list -> struct_declaration
-    ID_EQUALS_constant_expression -> ID
-    expression_opt -> expression
-    direct_typeid_declarator_LBRACKET_STATIC_type_qualifier_list_opt_assignment_expression_RBRACKET -> RBRACKET
-    external_declaration -> pppragma_directive
-    direct_abstract_declarator_LBRACKET_assignment_expression_opt_RBRACKET -> direct_abstract_declarator
-    postfix_expression_PERIOD_TYPEID -> postfix_expression
-    parameter_list_COMMA_ELLIPSIS -> parameter_list
-    postfix_expression_PLUSPLUS -> PLUSPLUS
-    init_declarator_list -> init_declarator
-    direct_id_declarator_LPAREN_identifier_list_opt_RPAREN -> LPAREN
-    direct_abstract_declarator_LBRACKET_TIMES_RBRACKET -> LBRACKET
-    binary_expression -> binary_expression_LE_binary_expression
-    direct_typeid_declarator_LBRACKET_type_qualifier_list_opt_assignment_expression_opt_RBRACKET -> assignment_expression_opt
-    direct_id_declarator_LPAREN_parameter_type_list_RPAREN -> parameter_type_list
-    type_specifier -> atomic_specifier
-    unary_expression -> postfix_expression
-    pragmacomp_or_statement -> statement
-    specifier_qualifier_list -> specifier_qualifier_list_type_specifier_no_typeid
-    CASE_constant_expression_COLON_pragmacomp_or_statement -> COLON
-    RETURN_expression_SEMI -> expression
-    LPAREN_expression_RPAREN -> LPAREN
-    declaration_specifiers_abstract_declarator_opt -> abstract_declarator_opt
-    LPAREN_typeid_declarator_RPAREN -> typeid_declarator
-    struct_declarator_list_opt -> empty
-    direct_id_declarator_LBRACKET_STATIC_type_qualifier_list_opt_assignment_expression_RBRACKET -> assignment_expression
-    direct_id_declarator_LBRACKET_STATIC_type_qualifier_list_opt_assignment_expression_RBRACKET -> direct_id_declarator
-    struct_or_union_specifier -> struct_or_union_brace_open_brace_close
-    assignment_operator -> PLUSEQUAL
-    direct_typeid_noparen_declarator_LBRACKET_type_qualifier_list_opt_TIMES_RBRACKET -> LBRACKET
-    unary_expression -> MINUSMINUS_unary_expression
-    FOR_LPAREN_declaration_expression_opt_SEMI_for_iter_RPAREN_pragmacomp_or_statement -> declaration
-    expression_COMMA_assignment_expression -> COMMA
-    direct_typeid_noparen_declarator_LBRACKET_type_qualifier_list_opt_assignment_expression_opt_RBRACKET -> RBRACKET
-    binary_expression -> binary_expression_MOD_binary_expression
-    constant -> INT_CONST_CHAR
-    _PRAGMA_LPAREN_unified_string_literal_RPAREN -> unified_string_literal
-    ENUM_TYPEID_brace_open_enumerator_list_brace_close -> brace_open
-    binary_expression -> binary_expression_MINUS_binary_expression
-    unary_operator -> LNOT
-    postfix_expression_MINUSMINUS -> postfix_expression
-    FOR_LPAREN_expression_opt_SEMI_expression_opt_SEMI_expression_opt_RPAREN_pragmacomp_or_statement -> FOR
-    postfix_expression -> postfix_expression_LBRACKET_expression_RBRACKET
-    constant -> INT_CONST_OCT
-    struct_declaration_list_struct_declaration -> struct_declaration
-    binary_expression_CONDOP_expression_COLON_conditional_expression -> COLON
-    identifier_list_opt -> identifier_list
-    struct_or_union_TYPEID_brace_open_brace_close -> brace_close
-    postfix_expression_PERIOD_TYPEID -> TYPEID
-    typeid_declarator -> pointer_direct_typeid_declarator
-    declaration_specifiers_typeid_noparen_declarator -> declaration_specifiers
-    GOTO_ID_SEMI -> GOTO
-    init_declarator -> declarator
-    direct_typeid_noparen_declarator_LBRACKET_STATIC_type_qualifier_list_opt_assignment_expression_RBRACKET -> LBRACKET
-    struct_or_union_brace_open_brace_close -> struct_or_union
-    type_specifier_no_typeid -> UNSIGNED
-    struct_or_union_ID_brace_open_brace_close -> struct_or_union
-    unified_wstring_literal_U8STRING_LITERAL -> unified_wstring_literal
-    labeled_statement -> DEFAULT_COLON_pragmacomp_or_statement
-    WHILE_LPAREN_expression_RPAREN_pragmacomp_or_statement -> LPAREN
-    id_declarator_declaration_list_opt_compound_statement -> declaration_list_opt
-    primary_expression -> unified_string_literal
-    unified_wstring_literal_U32STRING_LITERAL -> unified_wstring_literal
-    _ATOMIC_LPAREN_type_name_RPAREN -> RPAREN
-    parameter_declaration -> declaration_specifiers_abstract_declarator_opt
-    unary_operator -> PLUS
-    binary_expression_LSHIFT_binary_expression -> binary_expression
-    binary_expression_EQ_binary_expression -> binary_expression
-    offsetof_member_designator_LBRACKET_expression_RBRACKET -> RBRACKET
-    direct_typeid_noparen_declarator_LBRACKET_type_qualifier_list_STATIC_assignment_expression_RBRACKET -> LBRACKET
-    direct_abstract_declarator_LPAREN_parameter_type_list_opt_RPAREN -> LPAREN
-    declaration_specifiers_no_type -> atomic_specifier_declaration_specifiers_no_type_opt
-    direct_typeid_noparen_declarator_LPAREN_parameter_type_list_RPAREN -> direct_typeid_noparen_declarator
-    postfix_expression_ARROW_TYPEID -> ARROW
-    postfix_expression_PERIOD_ID -> ID
-    for_iter -> expression_opt
-    constant -> U16CHAR_CONST
-    RETURN_expression_SEMI -> SEMI
-    LPAREN_abstract_declarator_RPAREN -> abstract_declarator
-    SIZEOF_LPAREN_type_name_RPAREN -> SIZEOF
-    struct_declaration_list -> struct_declaration_list_struct_declaration
-    direct_id_declarator_LBRACKET_type_qualifier_list_STATIC_assignment_expression_RBRACKET -> STATIC
-    brace_open_initializer_list_opt_brace_close -> initializer_list_opt
-    postfix_expression -> LPAREN_type_name_RPAREN_brace_open_initializer_list_COMMA_brace_close
-    direct_typeid_declarator_LBRACKET_type_qualifier_list_opt_TIMES_RBRACKET -> direct_typeid_declarator
-    expression -> expression_COMMA_assignment_expression
-    unified_string_literal -> STRING_LITERAL
-    MINUSMINUS_unary_expression -> unary_expression
-    struct_declarator_list_COMMA_struct_declarator -> struct_declarator
-    ID_EQUALS_constant_expression -> EQUALS
-    direct_id_declarator_LBRACKET_type_qualifier_list_opt_TIMES_RBRACKET -> RBRACKET
-    direct_typeid_noparen_declarator_LPAREN_identifier_list_opt_RPAREN -> direct_typeid_noparen_declarator
-    declaration_specifiers -> declaration_specifiers_type_specifier_no_typeid
-    declarator_EQUALS_initializer -> declarator
-    initializer -> assignment_expression
-    RETURN_SEMI -> SEMI
-    pppragma_directive_list_statement -> statement
-    CASE_constant_expression_COLON_pragmacomp_or_statement -> CASE
-    FOR_LPAREN_expression_opt_SEMI_expression_opt_SEMI_expression_opt_RPAREN_pragmacomp_or_statement -> pragmacomp_or_statement
-    binary_expression_DIVIDE_binary_expression -> DIVIDE
-    binary_expression_LT_binary_expression -> LT
-    struct_or_union_ID_brace_open_struct_declaration_list_brace_close -> struct_or_union
-    type_name -> specifier_qualifier_list_abstract_declarator_opt
-    binary_expression_AND_binary_expression -> binary_expression
-    init_declarator -> declarator_EQUALS_initializer
-    CASE_constant_expression_COLON_pragmacomp_or_statement -> constant_expression
-    unary_operator -> TIMES
-    struct_declarator_list_opt -> struct_declarator_list
-    direct_id_declarator_LPAREN_identifier_list_opt_RPAREN -> direct_id_declarator
-    direct_typeid_declarator_LBRACKET_STATIC_type_qualifier_list_opt_assignment_expression_RBRACKET -> LBRACKET
-    direct_typeid_noparen_declarator -> direct_typeid_noparen_declarator_LBRACKET_STATIC_type_qualifier_list_opt_assignment_expression_RBRACKET
-    binary_expression -> binary_expression_LT_binary_expression
-    direct_id_declarator_LBRACKET_type_qualifier_list_STATIC_assignment_expression_RBRACKET -> RBRACKET
-    pointer_direct_typeid_declarator -> pointer
-    struct_or_union_ID_brace_open_struct_declaration_list_brace_close -> struct_declaration_list
-    offsetof_member_designator_PERIOD_identifier -> PERIOD
-    type_qualifier_declaration_specifiers_no_type_opt -> declaration_specifiers_no_type_opt
-    FOR_LPAREN_declaration_expression_opt_SEMI_for_iter_RPAREN_pragmacomp_or_statement -> for_iter
-    declaration_specifiers_no_type -> type_qualifier_declaration_specifiers_no_type_opt
-    pointer_direct_typeid_noparen_declarator -> pointer
-    _STATIC_ASSERT_LPAREN_constant_expression_RPAREN -> _STATIC_ASSERT
-    struct_or_union_ID -> ID
-    type_qualifier_list -> type_qualifier
-    brace_open_initializer_list_COMMA_brace_close -> initializer_list
-    constant -> HEX_FLOAT_CONST
-    constant -> CHAR_CONST
-    unary_operator_cast_expression -> cast_expression
-    direct_typeid_noparen_declarator_LBRACKET_type_qualifier_list_opt_TIMES_RBRACKET -> type_qualifier_list_opt
-    identifier_list_COMMA_identifier -> identifier_list
-    LPAREN_type_name_RPAREN_brace_open_initializer_list_brace_close -> RPAREN
-    enumerator_list -> enumerator_list_COMMA
-    identifier_list -> identifier
-    FOR_LPAREN_expression_opt_SEMI_expression_opt_SEMI_expression_opt_RPAREN_pragmacomp_or_statement -> expression_opt
-    declaration_specifiers_init_declarator_list_opt -> init_declarator_list_opt
-    postfix_expression -> postfix_expression_ARROW_ID
-    direct_typeid_noparen_declarator_LBRACKET_type_qualifier_list_opt_assignment_expression_opt_RBRACKET -> LBRACKET
-    LBRACKET_TIMES_RBRACKET -> TIMES
-    type_specifier_no_typeid -> LONG
-    initializer_list_COMMA_designation_opt_initializer -> designation_opt
-    brace_open_initializer_list_COMMA_brace_close -> COMMA
-    direct_typeid_declarator_LPAREN_parameter_type_list_RPAREN -> parameter_type_list
-    pppragma_directive_list -> pppragma_directive_list_pppragma_directive
-    PPPRAGMA_PPPRAGMASTR -> PPPRAGMASTR
-    static_assert -> _STATIC_ASSERT_LPAREN_constant_expression_COMMA_unified_string_literal_RPAREN
-    PLUSPLUS_unary_expression -> unary_expression
-    initializer_list_opt -> empty
-    decl_body_SEMI -> SEMI
-    type_specifier_no_typeid -> VOID
-    enum_specifier -> ENUM_ID_brace_open_enumerator_list_brace_close
-    struct_or_union_TYPEID_brace_open_struct_declaration_list_brace_close -> brace_open
-    direct_typeid_noparen_declarator_LBRACKET_STATIC_type_qualifier_list_opt_assignment_expression_RBRACKET -> type_qualifier_list_opt
-    alignment_specifier -> _ALIGNAS_LPAREN_type_name_RPAREN
-    LBRACKET_constant_expression_RBRACKET -> constant_expression
-    jump_statement -> RETURN_SEMI
-    type_qualifier -> _ATOMIC
-    constant -> WCHAR_CONST
-    translation_unit -> external_declaration
-    constant -> U32CHAR_CONST
-    struct_declarator_list_COMMA_struct_declarator -> struct_declarator_list
-    assignment_expression -> unary_expression_assignment_operator_assignment_expression
-    offsetof_member_designator_PERIOD_identifier -> identifier
-    binary_expression_LE_binary_expression -> LE
-    IF_LPAREN_expression_RPAREN_pragmacomp_or_statement -> IF
-    LPAREN_VOID_RPAREN_compound_expression -> LPAREN
-    LPAREN_typeid_declarator_RPAREN -> RPAREN
-    DO_pragmacomp_or_statement_WHILE_LPAREN_expression_RPAREN_SEMI -> DO
-    direct_typeid_declarator_LPAREN_parameter_type_list_RPAREN -> direct_typeid_declarator
-    empty -> <empty>
-    LPAREN_id_declarator_RPAREN -> LPAREN
-    type_qualifier_list_opt -> type_qualifier_list
-    _ATOMIC_LPAREN_type_name_RPAREN -> LPAREN
-    abstract_declarator_opt -> abstract_declarator
-    FOR_LPAREN_declaration_expression_opt_SEMI_for_iter_RPAREN_pragmacomp_or_statement -> pragmacomp_or_statement
-    initializer_list -> designation_opt_initializer
-    constant_expression -> conditional_expression
-    postfix_expression_MINUSMINUS -> MINUSMINUS
-    binary_expression -> binary_expression_DIVIDE_binary_expression
-    declaration_specifiers_no_type_type_specifier -> declaration_specifiers_no_type
-    alignment_specifier_declaration_specifiers_no_type_opt -> alignment_specifier
-    assignment_expression_opt -> empty
-    LPAREN_expression_RPAREN -> expression
-    block_item_list_block_item -> block_item_list
-    binary_expression -> binary_expression_GT_binary_expression
-    direct_typeid_noparen_declarator_LPAREN_parameter_type_list_RPAREN -> RPAREN
-    struct_or_union_specifier -> struct_or_union_TYPEID_brace_open_brace_close
-    designator -> LBRACKET_constant_expression_RBRACKET
-    ENUM_TYPEID_brace_open_enumerator_list_brace_close -> ENUM
-    PLUSPLUS_unary_expression -> PLUSPLUS
-    primary_expression -> OFFSETOF_LPAREN_type_name_COMMA_offsetof_member_designator_RPAREN
-    DEFAULT_COLON_pragmacomp_or_statement -> COLON
-    declarator_COLON_constant_expression -> declarator
-    _PRAGMA_LPAREN_unified_string_literal_RPAREN -> RPAREN
-    LPAREN_abstract_declarator_RPAREN -> RPAREN
-    ENUM_TYPEID -> ENUM
-    id_init_declarator_list_opt -> id_init_declarator_list
-    postfix_expression_LPAREN_argument_expression_list_RPAREN -> postfix_expression
-    parameter_type_list_opt -> parameter_type_list
-    parameter_type_list -> parameter_list_COMMA_ELLIPSIS
-    unary_expression -> _ALIGNOF_LPAREN_type_name_RPAREN
-    type_qualifier_list_opt -> empty
-    translation_unit -> translation_unit_external_declaration
-    postfix_expression_ARROW_ID -> postfix_expression
-    postfix_expression_PERIOD_ID -> PERIOD
-    direct_id_declarator_LBRACKET_type_qualifier_list_opt_TIMES_RBRACKET -> LBRACKET
-    binary_expression_LOR_binary_expression -> LOR
-    struct_or_union_specifier -> struct_or_union_TYPEID_brace_open_struct_declaration_list_brace_close
-    ENUM_ID_brace_open_enumerator_list_brace_close -> brace_open
-    FOR_LPAREN_declaration_expression_opt_SEMI_for_iter_RPAREN_pragmacomp_or_statement -> expression_opt
-    binary_expression_GT_binary_expression -> binary_expression
-    unified_wstring_literal -> unified_wstring_literal_U16STRING_LITERAL
-    IF_LPAREN_expression_RPAREN_pragmacomp_or_statement -> pragmacomp_or_statement
-    direct_abstract_declarator -> LBRACKET_TIMES_RBRACKET
-    struct_or_union_specifier -> struct_or_union_ID_brace_open_brace_close
-    LPAREN_type_name_RPAREN_brace_open_initializer_list_brace_close -> type_name
-    type_specifier_no_typeid -> _COMPLEX
-    type_specifier_no_typeid -> _BOOL
-    statement -> labeled_statement
-    expression_COMMA_assignment_expression -> assignment_expression
-    ID_COLON_pragmacomp_or_statement -> pragmacomp_or_statement
-    specifier_qualifier_list_alignment_specifier -> alignment_specifier
-    CONTINUE_SEMI -> SEMI
-    direct_abstract_declarator_LBRACKET_assignment_expression_opt_RBRACKET -> RBRACKET
-    direct_typeid_declarator_LBRACKET_STATIC_type_qualifier_list_opt_assignment_expression_RBRACKET -> type_qualifier_list_opt
-    binary_expression_TIMES_binary_expression -> binary_expression
-    binary_expression_LE_binary_expression -> binary_expression
-    type_specifier_no_typeid -> CHAR
-    direct_id_declarator_LBRACKET_type_qualifier_list_STATIC_assignment_expression_RBRACKET -> LBRACKET
-    pointer_direct_typeid_noparen_declarator -> direct_typeid_noparen_declarator
-    binary_expression -> binary_expression_AND_binary_expression
-    unified_wstring_literal -> unified_wstring_literal_U8STRING_LITERAL
-    IF_LPAREN_expression_RPAREN_statement_ELSE_pragmacomp_or_statement -> statement
-    specifier_qualifier_list -> specifier_qualifier_list_type_qualifier
-    _ALIGNOF_LPAREN_type_name_RPAREN -> type_name
-    statement -> compound_statement
-    ENUM_TYPEID_brace_open_enumerator_list_brace_close -> enumerator_list
-    external_declaration -> function_definition
-    direct_typeid_noparen_declarator_LBRACKET_type_qualifier_list_STATIC_assignment_expression_RBRACKET -> type_qualifier_list
-    binary_expression_CONDOP_expression_COLON_conditional_expression -> CONDOP
-    OFFSETOF_LPAREN_type_name_COMMA_offsetof_member_designator_RPAREN -> RPAREN
-    RETURN_expression_SEMI -> RETURN
-    LPAREN_type_name_RPAREN_brace_open_initializer_list_brace_close -> LPAREN
-    direct_abstract_declarator_LBRACKET_assignment_expression_opt_RBRACKET -> assignment_expression_opt
-    parameter_declaration -> declaration_specifiers_id_declarator
-    direct_typeid_noparen_declarator_LBRACKET_type_qualifier_list_opt_assignment_expression_opt_RBRACKET -> type_qualifier_list_opt
-    struct_declarator_list_COMMA_struct_declarator -> COMMA
-    IF_LPAREN_expression_RPAREN_pragmacomp_or_statement -> expression
-    ID_COLON_pragmacomp_or_statement -> COLON
-    decl_body -> declaration_specifiers_no_type_id_init_declarator_list_opt
-    binary_expression_MINUS_binary_expression -> MINUS
-    direct_typeid_noparen_declarator_LBRACKET_type_qualifier_list_opt_TIMES_RBRACKET -> direct_typeid_noparen_declarator
-    brace_open_initializer_list_COMMA_brace_close -> brace_close
-    OFFSETOF_LPAREN_type_name_COMMA_offsetof_member_designator_RPAREN -> COMMA
-    struct_or_union_brace_open_brace_close -> brace_close
-    direct_typeid_declarator_LBRACKET_type_qualifier_list_STATIC_assignment_expression_RBRACKET -> STATIC
-    struct_or_union_ID_brace_open_brace_close -> brace_close
-    declaration_specifiers_no_type -> function_specifier_declaration_specifiers_no_type_opt
-    postfix_expression_LBRACKET_expression_RBRACKET -> expression
-    LPAREN_type_name_RPAREN_brace_open_initializer_list_brace_close -> brace_close
-    ENUM_ID -> ID
-    DEFAULT_COLON_pragmacomp_or_statement -> DEFAULT
-    LPAREN_typeid_declarator_RPAREN -> LPAREN
-    FOR_LPAREN_declaration_expression_opt_SEMI_for_iter_RPAREN_pragmacomp_or_statement -> SEMI
-    struct_declarator_list -> struct_declarator_list_COMMA_struct_declarator
-    FOR_LPAREN_declaration_expression_opt_SEMI_for_iter_RPAREN_pragmacomp_or_statement -> RPAREN
-    unary_expression -> PLUSPLUS_unary_expression
-    GOTO_ID_SEMI -> SEMI
-    LPAREN_type_name_RPAREN_brace_open_initializer_list_COMMA_brace_close -> COMMA
-    direct_typeid_declarator_LBRACKET_type_qualifier_list_STATIC_assignment_expression_RBRACKET -> type_qualifier_list
-    unified_string_literal -> unified_string_literal_STRING_LITERAL
-    postfix_expression_LBRACKET_expression_RBRACKET -> LBRACKET
-    jump_statement -> CONTINUE_SEMI
-    direct_typeid_noparen_declarator_LBRACKET_STATIC_type_qualifier_list_opt_assignment_expression_RBRACKET -> direct_typeid_noparen_declarator
-    specifier_qualifier_list -> alignment_specifier
-    specifier_qualifier_list_alignment_specifier -> specifier_qualifier_list
-    LPAREN_VOID_RPAREN_compound_expression -> compound_expression
-    alignment_specifier_declaration_specifiers_no_type_opt -> declaration_specifiers_no_type_opt
-    declaration_specifiers_id_declarator_declaration_list_opt_compound_statement -> compound_statement
-    struct_or_union_TYPEID_brace_open_struct_declaration_list_brace_close -> struct_or_union
-    declaration_list_opt -> empty
-    direct_typeid_noparen_declarator -> TYPEID
-    parameter_list_COMMA_parameter_declaration -> parameter_list
-    direct_typeid_noparen_declarator_LPAREN_parameter_type_list_RPAREN -> LPAREN
-    direct_typeid_declarator_LBRACKET_type_qualifier_list_STATIC_assignment_expression_RBRACKET -> RBRACKET
-    id_declarator_EQUALS_initializer -> id_declarator
-    function_specifier_declaration_specifiers_no_type_opt -> declaration_specifiers_no_type_opt
-    id_declarator_declaration_list_opt_compound_statement -> id_declarator
-    pointer_direct_abstract_declarator -> direct_abstract_declarator
-    struct_or_union_TYPEID_brace_open_struct_declaration_list_brace_close -> struct_declaration_list
-    unified_wstring_literal_WSTRING_LITERAL -> WSTRING_LITERAL
-    id_declarator -> direct_id_declarator
-    offsetof_member_designator_PERIOD_identifier -> offsetof_member_designator
-    type_specifier -> type_specifier_no_typeid
-    struct_or_union_specifier -> struct_or_union_brace_open_struct_declaration_list_brace_close
-    _PRAGMA_LPAREN_unified_string_literal_RPAREN -> LPAREN
-    LPAREN_abstract_declarator_RPAREN -> LPAREN
-    binary_expression_LOR_binary_expression -> binary_expression
-    initializer_list_opt -> initializer_list
-    direct_typeid_declarator_LBRACKET_type_qualifier_list_opt_assignment_expression_opt_RBRACKET -> direct_typeid_declarator
-    unary_operator -> AND
-    direct_typeid_declarator -> direct_typeid_declarator_LPAREN_parameter_type_list_RPAREN
-    direct_typeid_declarator -> direct_typeid_declarator_LBRACKET_STATIC_type_qualifier_list_opt_assignment_expression_RBRACKET
-    direct_typeid_noparen_declarator_LPAREN_identifier_list_opt_RPAREN -> LPAREN
-    direct_id_declarator_LBRACKET_type_qualifier_list_opt_TIMES_RBRACKET -> type_qualifier_list_opt
-    direct_typeid_noparen_declarator_LBRACKET_STATIC_type_qualifier_list_opt_assignment_expression_RBRACKET -> assignment_expression
-    DO_pragmacomp_or_statement_WHILE_LPAREN_expression_RPAREN_SEMI -> LPAREN
-    type_specifier_no_typeid -> DOUBLE
-    pragmacomp_or_statement -> pppragma_directive_list_statement
-    struct_or_union_ID_brace_open_struct_declaration_list_brace_close -> brace_close
-    struct_declaration -> specifier_qualifier_list_struct_declarator_list_opt_SEMI
-    statement -> selection_statement
-    direct_typeid_noparen_declarator_LPAREN_parameter_type_list_RPAREN -> parameter_type_list
-    struct_or_union_TYPEID_brace_open_brace_close -> brace_open
-    struct_declaration -> SEMI
-    ENUM_TYPEID_brace_open_enumerator_list_brace_close -> TYPEID
-    direct_abstract_declarator_LBRACKET_TIMES_RBRACKET -> TIMES
-    unary_expression_assignment_operator_assignment_expression -> assignment_operator
-    binary_expression_NE_binary_expression -> NE
-    direct_abstract_declarator_LBRACKET_assignment_expression_opt_RBRACKET -> LBRACKET
-    block_item_list_opt -> empty
-    COLON_constant_expression -> constant_expression
-    ENUM_TYPEID -> TYPEID
-    initializer_list_COMMA_designation_opt_initializer -> initializer
-    binary_expression_LAND_binary_expression -> binary_expression
-    unified_wstring_literal -> WSTRING_LITERAL
-    specifier_qualifier_list_abstract_declarator_opt -> specifier_qualifier_list
-    LPAREN_type_name_RPAREN_brace_open_initializer_list_COMMA_brace_close -> brace_open
-    direct_typeid_noparen_declarator_LBRACKET_type_qualifier_list_opt_TIMES_RBRACKET -> TIMES
-    direct_typeid_noparen_declarator_LBRACKET_type_qualifier_list_STATIC_assignment_expression_RBRACKET -> assignment_expression
-    pppragma_directive_list_pppragma_directive -> pppragma_directive
-    binary_expression -> binary_expression_LOR_binary_expression
-    storage_class_specifier -> TYPEDEF
-    direct_typeid_noparen_declarator_LBRACKET_type_qualifier_list_opt_assignment_expression_opt_RBRACKET -> assignment_expression_opt
-    id_init_declarator_list_COMMA_init_declarator -> id_init_declarator_list
-    pointer -> TIMES_type_qualifier_list_opt_pointer
-    binary_expression -> binary_expression_PLUS_binary_expression
-    postfix_expression -> LPAREN_type_name_RPAREN_brace_open_initializer_list_brace_close
-    OFFSETOF_LPAREN_type_name_COMMA_offsetof_member_designator_RPAREN -> LPAREN
-    brace_open_block_item_list_opt_brace_close -> brace_open
-    IF_LPAREN_expression_RPAREN_statement_ELSE_pragmacomp_or_statement -> IF
-    init_declarator_list_COMMA_init_declarator -> init_declarator_list
-    binary_expression_MINUS_binary_expression -> binary_expression
-    external_declaration -> declaration
-    _ALIGNOF_LPAREN_type_name_RPAREN -> _ALIGNOF
-    postfix_expression_LPAREN_RPAREN -> postfix_expression
-    declaration_specifiers_no_type_opt -> empty
-    typeid_noparen_declarator -> pointer_direct_typeid_noparen_declarator
-    enumerator_list_COMMA_enumerator -> enumerator
-    argument_expression_list -> argument_expression_list_COMMA_assignment_expression
-    MINUSMINUS_unary_expression -> MINUSMINUS
-    declarator_EQUALS_initializer -> initializer
-    identifier_list_COMMA_identifier -> identifier
-    brace_open_initializer_list_opt_brace_close -> brace_open
-    assignment_operator -> LSHIFTEQUAL
-    binary_expression -> binary_expression_OR_binary_expression
-    ENUM_ID_brace_open_enumerator_list_brace_close -> ENUM
-    declaration_specifiers_type_qualifier -> type_qualifier
-    block_item_list_block_item -> block_item
-    binary_expression_MOD_binary_expression -> MOD
-    binary_expression_XOR_binary_expression -> XOR
-    _STATIC_ASSERT_LPAREN_constant_expression_RPAREN -> RPAREN
-    id_init_declarator_list -> id_init_declarator
-    cast_expression -> unary_expression
-    unified_wstring_literal -> unified_wstring_literal_WSTRING_LITERAL
-    SWITCH_LPAREN_expression_RPAREN_pragmacomp_or_statement -> pragmacomp_or_statement
-    declaration_specifiers_no_type_id_init_declarator_list_opt -> id_init_declarator_list_opt
-    unified_wstring_literal_U8STRING_LITERAL -> U8STRING_LITERAL
-    _ATOMIC_LPAREN_type_name_RPAREN -> _ATOMIC
-    TIMES_type_qualifier_list_opt -> type_qualifier_list_opt
-    direct_typeid_noparen_declarator_LBRACKET_type_qualifier_list_opt_assignment_expression_opt_RBRACKET -> direct_typeid_noparen_declarator
-    selection_statement -> IF_LPAREN_expression_RPAREN_pragmacomp_or_statement
-    constant -> FLOAT_CONST
-    ENUM_TYPEID_brace_open_enumerator_list_brace_close -> brace_close
-    type_qualifier_declaration_specifiers_no_type_opt -> type_qualifier
-    direct_typeid_declarator_LBRACKET_STATIC_type_qualifier_list_opt_assignment_expression_RBRACKET -> assignment_expression
-    enumerator_list_COMMA_enumerator -> COMMA
-    postfix_expression -> postfix_expression_PERIOD_ID
-    postfix_expression_LBRACKET_expression_RBRACKET -> postfix_expression
-    PERIOD_identifier -> PERIOD
-    FOR_LPAREN_declaration_expression_opt_SEMI_for_iter_RPAREN_pragmacomp_or_statement -> LPAREN
-    typeid_noparen_declarator -> direct_typeid_noparen_declarator
-    _STATIC_ASSERT_LPAREN_constant_expression_RPAREN -> constant_expression
-    declaration_specifiers_id_declarator_declaration_list_opt_compound_statement -> declaration_specifiers
-    ENUM_brace_open_enumerator_list_brace_close -> brace_open
-    direct_id_declarator_LBRACKET_type_qualifier_list_STATIC_assignment_expression_RBRACKET -> type_qualifier_list
-    enumerator -> ID
-    SIZEOF_LPAREN_type_name_RPAREN -> RPAREN
-    direct_typeid_declarator_LBRACKET_type_qualifier_list_opt_TIMES_RBRACKET -> RBRACKET
-    struct_or_union_brace_open_struct_declaration_list_brace_close -> brace_open
-    IF_LPAREN_expression_RPAREN_statement_ELSE_pragmacomp_or_statement -> pragmacomp_or_statement
-    LBRACKET_type_qualifier_list_opt_assignment_expression_opt_RBRACKET -> RBRACKET
-    expression_opt_SEMI -> expression_opt
-    direct_typeid_declarator -> LPAREN_typeid_declarator_RPAREN
-    binary_expression_RSHIFT_binary_expression -> RSHIFT
-    binary_expression -> binary_expression_XOR_binary_expression
-    direct_typeid_declarator_LBRACKET_type_qualifier_list_STATIC_assignment_expression_RBRACKET -> LBRACKET
-    direct_abstract_declarator -> LPAREN_abstract_declarator_RPAREN
-    designator_list_EQUALS -> designator_list
-    _ALIGNAS_LPAREN_type_name_RPAREN -> RPAREN
-    _STATIC_ASSERT_LPAREN_constant_expression_COMMA_unified_string_literal_RPAREN -> _STATIC_ASSERT
-    specifier_qualifier_list_type_specifier_no_typeid -> specifier_qualifier_list
-    direct_abstract_declarator -> direct_abstract_declarator_LBRACKET_TIMES_RBRACKET
-    function_specifier -> INLINE
-    SWITCH_LPAREN_expression_RPAREN_pragmacomp_or_statement -> expression
-    declaration_specifiers_init_declarator_list_opt -> declaration_specifiers
-    ENUM_ID_brace_open_enumerator_list_brace_close -> enumerator_list
-    alignment_specifier -> _ALIGNAS_LPAREN_constant_expression_RPAREN
-    parameter_list_COMMA_ELLIPSIS -> ELLIPSIS
-    type_specifier_no_typeid -> FLOAT
-    COMPOUND_STMT_START_block_item_list_opt_COMPOUND_STMT_END -> COMPOUND_STMT_START
-    designator_list -> designator_list_designator
-    id_declarator_declaration_list_opt_compound_statement -> compound_statement
-    id_declarator_EQUALS_initializer -> initializer
-    iteration_statement -> FOR_LPAREN_declaration_expression_opt_SEMI_for_iter_RPAREN_pragmacomp_or_statement
-    type_qualifier_list_type_specifier -> type_specifier
-    expression_statement -> expression_opt_SEMI
-    binary_expression_TIMES_binary_expression -> TIMES
-    binary_expression -> binary_expression_LSHIFT_binary_expression
-    direct_typeid_declarator -> direct_typeid_declarator_LBRACKET_type_qualifier_list_STATIC_assignment_expression_RBRACKET
-    abstract_declarator -> direct_abstract_declarator
-    _ATOMIC_LPAREN_type_name_RPAREN -> type_name
-    atomic_specifier -> _ATOMIC_LPAREN_type_name_RPAREN
-    OFFSETOF_LPAREN_type_name_COMMA_offsetof_member_designator_RPAREN -> OFFSETOF
-    PERIOD_identifier -> identifier
-    assignment_operator -> MODEQUAL
-    IF_LPAREN_expression_RPAREN_statement_ELSE_pragmacomp_or_statement -> expression
-    argument_expression_list_COMMA_assignment_expression -> COMMA
-    direct_id_declarator_LBRACKET_type_qualifier_list_opt_assignment_expression_opt_RBRACKET -> RBRACKET
-    declaration_list -> declaration_list_declaration
-    SIZEOF_unary_expression -> unary_expression
-    unary_operator -> NOT
-    direct_id_declarator -> direct_id_declarator_LPAREN_identifier_list_opt_RPAREN
-    postfix_expression_LPAREN_argument_expression_list_RPAREN -> RPAREN
-    type_specifier -> struct_or_union_specifier
-    declaration_specifiers_function_specifier -> function_specifier
-    declaration_specifiers -> declaration_specifiers_no_type_type_specifier
-    binary_expression_EQ_binary_expression -> EQ
-    declaration -> decl_body_SEMI
-    declaration_list_declaration -> declaration_list
-    specifier_qualifier_list_abstract_declarator_opt -> abstract_declarator_opt
-    declaration_specifiers_no_type_type_specifier -> type_specifier
-    postfix_expression -> postfix_expression_PERIOD_TYPEID
-    declaration_specifiers_no_type_id_init_declarator_list_opt -> declaration_specifiers_no_type
-    struct_or_union_TYPEID_brace_open_struct_declaration_list_brace_close -> TYPEID
-    COMPOUND_STMT_START_block_item_list_opt_COMPOUND_STMT_END -> COMPOUND_STMT_END
-    block_item_list -> block_item_list_block_item
-    LPAREN_parameter_type_list_opt_RPAREN -> RPAREN
-    struct_or_union_TYPEID_brace_open_brace_close -> struct_or_union
-    direct_typeid_noparen_declarator -> direct_typeid_noparen_declarator_LPAREN_identifier_list_opt_RPAREN
-    constant -> INT_CONST_HEX
-    declaration_specifiers_id_declarator_declaration_list_opt_compound_statement -> id_declarator
-    function_specifier_declaration_specifiers_no_type_opt -> function_specifier
-    postfix_expression_LBRACKET_expression_RBRACKET -> RBRACKET
-    offsetof_member_designator -> offsetof_member_designator_LBRACKET_expression_RBRACKET
-    designation_opt -> designation
-    struct_or_union_specifier -> struct_or_union_ID
-    declarator -> typeid_declarator
-    direct_id_declarator_LBRACKET_type_qualifier_list_opt_assignment_expression_opt_RBRACKET -> assignment_expression_opt
-    expression_opt_SEMI -> SEMI
-    translation_unit_or_empty -> empty
-    direct_abstract_declarator -> LBRACKET_type_qualifier_list_opt_assignment_expression_opt_RBRACKET
-    declarator_EQUALS_initializer -> EQUALS
-    WHILE_LPAREN_expression_RPAREN_pragmacomp_or_statement -> pragmacomp_or_statement
-    compound_statement -> brace_open_block_item_list_opt_brace_close
-    unified_wstring_literal_U32STRING_LITERAL -> U32STRING_LITERAL
-    pppragma_directive_list_statement -> pppragma_directive_list
-    _STATIC_ASSERT_LPAREN_constant_expression_RPAREN -> LPAREN
-    type_specifier_no_typeid -> SHORT
-    binary_expression_LAND_binary_expression -> LAND
-    binary_expression_DIVIDE_binary_expression -> binary_expression
-    declaration_specifiers_no_type -> alignment_specifier_declaration_specifiers_no_type_opt
-    initializer_list -> initializer_list_COMMA_designation_opt_initializer
-    direct_typeid_declarator_LPAREN_identifier_list_opt_RPAREN -> RPAREN
-    enum_specifier -> ENUM_TYPEID
-    DO_pragmacomp_or_statement_WHILE_LPAREN_expression_RPAREN_SEMI -> expression
-    direct_id_declarator -> direct_id_declarator_LBRACKET_type_qualifier_list_STATIC_assignment_expression_RBRACKET
-    abstract_declarator -> pointer_direct_abstract_declarator
-    init_declarator_list_COMMA_init_declarator -> init_declarator
-    _STATIC_ASSERT_LPAREN_constant_expression_COMMA_unified_string_literal_RPAREN -> unified_string_literal
-    pointer_direct_typeid_declarator -> direct_typeid_declarator
-    struct_declarator_list -> struct_declarator
-    binary_expression -> binary_expression_RSHIFT_binary_expression
-    postfix_expression_PERIOD_TYPEID -> PERIOD
-    postfix_expression -> postfix_expression_PLUSPLUS
-    expression_opt -> empty
-    direct_id_declarator_LBRACKET_type_qualifier_list_STATIC_assignment_expression_RBRACKET -> assignment_expression
-    offsetof_member_designator -> identifier
-    FOR_LPAREN_expression_opt_SEMI_expression_opt_SEMI_expression_opt_RPAREN_pragmacomp_or_statement -> RPAREN
-    FOR_LPAREN_expression_opt_SEMI_expression_opt_SEMI_expression_opt_RPAREN_pragmacomp_or_statement -> SEMI
-    enum_specifier -> ENUM_TYPEID_brace_open_enumerator_list_brace_close
-    IF_LPAREN_expression_RPAREN_statement_ELSE_pragmacomp_or_statement -> RPAREN
-    _ALIGNAS_LPAREN_type_name_RPAREN -> _ALIGNAS
-    direct_abstract_declarator_LPAREN_parameter_type_list_opt_RPAREN -> direct_abstract_declarator
-    direct_id_declarator_LPAREN_parameter_type_list_RPAREN -> RPAREN
-    typedef_name -> TYPEID
-    SIZEOF_LPAREN_type_name_RPAREN -> LPAREN
-    direct_typeid_declarator_LBRACKET_type_qualifier_list_opt_TIMES_RBRACKET -> LBRACKET
-    declaration_specifiers_no_type_opt -> declaration_specifiers_no_type
-    postfix_expression_ARROW_TYPEID -> postfix_expression
-    struct_or_union_TYPEID_brace_open_struct_declaration_list_brace_close -> brace_close
-    binary_expression_GE_binary_expression -> binary_expression
-    LBRACKET_type_qualifier_list_opt_assignment_expression_opt_RBRACKET -> LBRACKET
-    binary_expression_AND_binary_expression -> AND
-    LPAREN_VOID_RPAREN_compound_expression -> VOID
-    unary_expression_assignment_operator_assignment_expression -> assignment_expression
-    labeled_statement -> ID_COLON_pragmacomp_or_statement
-    WHILE_LPAREN_expression_RPAREN_pragmacomp_or_statement -> expression
-    direct_abstract_declarator -> direct_abstract_declarator_LPAREN_parameter_type_list_opt_RPAREN
-    _ALIGNAS_LPAREN_type_name_RPAREN -> LPAREN
-    pppragma_directive -> _PRAGMA_LPAREN_unified_string_literal_RPAREN
-    direct_typeid_declarator -> direct_typeid_declarator_LBRACKET_type_qualifier_list_opt_assignment_expression_opt_RBRACKET
-    enumerator_list_COMMA -> enumerator_list
-    direct_id_declarator_LBRACKET_type_qualifier_list_opt_TIMES_RBRACKET -> TIMES
-    selection_statement -> SWITCH_LPAREN_expression_RPAREN_pragmacomp_or_statement
-    unified_wstring_literal -> unified_wstring_literal_U32STRING_LITERAL
-    struct_or_union_brace_open_struct_declaration_list_brace_close -> struct_or_union
-    postfix_expression -> postfix_expression_MINUSMINUS
-    argument_expression_list -> assignment_expression
-    storage_class_specifier -> _THREAD_LOCAL
-    specifier_qualifier_list_type_qualifier -> specifier_qualifier_list
-    ID_EQUALS_constant_expression -> constant_expression
-    TIMES_type_qualifier_list_opt_pointer -> type_qualifier_list_opt
-    id_init_declarator -> id_declarator_EQUALS_initializer
-    pp_directive -> PPHASH
-    id_declarator_EQUALS_initializer -> EQUALS
-    direct_id_declarator_LBRACKET_STATIC_type_qualifier_list_opt_assignment_expression_RBRACKET -> STATIC
-    declaration_specifiers_no_type -> storage_class_specifier_declaration_specifiers_no_type_opt
-    binary_expression_GE_binary_expression -> GE
-    designator_list_designator -> designator_list
-    declaration_specifiers_type_qualifier -> declaration_specifiers
-    struct_or_union_brace_open_struct_declaration_list_brace_close -> struct_declaration_list
-    parameter_list -> parameter_declaration
-    LPAREN_expression_RPAREN -> RPAREN
-    WHILE_LPAREN_expression_RPAREN_pragmacomp_or_statement -> WHILE
-    direct_typeid_noparen_declarator -> direct_typeid_noparen_declarator_LBRACKET_type_qualifier_list_STATIC_assignment_expression_RBRACKET
-    parameter_type_list_opt -> empty
-    struct_or_union_ID_brace_open_brace_close -> ID
-    block_item -> statement
-    postfix_expression_ARROW_TYPEID -> TYPEID
-    enumerator_list_COMMA -> COMMA
-    assignment_expression_opt -> assignment_expression
-    LPAREN_type_name_RPAREN_brace_open_initializer_list_COMMA_brace_close -> RPAREN
-    declarator -> id_declarator
-    ENUM_brace_open_enumerator_list_brace_close -> ENUM
-    LPAREN_type_name_RPAREN_brace_open_initializer_list_COMMA_brace_close -> initializer_list
-    TIMES_type_qualifier_list_opt_pointer -> pointer
-    direct_id_declarator_LBRACKET_type_qualifier_list_opt_assignment_expression_opt_RBRACKET -> LBRACKET
-    postfix_expression_LPAREN_argument_expression_list_RPAREN -> LPAREN
-    storage_class_specifier_declaration_specifiers_no_type_opt -> declaration_specifiers_no_type_opt
-    identifier_list -> identifier_list_COMMA_identifier
-    struct_or_union_ID -> struct_or_union
-    ENUM_ID_brace_open_enumerator_list_brace_close -> brace_close
-    unified_wstring_literal_U16STRING_LITERAL -> unified_wstring_literal
-    pppragma_directive -> PPPRAGMA_PPPRAGMASTR
-    LPAREN_type_name_RPAREN_brace_open_initializer_list_brace_close -> brace_open
-    compound_expression -> COMPOUND_STMT_START_block_item_list_opt_COMPOUND_STMT_END
-    block_item -> declaration
-    direct_id_declarator_LBRACKET_STATIC_type_qualifier_list_opt_assignment_expression_RBRACKET -> RBRACKET
-    LPAREN_parameter_type_list_opt_RPAREN -> LPAREN
-    primary_expression -> constant
-    postfix_expression_ARROW_ID -> ID
-    init_declarator_list_COMMA_init_declarator -> COMMA
-    initializer_list_COMMA_designation_opt_initializer -> initializer_list
-    expression_COMMA_assignment_expression -> expression
-    declaration_specifiers_type_specifier_no_typeid -> type_specifier_no_typeid
-    TIMES_type_qualifier_list_opt -> TIMES
-    struct_or_union_TYPEID -> struct_or_union
-    BREAK_SEMI -> SEMI
-    COMPOUND_STMT_START_block_item_list_opt_COMPOUND_STMT_END -> block_item_list_opt
-    iteration_statement -> FOR_LPAREN_expression_opt_SEMI_expression_opt_SEMI_expression_opt_RPAREN_pragmacomp_or_statement
-    assignment_operator -> MINUSEQUAL
-    declaration_specifiers -> type_specifier
-    struct_declaration_list_struct_declaration -> struct_declaration_list
-    initializer_list_COMMA_designation_opt_initializer -> COMMA
-    struct_or_union_ID_brace_open_struct_declaration_list_brace_close -> ID
-    binary_expression_MOD_binary_expression -> binary_expression
-    SWITCH_LPAREN_expression_RPAREN_pragmacomp_or_statement -> SWITCH
-    direct_typeid_declarator_LPAREN_identifier_list_opt_RPAREN -> LPAREN
-    parameter_list -> parameter_list_COMMA_parameter_declaration
-    declaration_specifiers_alignment_specifier -> alignment_specifier
-    postfix_expression_LPAREN_RPAREN -> RPAREN
-    specifier_qualifier_list -> type_specifier
-    direct_abstract_declarator_LBRACKET_TIMES_RBRACKET -> direct_abstract_declarator
-    ENUM_brace_open_enumerator_list_brace_close -> enumerator_list
-    direct_typeid_noparen_declarator_LBRACKET_type_qualifier_list_STATIC_assignment_expression_RBRACKET -> direct_typeid_noparen_declarator
-    declaration_specifiers -> declaration_specifiers_alignment_specifier
-    LBRACKET_constant_expression_RBRACKET -> RBRACKET
-    binary_expression -> cast_expression
-    storage_class_specifier -> REGISTER
-    direct_id_declarator_LPAREN_identifier_list_opt_RPAREN -> identifier_list_opt
-    iteration_statement -> WHILE_LPAREN_expression_RPAREN_pragmacomp_or_statement
-    external_declaration -> SEMI
-    IF_LPAREN_expression_RPAREN_pragmacomp_or_statement -> RPAREN
-    OFFSETOF_LPAREN_type_name_COMMA_offsetof_member_designator_RPAREN -> type_name
-    type_qualifier_list_type_specifier -> type_qualifier_list
-    FOR_LPAREN_expression_opt_SEMI_expression_opt_SEMI_expression_opt_RPAREN_pragmacomp_or_statement -> LPAREN
-    binary_expression -> binary_expression_LAND_binary_expression
-    CASE_constant_expression_COLON_pragmacomp_or_statement -> pragmacomp_or_statement
-    statement -> iteration_statement
-    direct_typeid_declarator_LBRACKET_type_qualifier_list_opt_assignment_expression_opt_RBRACKET -> RBRACKET
-    conditional_expression -> binary_expression_CONDOP_expression_COLON_conditional_expression
-    _ALIGNAS_LPAREN_constant_expression_RPAREN -> RPAREN
-    direct_id_declarator_LPAREN_parameter_type_list_RPAREN -> LPAREN
-    declaration_specifiers_typeid_noparen_declarator -> typeid_noparen_declarator
-    init_declarator_list -> init_declarator_list_COMMA_init_declarator
-    direct_typeid_declarator_LBRACKET_type_qualifier_list_opt_TIMES_RBRACKET -> type_qualifier_list_opt
-    BREAK_SEMI -> BREAK
-    direct_typeid_declarator_LBRACKET_STATIC_type_qualifier_list_opt_assignment_expression_RBRACKET -> direct_typeid_declarator
-    struct_or_union_TYPEID_brace_open_brace_close -> TYPEID
-    LBRACKET_type_qualifier_list_opt_assignment_expression_opt_RBRACKET -> type_qualifier_list_opt
-    enumerator_list -> enumerator
-    IF_LPAREN_expression_RPAREN_statement_ELSE_pragmacomp_or_statement -> ELSE
-    binary_expression_PLUS_binary_expression -> binary_expression
-    binary_expression_LT_binary_expression -> binary_expression
-    declarator_COLON_constant_expression -> COLON
-    designation_opt_initializer -> designation_opt
-    direct_typeid_noparen_declarator_LPAREN_identifier_list_opt_RPAREN -> identifier_list_opt
-    unified_string_literal_STRING_LITERAL -> STRING_LITERAL
-    LPAREN_id_declarator_RPAREN -> id_declarator
-    function_definition -> declaration_specifiers_id_declarator_declaration_list_opt_compound_statement
-    struct_declarator -> declarator
-    argument_expression_list_COMMA_assignment_expression -> assignment_expression
-    declaration_specifiers_storage_class_specifier -> storage_class_specifier
-    LBRACKET_TIMES_RBRACKET -> RBRACKET
-    binary_expression -> binary_expression_TIMES_binary_expression
-    postfix_expression_PERIOD_ID -> postfix_expression
-    binary_expression_OR_binary_expression -> binary_expression
-    declaration_specifiers_storage_class_specifier -> declaration_specifiers
-    _ALIGNAS_LPAREN_constant_expression_RPAREN -> constant_expression
-    parameter_declaration -> declaration_specifiers_typeid_noparen_declarator
-    conditional_expression -> binary_expression
-    unified_wstring_literal -> U16STRING_LITERAL
-    atomic_specifier_declaration_specifiers_no_type_opt -> declaration_specifiers_no_type_opt
-    struct_declaration -> pppragma_directive
-    postfix_expression -> postfix_expression_LPAREN_argument_expression_list_RPAREN
-    type_specifier_no_typeid -> INT
-    direct_typeid_declarator_LPAREN_parameter_type_list_RPAREN -> RPAREN
-    specifier_qualifier_list -> type_qualifier_list_type_specifier
-    static_assert -> _STATIC_ASSERT_LPAREN_constant_expression_RPAREN
-    binary_expression_NE_binary_expression -> binary_expression
-    unary_expression -> SIZEOF_LPAREN_type_name_RPAREN
-    _PRAGMA_LPAREN_unified_string_literal_RPAREN -> _PRAGMA
-    direct_typeid_declarator_LPAREN_identifier_list_opt_RPAREN -> direct_typeid_declarator
-    parameter_list_COMMA_ELLIPSIS -> COMMA
-    parameter_list_COMMA_parameter_declaration -> COMMA
-    enumerator_list_COMMA_enumerator -> enumerator_list
-    atomic_specifier_declaration_specifiers_no_type_opt -> atomic_specifier
-    LPAREN_parameter_type_list_opt_RPAREN -> parameter_type_list_opt
-    id_init_declarator_list_opt -> empty
-    _STATIC_ASSERT_LPAREN_constant_expression_COMMA_unified_string_literal_RPAREN -> RPAREN
-    constant -> INT_CONST_BIN
-    struct_or_union_specifier -> struct_or_union_ID_brace_open_struct_declaration_list_brace_close
-    LPAREN_type_name_RPAREN_brace_open_initializer_list_COMMA_brace_close -> LPAREN
-    struct_declarator -> declarator_COLON_constant_expression
-    assignment_operator -> OREQUAL
-    direct_id_declarator_LBRACKET_type_qualifier_list_opt_assignment_expression_opt_RBRACKET -> type_qualifier_list_opt
-    expression -> COMPOUND_STMT_START_block_item_list_opt_COMPOUND_STMT_END
-    struct_declarator -> COLON_constant_expression
-    translation_unit_external_declaration -> external_declaration
-    declaration_specifiers -> declaration_specifiers_storage_class_specifier
-    id_declarator -> pointer_direct_id_declarator
-    storage_class_specifier -> STATIC
-    declaration_specifiers_abstract_declarator_opt -> declaration_specifiers
-    declaration_specifiers_id_declarator -> declaration_specifiers
-    OFFSETOF_LPAREN_type_name_COMMA_offsetof_member_designator_RPAREN -> offsetof_member_designator
-    offsetof_member_designator_LBRACKET_expression_RBRACKET -> offsetof_member_designator
-    direct_id_declarator_LBRACKET_STATIC_type_qualifier_list_opt_assignment_expression_RBRACKET -> LBRACKET
-    offsetof_member_designator -> offsetof_member_designator_PERIOD_identifier
-    type_qualifier_list_type_qualifier -> type_qualifier
-    iteration_statement -> DO_pragmacomp_or_statement_WHILE_LPAREN_expression_RPAREN_SEMI
-    direct_typeid_declarator_LBRACKET_type_qualifier_list_STATIC_assignment_expression_RBRACKET -> assignment_expression
-    binary_expression_CONDOP_expression_COLON_conditional_expression -> expression
-    brace_open_block_item_list_opt_brace_close -> block_item_list_opt
-    declaration_list_opt -> declaration_list
-    _STATIC_ASSERT_LPAREN_constant_expression_COMMA_unified_string_literal_RPAREN -> constant_expression
-    designator_list -> designator
-    _STATIC_ASSERT_LPAREN_constant_expression_COMMA_unified_string_literal_RPAREN -> COMMA
-    id_init_declarator_list_COMMA_init_declarator -> COMMA
-    struct_or_union -> UNION
-    typeid_declarator -> direct_typeid_declarator
-    assignment_operator -> DIVEQUAL
-    LPAREN_VOID_RPAREN_compound_expression -> RPAREN
-    storage_class_specifier_declaration_specifiers_no_type_opt -> storage_class_specifier
-    LPAREN_type_name_RPAREN_brace_open_initializer_list_COMMA_brace_close -> brace_close
-    unified_wstring_literal_WSTRING_LITERAL -> unified_wstring_literal
-    designator_list_EQUALS -> EQUALS
-    LPAREN_id_declarator_RPAREN -> RPAREN
-    GOTO_ID_SEMI -> ID
-    storage_class_specifier -> EXTERN
-    direct_id_declarator -> ID
-    postfix_expression_ARROW_ID -> ARROW
-    assignment_operator -> EQUALS
-    direct_abstract_declarator -> LPAREN_parameter_type_list_opt_RPAREN
-    brace_open_block_item_list_opt_brace_close -> brace_close
-    jump_statement -> BREAK_SEMI
-    type_qualifier -> CONST
-    _ALIGNAS_LPAREN_constant_expression_RPAREN -> _ALIGNAS
-    statement -> static_assert
-    postfix_expression_LPAREN_RPAREN -> LPAREN
-    direct_typeid_noparen_declarator -> direct_typeid_noparen_declarator_LBRACKET_type_qualifier_list_opt_TIMES_RBRACKET
-    brace_open_initializer_list_opt_brace_close -> brace_close
-    primary_expression -> unified_wstring_literal
-    declaration_specifiers_function_specifier -> declaration_specifiers
-    enumerator -> ID_EQUALS_constant_expression
-    declaration_specifiers_type_specifier_no_typeid -> declaration_specifiers
-    declarator_COLON_constant_expression -> constant_expression
-    LBRACKET_constant_expression_RBRACKET -> LBRACKET
-    binary_expression_CONDOP_expression_COLON_conditional_expression -> conditional_expression
-    type_qualifier_list -> type_qualifier_list_type_qualifier
-    LBRACKET_type_qualifier_list_opt_assignment_expression_opt_RBRACKET -> assignment_expression_opt
-    IF_LPAREN_expression_RPAREN_pragmacomp_or_statement -> LPAREN
-    postfix_expression_PLUSPLUS -> postfix_expression
-    direct_id_declarator_LPAREN_parameter_type_list_RPAREN -> direct_id_declarator
-    LPAREN_type_name_RPAREN_cast_expression -> RPAREN
-    direct_typeid_declarator_LBRACKET_type_qualifier_list_opt_assignment_expression_opt_RBRACKET -> LBRACKET
-    _ALIGNAS_LPAREN_constant_expression_RPAREN -> LPAREN
-    identifier_list_COMMA_identifier -> COMMA
-    init_declarator_list_opt -> init_declarator_list
-    binary_expression -> binary_expression_NE_binary_expression
+struct_declarator -> COLON_constant_expression
+specifier_qualifier_list_abstract_declarator_opt -> abstract_declarator_opt
+pppragma_directive_list_pppragma_directive -> pppragma_directive
+enumerator_list_COMMA_enumerator -> enumerator
+specifier_qualifier_list -> specifier_qualifier_list_type_specifier_no_typeid
+postfix_expression -> primary_expression
+storage_class_specifier_declaration_specifiers_no_type_opt -> storage_class_specifier
+struct_declarator_list -> struct_declarator_list_COMMA_struct_declarator
+identifier_list_COMMA_identifier -> identifier
+FOR_LPAREN_expression_opt_SEMI_expression_opt_SEMI_expression_opt_RPAREN_pragmacomp_or_statement -> LPAREN
+direct_typeid_declarator_LBRACKET_STATIC_type_qualifier_list_opt_assignment_expression_RBRACKET -> RBRACKET
+direct_typeid_noparen_declarator_LBRACKET_type_qualifier_list_STATIC_assignment_expression_RBRACKET -> assignment_expression
+struct_declaration -> pppragma_directive
+struct_or_union_TYPEID -> TYPEID
+DEFAULT_COLON_pragmacomp_or_statement -> COLON
+parameter_declaration -> declaration_specifiers_id_declarator
+identifier_list_COMMA_identifier -> identifier_list
+struct_or_union_specifier -> struct_or_union_ID
+struct_declarator -> declarator_COLON_constant_expression
+direct_typeid_noparen_declarator_LBRACKET_STATIC_type_qualifier_list_opt_assignment_expression_RBRACKET -> assignment_expression
+offsetof_member_designator_PERIOD_identifier -> PERIOD
+assignment_operator -> LSHIFTEQUAL
+type_qualifier -> VOLATILE
+enum_specifier -> ENUM_brace_open_enumerator_list_brace_close
+brace_open_block_item_list_opt_brace_close -> brace_close
+pppragma_directive -> PPPRAGMA_PPPRAGMASTR
+type_specifier_no_typeid -> SIGNED
+direct_typeid_noparen_declarator_LPAREN_parameter_type_list_RPAREN -> RPAREN
+declaration_specifiers -> declaration_specifiers_function_specifier
+SWITCH_LPAREN_expression_RPAREN_pragmacomp_or_statement -> LPAREN
+ENUM_ID -> ENUM
+binary_expression_NE_binary_expression -> NE
+alignment_specifier_declaration_specifiers_no_type_opt -> alignment_specifier
+binary_expression_DIVIDE_binary_expression -> binary_expression
+binary_expression -> binary_expression_LOR_binary_expression
+struct_or_union_TYPEID_brace_open_brace_close -> struct_or_union
+binary_expression_XOR_binary_expression -> XOR
+argument_expression_list_COMMA_assignment_expression -> argument_expression_list
+id_declarator_EQUALS_initializer -> id_declarator
+IF_LPAREN_expression_RPAREN_pragmacomp_or_statement -> pragmacomp_or_statement
+direct_id_declarator_LPAREN_identifier_list_opt_RPAREN -> identifier_list_opt
+decl_body -> declaration_specifiers_init_declarator_list_opt
+specifier_qualifier_list -> type_qualifier_list_type_specifier
+_PRAGMA_LPAREN_unified_string_literal_RPAREN -> RPAREN
+direct_typeid_declarator_LPAREN_identifier_list_opt_RPAREN -> identifier_list_opt
+LPAREN_type_name_RPAREN_brace_open_initializer_list_COMMA_brace_close -> type_name
+PPPRAGMA_PPPRAGMASTR -> PPPRAGMA
+LPAREN_parameter_type_list_opt_RPAREN -> parameter_type_list_opt
+PLUSPLUS_unary_expression -> unary_expression
+BREAK_SEMI -> BREAK
+direct_typeid_declarator_LBRACKET_type_qualifier_list_STATIC_assignment_expression_RBRACKET -> RBRACKET
+struct_or_union_brace_open_struct_declaration_list_brace_close -> brace_close
+direct_typeid_declarator_LPAREN_identifier_list_opt_RPAREN -> direct_typeid_declarator
+struct_or_union_ID_brace_open_struct_declaration_list_brace_close -> struct_declaration_list
+direct_id_declarator_LBRACKET_type_qualifier_list_opt_TIMES_RBRACKET -> type_qualifier_list_opt
+struct_declaration_list -> struct_declaration_list_struct_declaration
+FOR_LPAREN_declaration_expression_opt_SEMI_for_iter_RPAREN_pragmacomp_or_statement -> SEMI
+LPAREN_type_name_RPAREN_brace_open_initializer_list_brace_close -> RPAREN
+binary_expression_CONDOP_expression_COLON_conditional_expression -> CONDOP
+direct_typeid_declarator_LBRACKET_type_qualifier_list_STATIC_assignment_expression_RBRACKET -> type_qualifier_list
+_ALIGNAS_LPAREN_constant_expression_RPAREN -> RPAREN
+brace_open_initializer_list_opt_brace_close -> brace_close
+postfix_expression_ARROW_TYPEID -> ARROW
+storage_class_specifier -> _THREAD_LOCAL
+constant -> U16CHAR_CONST
+declaration_specifiers_function_specifier -> declaration_specifiers
+type_specifier_no_typeid -> FLOAT
+TIMES_type_qualifier_list_opt_pointer -> TIMES
+type_qualifier_list_type_qualifier -> type_qualifier_list
+unary_expression_assignment_operator_assignment_expression -> assignment_operator
+binary_expression -> binary_expression_XOR_binary_expression
+unary_expression -> SIZEOF_unary_expression
+postfix_expression_LBRACKET_expression_RBRACKET -> RBRACKET
+translation_unit_or_empty -> translation_unit
+struct_or_union_ID -> ID
+designation_opt_initializer -> designation_opt
+typeid_declarator -> direct_typeid_declarator
+block_item_list_opt -> block_item_list
+LBRACKET_type_qualifier_list_opt_assignment_expression_opt_RBRACKET -> RBRACKET
+IF_LPAREN_expression_RPAREN_statement_ELSE_pragmacomp_or_statement -> statement
+binary_expression_CONDOP_expression_COLON_conditional_expression -> binary_expression
+LPAREN_VOID_RPAREN_compound_expression -> compound_expression
+assignment_expression -> conditional_expression
+direct_id_declarator -> direct_id_declarator_LBRACKET_type_qualifier_list_STATIC_assignment_expression_RBRACKET
+direct_typeid_noparen_declarator -> direct_typeid_noparen_declarator_LPAREN_parameter_type_list_RPAREN
+abstract_declarator -> pointer_direct_abstract_declarator
+direct_typeid_declarator -> direct_typeid_declarator_LPAREN_identifier_list_opt_RPAREN
+direct_abstract_declarator -> LBRACKET_type_qualifier_list_opt_assignment_expression_opt_RBRACKET
+SIZEOF_LPAREN_type_name_RPAREN -> LPAREN
+labeled_statement -> ID_COLON_pragmacomp_or_statement
+unified_wstring_literal_U16STRING_LITERAL -> unified_wstring_literal
+expression_statement -> expression_opt_SEMI
+GOTO_ID_SEMI -> ID
+statement -> jump_statement
+binary_expression_LOR_binary_expression -> LOR
+OFFSETOF_LPAREN_type_name_COMMA_offsetof_member_designator_RPAREN -> OFFSETOF
+init_declarator_list_COMMA_init_declarator -> init_declarator_list
+struct_or_union_ID_brace_open_struct_declaration_list_brace_close -> brace_open
+LBRACKET_type_qualifier_list_opt_assignment_expression_opt_RBRACKET -> LBRACKET
+FOR_LPAREN_declaration_expression_opt_SEMI_for_iter_RPAREN_pragmacomp_or_statement -> expression_opt
+statement -> expression_statement
+brace_open_initializer_list_opt_brace_close -> initializer_list_opt
+declaration_specifiers_function_specifier -> function_specifier
+ID_COLON_pragmacomp_or_statement -> ID
+LPAREN_typeid_declarator_RPAREN -> RPAREN
+expression_COMMA_assignment_expression -> assignment_expression
+declaration_specifiers_no_type -> storage_class_specifier_declaration_specifiers_no_type_opt
+type_specifier_no_typeid -> __INT128
+struct_declarator_list_COMMA_struct_declarator -> COMMA
+jump_statement -> RETURN_SEMI
+struct_or_union_TYPEID_brace_open_brace_close -> TYPEID
+binary_expression -> binary_expression_MOD_binary_expression
+jump_statement -> RETURN_expression_SEMI
+offsetof_member_designator_LBRACKET_expression_RBRACKET -> RBRACKET
+type_specifier_no_typeid -> SHORT
+typeid_noparen_declarator -> direct_typeid_noparen_declarator
+direct_typeid_declarator_LBRACKET_type_qualifier_list_opt_assignment_expression_opt_RBRACKET -> direct_typeid_declarator
+DO_pragmacomp_or_statement_WHILE_LPAREN_expression_RPAREN_SEMI -> LPAREN
+specifier_qualifier_list_struct_declarator_list_opt_SEMI -> SEMI
+LPAREN_abstract_declarator_RPAREN -> abstract_declarator
+parameter_type_list -> parameter_list_COMMA_ELLIPSIS
+unary_operator -> TIMES
+argument_expression_list_COMMA_assignment_expression -> COMMA
+id_init_declarator_list -> id_init_declarator_list_COMMA_init_declarator
+enumerator -> ID
+LPAREN_VOID_RPAREN_compound_expression -> RPAREN
+direct_id_declarator_LPAREN_parameter_type_list_RPAREN -> RPAREN
+brace_open_block_item_list_opt_brace_close -> block_item_list_opt
+designator_list_EQUALS -> designator_list
+direct_typeid_declarator_LBRACKET_STATIC_type_qualifier_list_opt_assignment_expression_RBRACKET -> type_qualifier_list_opt
+designator_list -> designator_list_designator
+direct_abstract_declarator -> LPAREN_abstract_declarator_RPAREN
+offsetof_member_designator_LBRACKET_expression_RBRACKET -> LBRACKET
+binary_expression -> binary_expression_LSHIFT_binary_expression
+direct_typeid_noparen_declarator_LPAREN_parameter_type_list_RPAREN -> LPAREN
+type_specifier -> type_specifier_no_typeid
+LBRACKET_TIMES_RBRACKET -> RBRACKET
+postfix_expression_LPAREN_argument_expression_list_RPAREN -> argument_expression_list
+id_declarator_declaration_list_opt_compound_statement -> id_declarator
+conditional_expression -> binary_expression
+initializer_list -> designation_opt_initializer
+specifier_qualifier_list -> type_specifier
+_ALIGNAS_LPAREN_type_name_RPAREN -> LPAREN
+enumerator_list -> enumerator
+constant -> U8CHAR_CONST
+_STATIC_ASSERT_LPAREN_constant_expression_COMMA_unified_string_literal_RPAREN -> COMMA
+direct_typeid_noparen_declarator -> direct_typeid_noparen_declarator_LPAREN_identifier_list_opt_RPAREN
+postfix_expression_MINUSMINUS -> postfix_expression
+postfix_expression -> LPAREN_type_name_RPAREN_brace_open_initializer_list_brace_close
+statement -> static_assert
+FOR_LPAREN_expression_opt_SEMI_expression_opt_SEMI_expression_opt_RPAREN_pragmacomp_or_statement -> RPAREN
+unary_operator_cast_expression -> cast_expression
+declaration_specifiers_no_type_id_init_declarator_list_opt -> id_init_declarator_list_opt
+function_specifier_declaration_specifiers_no_type_opt -> declaration_specifiers_no_type_opt
+declarator -> id_declarator
+PERIOD_identifier -> identifier
+id_init_declarator_list_opt -> id_init_declarator_list
+expression_opt -> empty
+expression_COMMA_assignment_expression -> expression
+assignment_expression -> compound_expression
+init_declarator_list_opt -> empty
+LBRACKET_TIMES_RBRACKET -> LBRACKET
+BREAK_SEMI -> SEMI
+binary_expression_LT_binary_expression -> LT
+struct_declarator_list_COMMA_struct_declarator -> struct_declarator
+binary_expression_LAND_binary_expression -> binary_expression
+LPAREN_type_name_RPAREN_brace_open_initializer_list_COMMA_brace_close -> initializer_list
+struct_or_union_specifier -> struct_or_union_brace_open_brace_close
+offsetof_member_designator -> offsetof_member_designator_LBRACKET_expression_RBRACKET
+identifier_list -> identifier
+unified_wstring_literal -> unified_wstring_literal_WSTRING_LITERAL
+LPAREN_type_name_RPAREN_brace_open_initializer_list_COMMA_brace_close -> COMMA
+_STATIC_ASSERT_LPAREN_constant_expression_RPAREN -> _STATIC_ASSERT
+binary_expression -> binary_expression_LAND_binary_expression
+type_qualifier_list_opt -> type_qualifier_list
+translation_unit_or_empty -> empty
+block_item_list -> block_item
+FOR_LPAREN_expression_opt_SEMI_expression_opt_SEMI_expression_opt_RPAREN_pragmacomp_or_statement -> pragmacomp_or_statement
+declaration_list_opt -> empty
+statement -> labeled_statement
+direct_typeid_declarator_LBRACKET_type_qualifier_list_opt_assignment_expression_opt_RBRACKET -> RBRACKET
+type_qualifier_list_type_specifier -> type_specifier
+ENUM_ID -> ID
+constant -> U32CHAR_CONST
+storage_class_specifier -> AUTO
+ID_EQUALS_constant_expression -> ID
+argument_expression_list_COMMA_assignment_expression -> assignment_expression
+brace_open_initializer_list_COMMA_brace_close -> brace_open
+SWITCH_LPAREN_expression_RPAREN_pragmacomp_or_statement -> SWITCH
+MINUSMINUS_unary_expression -> unary_expression
+_ALIGNOF_LPAREN_type_name_RPAREN -> RPAREN
+CASE_constant_expression_COLON_pragmacomp_or_statement -> constant_expression
+id_declarator_declaration_list_opt_compound_statement -> compound_statement
+LPAREN_type_name_RPAREN_brace_open_initializer_list_COMMA_brace_close -> brace_close
+brace_open_initializer_list_COMMA_brace_close -> initializer_list
+direct_id_declarator_LBRACKET_type_qualifier_list_opt_TIMES_RBRACKET -> RBRACKET
+DEFAULT_COLON_pragmacomp_or_statement -> DEFAULT
+struct_or_union_TYPEID_brace_open_struct_declaration_list_brace_close -> brace_open
+unified_wstring_literal_WSTRING_LITERAL -> WSTRING_LITERAL
+DO_pragmacomp_or_statement_WHILE_LPAREN_expression_RPAREN_SEMI -> WHILE
+OFFSETOF_LPAREN_type_name_COMMA_offsetof_member_designator_RPAREN -> COMMA
+declaration_specifiers_no_type -> function_specifier_declaration_specifiers_no_type_opt
+iteration_statement -> FOR_LPAREN_expression_opt_SEMI_expression_opt_SEMI_expression_opt_RPAREN_pragmacomp_or_statement
+LPAREN_parameter_type_list_opt_RPAREN -> LPAREN
+direct_typeid_noparen_declarator_LBRACKET_type_qualifier_list_opt_assignment_expression_opt_RBRACKET -> direct_typeid_noparen_declarator
+postfix_expression_PERIOD_TYPEID -> TYPEID
+DO_pragmacomp_or_statement_WHILE_LPAREN_expression_RPAREN_SEMI -> expression
+ENUM_TYPEID_brace_open_enumerator_list_brace_close -> brace_open
+offsetof_member_designator -> identifier
+LPAREN_VOID_RPAREN_compound_expression -> VOID
+selection_statement -> IF_LPAREN_expression_RPAREN_pragmacomp_or_statement
+translation_unit -> translation_unit_external_declaration
+binary_expression_GE_binary_expression -> GE
+_STATIC_ASSERT_LPAREN_constant_expression_COMMA_unified_string_literal_RPAREN -> _STATIC_ASSERT
+declaration_specifiers_type_specifier_no_typeid -> type_specifier_no_typeid
+enumerator_list_COMMA -> COMMA
+unified_wstring_literal -> U8STRING_LITERAL
+direct_typeid_noparen_declarator_LBRACKET_type_qualifier_list_opt_TIMES_RBRACKET -> TIMES
+abstract_declarator -> direct_abstract_declarator
+id_declarator_EQUALS_initializer -> EQUALS
+identifier_list_opt -> identifier_list
+_ATOMIC_LPAREN_type_name_RPAREN -> LPAREN
+binary_expression_PLUS_binary_expression -> PLUS
+specifier_qualifier_list -> specifier_qualifier_list_type_qualifier
+parameter_list_COMMA_parameter_declaration -> parameter_list
+direct_id_declarator_LBRACKET_type_qualifier_list_opt_TIMES_RBRACKET -> LBRACKET
+atomic_specifier_declaration_specifiers_no_type_opt -> declaration_specifiers_no_type_opt
+block_item -> declaration
+assignment_operator -> TIMESEQUAL
+struct_or_union_ID_brace_open_struct_declaration_list_brace_close -> struct_or_union
+type_specifier -> typedef_name
+direct_typeid_noparen_declarator_LPAREN_parameter_type_list_RPAREN -> direct_typeid_noparen_declarator
+parameter_list_COMMA_ELLIPSIS -> COMMA
+designator_list_EQUALS -> EQUALS
+FOR_LPAREN_declaration_expression_opt_SEMI_for_iter_RPAREN_pragmacomp_or_statement -> LPAREN
+external_declaration -> declaration
+declaration_list -> declaration_list_declaration
+pointer -> TIMES_type_qualifier_list_opt_pointer
+PPPRAGMA_PPPRAGMASTR -> PPPRAGMASTR
+decl_body -> declaration_specifiers_no_type_id_init_declarator_list_opt
+declaration_list_declaration -> declaration_list
+declaration_specifiers_abstract_declarator_opt -> abstract_declarator_opt
+empty -> <empty>
+declaration_specifiers -> declaration_specifiers_no_type_type_specifier
+binary_expression -> binary_expression_TIMES_binary_expression
+SIZEOF_LPAREN_type_name_RPAREN -> RPAREN
+pointer_direct_typeid_declarator -> direct_typeid_declarator
+init_declarator_list -> init_declarator
+postfix_expression_ARROW_TYPEID -> TYPEID
+binary_expression_DIVIDE_binary_expression -> DIVIDE
+postfix_expression_LPAREN_RPAREN -> postfix_expression
+binary_expression -> binary_expression_GT_binary_expression
+struct_or_union_brace_open_struct_declaration_list_brace_close -> struct_declaration_list
+LPAREN_VOID_RPAREN_compound_expression -> LPAREN
+ENUM_brace_open_enumerator_list_brace_close -> ENUM
+init_declarator_list_COMMA_init_declarator -> COMMA
+function_specifier -> _NORETURN
+direct_id_declarator -> direct_id_declarator_LBRACKET_type_qualifier_list_opt_TIMES_RBRACKET
+struct_or_union_specifier -> struct_or_union_TYPEID_brace_open_struct_declaration_list_brace_close
+struct_declarator_list_opt -> empty
+direct_abstract_declarator_LBRACKET_TIMES_RBRACKET -> RBRACKET
+direct_typeid_noparen_declarator -> direct_typeid_noparen_declarator_LBRACKET_STATIC_type_qualifier_list_opt_assignment_expression_RBRACKET
+struct_or_union_brace_open_brace_close -> brace_close
+primary_expression -> unified_wstring_literal
+enumerator_list -> enumerator_list_COMMA
+specifier_qualifier_list_type_qualifier -> type_qualifier
+direct_typeid_declarator_LBRACKET_type_qualifier_list_STATIC_assignment_expression_RBRACKET -> STATIC
+struct_or_union_TYPEID_brace_open_brace_close -> brace_close
+declaration_specifiers_typeid_noparen_declarator -> declaration_specifiers
+brace_open_block_item_list_opt_brace_close -> brace_open
+unified_string_literal_STRING_LITERAL -> unified_string_literal
+type_specifier_no_typeid -> UNSIGNED
+CONTINUE_SEMI -> SEMI
+direct_typeid_declarator_LPAREN_parameter_type_list_RPAREN -> LPAREN
+IF_LPAREN_expression_RPAREN_statement_ELSE_pragmacomp_or_statement -> IF
+assignment_expression_opt -> empty
+declarator_COLON_constant_expression -> constant_expression
+DO_pragmacomp_or_statement_WHILE_LPAREN_expression_RPAREN_SEMI -> RPAREN
+direct_abstract_declarator_LPAREN_parameter_type_list_opt_RPAREN -> RPAREN
+enum_specifier -> ENUM_ID
+direct_id_declarator -> direct_id_declarator_LPAREN_parameter_type_list_RPAREN
+COLON_constant_expression -> COLON
+binary_expression_CONDOP_expression_COLON_conditional_expression -> COLON
+unary_operator -> AND
+id_declarator -> direct_id_declarator
+direct_id_declarator_LBRACKET_type_qualifier_list_opt_assignment_expression_opt_RBRACKET -> type_qualifier_list_opt
+binary_expression_TIMES_binary_expression -> TIMES
+statement -> iteration_statement
+designation_opt_initializer -> initializer
+id_init_declarator_list_COMMA_init_declarator -> COMMA
+labeled_statement -> DEFAULT_COLON_pragmacomp_or_statement
+declaration_specifiers_no_type -> alignment_specifier_declaration_specifiers_no_type_opt
+abstract_declarator_opt -> abstract_declarator
+direct_id_declarator_LPAREN_parameter_type_list_RPAREN -> parameter_type_list
+direct_abstract_declarator -> LPAREN_parameter_type_list_opt_RPAREN
+direct_typeid_noparen_declarator_LBRACKET_type_qualifier_list_opt_assignment_expression_opt_RBRACKET -> type_qualifier_list_opt
+struct_or_union_brace_open_struct_declaration_list_brace_close -> brace_open
+binary_expression_RSHIFT_binary_expression -> RSHIFT
+DO_pragmacomp_or_statement_WHILE_LPAREN_expression_RPAREN_SEMI -> pragmacomp_or_statement
+parameter_type_list_opt -> parameter_type_list
+declaration_specifiers_no_type_type_specifier -> declaration_specifiers_no_type
+specifier_qualifier_list_alignment_specifier -> specifier_qualifier_list
+designator_list -> designator
+binary_expression -> binary_expression_AND_binary_expression
+selection_statement -> IF_LPAREN_expression_RPAREN_statement_ELSE_pragmacomp_or_statement
+LPAREN_type_name_RPAREN_cast_expression -> cast_expression
+postfix_expression_LPAREN_argument_expression_list_RPAREN -> postfix_expression
+pragmacomp_or_statement -> pppragma_directive_list_statement
+type_specifier_no_typeid -> _BOOL
+PERIOD_identifier -> PERIOD
+direct_typeid_declarator_LBRACKET_STATIC_type_qualifier_list_opt_assignment_expression_RBRACKET -> LBRACKET
+type_specifier_no_typeid -> VOID
+struct_or_union_specifier -> struct_or_union_ID_brace_open_brace_close
+_ALIGNAS_LPAREN_type_name_RPAREN -> RPAREN
+brace_open_initializer_list_opt_brace_close -> brace_open
+postfix_expression_PERIOD_ID -> PERIOD
+ENUM_brace_open_enumerator_list_brace_close -> brace_close
+abstract_declarator_opt -> empty
+FOR_LPAREN_declaration_expression_opt_SEMI_for_iter_RPAREN_pragmacomp_or_statement -> for_iter
+enumerator_list_COMMA -> enumerator_list
+_ALIGNOF_LPAREN_type_name_RPAREN -> LPAREN
+direct_typeid_declarator_LBRACKET_type_qualifier_list_opt_assignment_expression_opt_RBRACKET -> type_qualifier_list_opt
+type_qualifier -> _ATOMIC
+direct_typeid_declarator_LBRACKET_type_qualifier_list_opt_TIMES_RBRACKET -> TIMES
+ENUM_TYPEID_brace_open_enumerator_list_brace_close -> enumerator_list
+direct_typeid_declarator_LBRACKET_STATIC_type_qualifier_list_opt_assignment_expression_RBRACKET -> assignment_expression
+initializer -> brace_open_initializer_list_opt_brace_close
+binary_expression -> cast_expression
+id_declarator_EQUALS_initializer -> initializer
+direct_abstract_declarator -> direct_abstract_declarator_LPAREN_parameter_type_list_opt_RPAREN
+RETURN_expression_SEMI -> SEMI
+declaration_specifiers_alignment_specifier -> declaration_specifiers
+ENUM_TYPEID -> TYPEID
+SIZEOF_unary_expression -> SIZEOF
+struct_or_union_TYPEID_brace_open_struct_declaration_list_brace_close -> struct_or_union
+unified_wstring_literal -> unified_wstring_literal_U8STRING_LITERAL
+unary_operator -> LNOT
+atomic_specifier_declaration_specifiers_no_type_opt -> atomic_specifier
+direct_abstract_declarator -> direct_abstract_declarator_LBRACKET_TIMES_RBRACKET
+LPAREN_type_name_RPAREN_brace_open_initializer_list_brace_close -> type_name
+binary_expression -> binary_expression_OR_binary_expression
+identifier_list_COMMA_identifier -> COMMA
+struct_or_union_ID -> struct_or_union
+direct_typeid_noparen_declarator_LBRACKET_STATIC_type_qualifier_list_opt_assignment_expression_RBRACKET -> direct_typeid_noparen_declarator
+constant -> INT_CONST_BIN
+OFFSETOF_LPAREN_type_name_COMMA_offsetof_member_designator_RPAREN -> type_name
+struct_declarator_list_COMMA_struct_declarator -> struct_declarator_list
+declaration_specifiers -> type_specifier
+direct_typeid_declarator_LBRACKET_type_qualifier_list_STATIC_assignment_expression_RBRACKET -> LBRACKET
+LBRACKET_TIMES_RBRACKET -> TIMES
+storage_class_specifier -> TYPEDEF
+cast_expression -> LPAREN_type_name_RPAREN_cast_expression
+direct_typeid_declarator -> direct_typeid_declarator_LBRACKET_STATIC_type_qualifier_list_opt_assignment_expression_RBRACKET
+block_item_list_block_item -> block_item_list
+type_specifier -> enum_specifier
+binary_expression_LE_binary_expression -> LE
+struct_or_union_specifier -> struct_or_union_brace_open_struct_declaration_list_brace_close
+type_qualifier -> RESTRICT
+LBRACKET_type_qualifier_list_opt_assignment_expression_opt_RBRACKET -> assignment_expression_opt
+LPAREN_parameter_type_list_opt_RPAREN -> RPAREN
+binary_expression_MINUS_binary_expression -> binary_expression
+struct_or_union -> UNION
+unary_operator -> MINUS
+constant -> INT_CONST_DEC
+binary_expression_OR_binary_expression -> OR
+unary_expression -> unary_operator_cast_expression
+unary_operator -> NOT
+declaration_specifiers_init_declarator_list_opt -> init_declarator_list_opt
+direct_typeid_declarator_LBRACKET_type_qualifier_list_STATIC_assignment_expression_RBRACKET -> assignment_expression
+static_assert -> _STATIC_ASSERT_LPAREN_constant_expression_COMMA_unified_string_literal_RPAREN
+declaration_list -> declaration
+IF_LPAREN_expression_RPAREN_statement_ELSE_pragmacomp_or_statement -> expression
+initializer_list_opt -> initializer_list
+unified_wstring_literal_U16STRING_LITERAL -> U16STRING_LITERAL
+constant_expression -> conditional_expression
+external_declaration -> pppragma_directive
+postfix_expression_LBRACKET_expression_RBRACKET -> LBRACKET
+ENUM_ID_brace_open_enumerator_list_brace_close -> ENUM
+binary_expression -> binary_expression_PLUS_binary_expression
+pointer_direct_typeid_noparen_declarator -> direct_typeid_noparen_declarator
+type_qualifier_list -> type_qualifier_list_type_qualifier
+_ATOMIC_LPAREN_type_name_RPAREN -> RPAREN
+direct_typeid_noparen_declarator_LBRACKET_type_qualifier_list_opt_TIMES_RBRACKET -> direct_typeid_noparen_declarator
+CASE_constant_expression_COLON_pragmacomp_or_statement -> pragmacomp_or_statement
+id_init_declarator_list -> id_init_declarator
+block_item -> statement
+direct_id_declarator_LBRACKET_type_qualifier_list_STATIC_assignment_expression_RBRACKET -> RBRACKET
+FOR_LPAREN_declaration_expression_opt_SEMI_for_iter_RPAREN_pragmacomp_or_statement -> RPAREN
+postfix_expression -> postfix_expression_LPAREN_RPAREN
+expression -> COMPOUND_STMT_START_block_item_list_opt_COMPOUND_STMT_END
+ENUM_brace_open_enumerator_list_brace_close -> enumerator_list
+conditional_expression -> binary_expression_CONDOP_expression_COLON_conditional_expression
+direct_id_declarator_LBRACKET_type_qualifier_list_STATIC_assignment_expression_RBRACKET -> type_qualifier_list
+struct_or_union_ID_brace_open_brace_close -> brace_close
+_STATIC_ASSERT_LPAREN_constant_expression_COMMA_unified_string_literal_RPAREN -> unified_string_literal
+LPAREN_id_declarator_RPAREN -> RPAREN
+declaration_specifiers_id_declarator -> id_declarator
+struct_declarator -> declarator
+alignment_specifier -> _ALIGNAS_LPAREN_type_name_RPAREN
+static_assert -> _STATIC_ASSERT_LPAREN_constant_expression_RPAREN
+struct_declaration_list -> struct_declaration
+initializer_list -> initializer_list_COMMA_designation_opt_initializer
+unified_wstring_literal -> unified_wstring_literal_U16STRING_LITERAL
+specifier_qualifier_list_type_specifier_no_typeid -> specifier_qualifier_list
+LPAREN_abstract_declarator_RPAREN -> LPAREN
+type_specifier_no_typeid -> CHAR
+CONTINUE_SEMI -> CONTINUE
+direct_abstract_declarator_LPAREN_parameter_type_list_opt_RPAREN -> LPAREN
+binary_expression_LSHIFT_binary_expression -> binary_expression
+binary_expression_AND_binary_expression -> binary_expression
+postfix_expression -> postfix_expression_ARROW_TYPEID
+direct_id_declarator -> direct_id_declarator_LPAREN_identifier_list_opt_RPAREN
+LBRACKET_constant_expression_RBRACKET -> constant_expression
+direct_id_declarator_LBRACKET_type_qualifier_list_STATIC_assignment_expression_RBRACKET -> LBRACKET
+FOR_LPAREN_declaration_expression_opt_SEMI_for_iter_RPAREN_pragmacomp_or_statement -> pragmacomp_or_statement
+unified_string_literal -> STRING_LITERAL
+LPAREN_type_name_RPAREN_cast_expression -> LPAREN
+pointer_direct_abstract_declarator -> pointer
+id_init_declarator -> id_declarator_EQUALS_initializer
+unified_wstring_literal_U32STRING_LITERAL -> unified_wstring_literal
+postfix_expression_PERIOD_TYPEID -> PERIOD
+external_declaration -> SEMI
+cast_expression -> unary_expression
+assignment_operator -> DIVEQUAL
+struct_declaration_list_struct_declaration -> struct_declaration_list
+postfix_expression -> postfix_expression_PERIOD_ID
+parameter_list_COMMA_ELLIPSIS -> ELLIPSIS
+designator_list_designator -> designator
+postfix_expression_LPAREN_argument_expression_list_RPAREN -> RPAREN
+declaration_specifiers_no_type -> atomic_specifier_declaration_specifiers_no_type_opt
+struct_or_union_brace_open_struct_declaration_list_brace_close -> struct_or_union
+_PRAGMA_LPAREN_unified_string_literal_RPAREN -> unified_string_literal
+direct_typeid_declarator_LPAREN_parameter_type_list_RPAREN -> RPAREN
+initializer_list_opt -> empty
+postfix_expression -> postfix_expression_ARROW_ID
+block_item_list -> block_item_list_block_item
+struct_or_union_specifier -> struct_or_union_TYPEID
+direct_id_declarator_LBRACKET_type_qualifier_list_opt_assignment_expression_opt_RBRACKET -> RBRACKET
+struct_declaration_list_struct_declaration -> struct_declaration
+declaration_specifiers_id_declarator_declaration_list_opt_compound_statement -> compound_statement
+direct_typeid_noparen_declarator_LBRACKET_STATIC_type_qualifier_list_opt_assignment_expression_RBRACKET -> type_qualifier_list_opt
+struct_or_union_TYPEID_brace_open_struct_declaration_list_brace_close -> struct_declaration_list
+declarator_COLON_constant_expression -> COLON
+ENUM_ID_brace_open_enumerator_list_brace_close -> brace_close
+IF_LPAREN_expression_RPAREN_statement_ELSE_pragmacomp_or_statement -> RPAREN
+alignment_specifier_declaration_specifiers_no_type_opt -> declaration_specifiers_no_type_opt
+RETURN_SEMI -> RETURN
+constant -> WCHAR_CONST
+primary_expression -> constant
+direct_typeid_noparen_declarator_LBRACKET_type_qualifier_list_opt_assignment_expression_opt_RBRACKET -> RBRACKET
+direct_abstract_declarator -> LBRACKET_TIMES_RBRACKET
+LPAREN_type_name_RPAREN_brace_open_initializer_list_COMMA_brace_close -> brace_open
+postfix_expression -> postfix_expression_PERIOD_TYPEID
+constant -> HEX_FLOAT_CONST
+unary_operator_cast_expression -> unary_operator
+postfix_expression -> LPAREN_type_name_RPAREN_brace_open_initializer_list_COMMA_brace_close
+struct_declarator_list_opt -> struct_declarator_list
+id_init_declarator -> id_declarator
+IF_LPAREN_expression_RPAREN_pragmacomp_or_statement -> IF
+TIMES_type_qualifier_list_opt -> type_qualifier_list_opt
+LPAREN_id_declarator_RPAREN -> id_declarator
+LBRACKET_constant_expression_RBRACKET -> RBRACKET
+pointer_direct_typeid_declarator -> pointer
+assignment_operator -> MODEQUAL
+declaration_specifiers_alignment_specifier -> alignment_specifier
+unified_wstring_literal_U8STRING_LITERAL -> unified_wstring_literal
+direct_id_declarator_LBRACKET_type_qualifier_list_opt_assignment_expression_opt_RBRACKET -> LBRACKET
+declaration_list_declaration -> declaration
+IF_LPAREN_expression_RPAREN_statement_ELSE_pragmacomp_or_statement -> pragmacomp_or_statement
+direct_id_declarator_LBRACKET_type_qualifier_list_opt_TIMES_RBRACKET -> direct_id_declarator
+direct_typeid_noparen_declarator_LPAREN_parameter_type_list_RPAREN -> parameter_type_list
+direct_typeid_noparen_declarator_LBRACKET_type_qualifier_list_opt_assignment_expression_opt_RBRACKET -> LBRACKET
+declaration_list_opt -> declaration_list
+direct_typeid_noparen_declarator_LBRACKET_type_qualifier_list_opt_TIMES_RBRACKET -> type_qualifier_list_opt
+LPAREN_type_name_RPAREN_brace_open_initializer_list_brace_close -> initializer_list
+designation -> designator_list_EQUALS
+declaration_specifiers -> declaration_specifiers_type_qualifier
+direct_typeid_declarator_LBRACKET_type_qualifier_list_opt_assignment_expression_opt_RBRACKET -> assignment_expression_opt
+offsetof_member_designator_PERIOD_identifier -> identifier
+expression_opt_SEMI -> expression_opt
+direct_typeid_noparen_declarator -> direct_typeid_noparen_declarator_LBRACKET_type_qualifier_list_opt_assignment_expression_opt_RBRACKET
+storage_class_specifier -> STATIC
+type_qualifier_list_opt -> empty
+ID_COLON_pragmacomp_or_statement -> pragmacomp_or_statement
+binary_expression_GT_binary_expression -> GT
+parameter_list -> parameter_declaration
+iteration_statement -> DO_pragmacomp_or_statement_WHILE_LPAREN_expression_RPAREN_SEMI
+pointer_direct_typeid_noparen_declarator -> pointer
+pointer -> TIMES_type_qualifier_list_opt
+specifier_qualifier_list -> alignment_specifier
+designation_opt -> designation
+alignment_specifier -> _ALIGNAS_LPAREN_constant_expression_RPAREN
+unified_wstring_literal_U8STRING_LITERAL -> U8STRING_LITERAL
+declarator_COLON_constant_expression -> declarator
+LPAREN_type_name_RPAREN_brace_open_initializer_list_COMMA_brace_close -> LPAREN
+postfix_expression_LPAREN_RPAREN -> LPAREN
+direct_typeid_declarator_LBRACKET_type_qualifier_list_opt_assignment_expression_opt_RBRACKET -> LBRACKET
+offsetof_member_designator_LBRACKET_expression_RBRACKET -> expression
+primary_expression -> identifier
+function_specifier -> INLINE
+direct_id_declarator_LBRACKET_STATIC_type_qualifier_list_opt_assignment_expression_RBRACKET -> RBRACKET
+direct_typeid_declarator_LBRACKET_STATIC_type_qualifier_list_opt_assignment_expression_RBRACKET -> STATIC
+struct_or_union -> STRUCT
+LPAREN_type_name_RPAREN_brace_open_initializer_list_brace_close -> brace_close
+brace_close -> RBRACE
+offsetof_member_designator_PERIOD_identifier -> offsetof_member_designator
+direct_typeid_declarator -> direct_typeid_declarator_LBRACKET_type_qualifier_list_opt_TIMES_RBRACKET
+postfix_expression -> postfix_expression_PLUSPLUS
+unary_expression_assignment_operator_assignment_expression -> assignment_expression
+direct_typeid_declarator -> TYPEID
+declaration_specifiers_id_declarator_declaration_list_opt_compound_statement -> declaration_specifiers
+pppragma_directive_list -> pppragma_directive_list_pppragma_directive
+constant -> INT_CONST_HEX
+struct_or_union_brace_open_brace_close -> brace_open
+constant -> INT_CONST_CHAR
+postfix_expression -> postfix_expression_LBRACKET_expression_RBRACKET
+struct_or_union_TYPEID_brace_open_brace_close -> brace_open
+direct_abstract_declarator_LBRACKET_assignment_expression_opt_RBRACKET -> RBRACKET
+external_declaration -> pp_directive
+binary_expression -> binary_expression_GE_binary_expression
+type_specifier_no_typeid -> _COMPLEX
+type_qualifier -> CONST
+expression_opt -> expression
+ENUM_ID_brace_open_enumerator_list_brace_close -> enumerator_list
+binary_expression_RSHIFT_binary_expression -> binary_expression
+parameter_type_list -> parameter_list
+declaration_specifiers_id_declarator -> declaration_specifiers
+declaration_specifiers_typeid_noparen_declarator -> typeid_noparen_declarator
+external_declaration -> function_definition
+unary_operator -> PLUS
+LPAREN_id_declarator_RPAREN -> LPAREN
+binary_expression_MOD_binary_expression -> MOD
+_ALIGNAS_LPAREN_constant_expression_RPAREN -> _ALIGNAS
+direct_typeid_declarator_LPAREN_parameter_type_list_RPAREN -> direct_typeid_declarator
+direct_typeid_declarator -> direct_typeid_declarator_LBRACKET_type_qualifier_list_STATIC_assignment_expression_RBRACKET
+declaration_specifiers_abstract_declarator_opt -> declaration_specifiers
+direct_id_declarator -> LPAREN_id_declarator_RPAREN
+assignment_operator -> RSHIFTEQUAL
+SIZEOF_LPAREN_type_name_RPAREN -> type_name
+struct_or_union_TYPEID -> struct_or_union
+designator_list_designator -> designator_list
+labeled_statement -> CASE_constant_expression_COLON_pragmacomp_or_statement
+direct_abstract_declarator_LBRACKET_assignment_expression_opt_RBRACKET -> LBRACKET
+binary_expression_AND_binary_expression -> AND
+pppragma_directive -> _PRAGMA_LPAREN_unified_string_literal_RPAREN
+direct_typeid_noparen_declarator_LPAREN_identifier_list_opt_RPAREN -> RPAREN
+type_specifier_no_typeid -> INT
+initializer_list_COMMA_designation_opt_initializer -> designation_opt
+primary_expression -> LPAREN_expression_RPAREN
+binary_expression -> binary_expression_RSHIFT_binary_expression
+postfix_expression_LPAREN_argument_expression_list_RPAREN -> LPAREN
+pppragma_directive_list -> pppragma_directive
+WHILE_LPAREN_expression_RPAREN_pragmacomp_or_statement -> LPAREN
+function_definition -> id_declarator_declaration_list_opt_compound_statement
+specifier_qualifier_list_type_specifier_no_typeid -> type_specifier_no_typeid
+statement -> pppragma_directive
+assignment_operator -> XOREQUAL
+IF_LPAREN_expression_RPAREN_pragmacomp_or_statement -> expression
+binary_expression_XOR_binary_expression -> binary_expression
+PLUSPLUS_unary_expression -> PLUSPLUS
+direct_id_declarator_LPAREN_parameter_type_list_RPAREN -> direct_id_declarator
+pointer_direct_id_declarator -> pointer
+LPAREN_abstract_declarator_RPAREN -> RPAREN
+IF_LPAREN_expression_RPAREN_statement_ELSE_pragmacomp_or_statement -> LPAREN
+ENUM_brace_open_enumerator_list_brace_close -> brace_open
+direct_abstract_declarator_LBRACKET_TIMES_RBRACKET -> LBRACKET
+unary_expression -> _ALIGNOF_LPAREN_type_name_RPAREN
+binary_expression -> binary_expression_MINUS_binary_expression
+LPAREN_typeid_declarator_RPAREN -> typeid_declarator
+assignment_expression_opt -> assignment_expression
+direct_typeid_noparen_declarator_LBRACKET_type_qualifier_list_STATIC_assignment_expression_RBRACKET -> RBRACKET
+type_specifier_no_typeid -> DOUBLE
+direct_typeid_declarator_LBRACKET_type_qualifier_list_opt_TIMES_RBRACKET -> type_qualifier_list_opt
+LPAREN_type_name_RPAREN_cast_expression -> RPAREN
+init_declarator_list_opt -> init_declarator_list
+parameter_list -> parameter_list_COMMA_parameter_declaration
+postfix_expression_PERIOD_ID -> postfix_expression
+direct_typeid_noparen_declarator_LBRACKET_type_qualifier_list_STATIC_assignment_expression_RBRACKET -> type_qualifier_list
+binary_expression_MINUS_binary_expression -> MINUS
+translation_unit_external_declaration -> external_declaration
+parameter_declaration -> declaration_specifiers_abstract_declarator_opt
+postfix_expression_ARROW_ID -> postfix_expression
+direct_typeid_noparen_declarator_LBRACKET_STATIC_type_qualifier_list_opt_assignment_expression_RBRACKET -> RBRACKET
+_STATIC_ASSERT_LPAREN_constant_expression_RPAREN -> RPAREN
+enumerator -> ID_EQUALS_constant_expression
+type_qualifier_list -> type_qualifier
+RETURN_expression_SEMI -> expression
+direct_typeid_declarator_LPAREN_parameter_type_list_RPAREN -> parameter_type_list
+binary_expression_TIMES_binary_expression -> binary_expression
+direct_typeid_noparen_declarator_LBRACKET_type_qualifier_list_STATIC_assignment_expression_RBRACKET -> LBRACKET
+direct_typeid_noparen_declarator -> TYPEID
+_ALIGNAS_LPAREN_type_name_RPAREN -> type_name
+direct_typeid_noparen_declarator -> direct_typeid_noparen_declarator_LBRACKET_type_qualifier_list_STATIC_assignment_expression_RBRACKET
+TIMES_type_qualifier_list_opt_pointer -> type_qualifier_list_opt
+FOR_LPAREN_expression_opt_SEMI_expression_opt_SEMI_expression_opt_RPAREN_pragmacomp_or_statement -> FOR
+binary_expression -> binary_expression_NE_binary_expression
+direct_id_declarator_LBRACKET_type_qualifier_list_STATIC_assignment_expression_RBRACKET -> STATIC
+identifier_list_opt -> empty
+parameter_type_list_opt -> empty
+direct_abstract_declarator -> direct_abstract_declarator_LBRACKET_assignment_expression_opt_RBRACKET
+declaration -> decl_body_SEMI
+struct_declarator_list -> struct_declarator
+constant -> CHAR_CONST
+direct_typeid_noparen_declarator_LBRACKET_STATIC_type_qualifier_list_opt_assignment_expression_RBRACKET -> LBRACKET
+binary_expression_LOR_binary_expression -> binary_expression
+assignment_operator -> MINUSEQUAL
+S -> translation_unit_or_empty
+parameter_list_COMMA_parameter_declaration -> COMMA
+TIMES_type_qualifier_list_opt_pointer -> pointer
+binary_expression_EQ_binary_expression -> EQ
+SIZEOF_unary_expression -> unary_expression
+direct_typeid_noparen_declarator_LBRACKET_type_qualifier_list_STATIC_assignment_expression_RBRACKET -> direct_typeid_noparen_declarator
+pppragma_directive_list_statement -> statement
+direct_typeid_noparen_declarator_LBRACKET_type_qualifier_list_opt_TIMES_RBRACKET -> RBRACKET
+IF_LPAREN_expression_RPAREN_pragmacomp_or_statement -> RPAREN
+binary_expression_LE_binary_expression -> binary_expression
+translation_unit -> external_declaration
+_STATIC_ASSERT_LPAREN_constant_expression_COMMA_unified_string_literal_RPAREN -> RPAREN
+direct_abstract_declarator_LBRACKET_assignment_expression_opt_RBRACKET -> direct_abstract_declarator
+id_declarator_declaration_list_opt_compound_statement -> declaration_list_opt
+declaration_specifiers_no_type_type_specifier -> type_specifier
+expression -> assignment_expression
+direct_id_declarator_LBRACKET_STATIC_type_qualifier_list_opt_assignment_expression_RBRACKET -> type_qualifier_list_opt
+postfix_expression_PERIOD_ID -> ID
+direct_typeid_noparen_declarator_LPAREN_identifier_list_opt_RPAREN -> identifier_list_opt
+declaration_specifiers_no_type_id_init_declarator_list_opt -> declaration_specifiers_no_type
+assignment_expression -> unary_expression_assignment_operator_assignment_expression
+struct_declaration -> specifier_qualifier_list_struct_declarator_list_opt_SEMI
+WHILE_LPAREN_expression_RPAREN_pragmacomp_or_statement -> WHILE
+struct_or_union_brace_open_brace_close -> struct_or_union
+struct_or_union_specifier -> struct_or_union_TYPEID_brace_open_brace_close
+DEFAULT_COLON_pragmacomp_or_statement -> pragmacomp_or_statement
+postfix_expression_ARROW_ID -> ID
+unary_expression -> PLUSPLUS_unary_expression
+WHILE_LPAREN_expression_RPAREN_pragmacomp_or_statement -> expression
+compound_statement -> brace_open_block_item_list_opt_brace_close
+MINUSMINUS_unary_expression -> MINUSMINUS
+unified_wstring_literal -> WSTRING_LITERAL
+direct_typeid_noparen_declarator_LBRACKET_type_qualifier_list_opt_TIMES_RBRACKET -> LBRACKET
+CASE_constant_expression_COLON_pragmacomp_or_statement -> COLON
+unified_wstring_literal_WSTRING_LITERAL -> unified_wstring_literal
+struct_or_union_ID_brace_open_brace_close -> brace_open
+argument_expression_list -> assignment_expression
+LPAREN_type_name_RPAREN_brace_open_initializer_list_COMMA_brace_close -> RPAREN
+struct_or_union_specifier -> struct_or_union_ID_brace_open_struct_declaration_list_brace_close
+declaration_specifiers -> declaration_specifiers_alignment_specifier
+postfix_expression -> postfix_expression_LPAREN_argument_expression_list_RPAREN
+postfix_expression_LPAREN_RPAREN -> RPAREN
+type_qualifier_declaration_specifiers_no_type_opt -> type_qualifier
+direct_abstract_declarator_LBRACKET_TIMES_RBRACKET -> direct_abstract_declarator
+binary_expression -> binary_expression_LT_binary_expression
+direct_id_declarator_LBRACKET_type_qualifier_list_STATIC_assignment_expression_RBRACKET -> direct_id_declarator
+expression_COMMA_assignment_expression -> COMMA
+_PRAGMA_LPAREN_unified_string_literal_RPAREN -> _PRAGMA
+direct_typeid_declarator_LBRACKET_type_qualifier_list_opt_TIMES_RBRACKET -> direct_typeid_declarator
+COMPOUND_STMT_START_block_item_list_opt_COMPOUND_STMT_END -> block_item_list_opt
+pppragma_directive -> PPPRAGMA
+declaration_specifiers_type_qualifier -> declaration_specifiers
+struct_declaration -> SEMI
+direct_id_declarator_LPAREN_identifier_list_opt_RPAREN -> direct_id_declarator
+id_init_declarator_list_opt -> empty
+storage_class_specifier -> REGISTER
+ID_EQUALS_constant_expression -> constant_expression
+offsetof_member_designator_LBRACKET_expression_RBRACKET -> offsetof_member_designator
+direct_id_declarator -> ID
+specifier_qualifier_list -> specifier_qualifier_list_alignment_specifier
+declaration_specifiers -> declaration_specifiers_type_specifier_no_typeid
+pointer_direct_abstract_declarator -> direct_abstract_declarator
+iteration_statement -> WHILE_LPAREN_expression_RPAREN_pragmacomp_or_statement
+postfix_expression_MINUSMINUS -> MINUSMINUS
+enum_specifier -> ENUM_TYPEID
+direct_typeid_declarator -> direct_typeid_declarator_LBRACKET_type_qualifier_list_opt_assignment_expression_opt_RBRACKET
+direct_typeid_noparen_declarator_LPAREN_identifier_list_opt_RPAREN -> LPAREN
+declaration_specifiers_id_declarator_declaration_list_opt_compound_statement -> id_declarator
+assignment_operator -> EQUALS
+enum_specifier -> ENUM_TYPEID_brace_open_enumerator_list_brace_close
+unified_string_literal -> unified_string_literal_STRING_LITERAL
+type_qualifier_list_type_specifier -> type_qualifier_list
+_ATOMIC_LPAREN_type_name_RPAREN -> type_name
+LPAREN_expression_RPAREN -> LPAREN
+OFFSETOF_LPAREN_type_name_COMMA_offsetof_member_designator_RPAREN -> RPAREN
+type_specifier_no_typeid -> LONG
+direct_id_declarator -> direct_id_declarator_LBRACKET_type_qualifier_list_opt_assignment_expression_opt_RBRACKET
+unary_expression -> SIZEOF_LPAREN_type_name_RPAREN
+for_iter -> expression_opt
+postfix_expression_LBRACKET_expression_RBRACKET -> postfix_expression
+pointer_direct_id_declarator -> direct_id_declarator
+argument_expression_list -> argument_expression_list_COMMA_assignment_expression
+enumerator_list_COMMA_enumerator -> COMMA
+declaration_specifiers_init_declarator_list_opt -> declaration_specifiers
+init_declarator_list -> init_declarator_list_COMMA_init_declarator
+direct_id_declarator_LPAREN_identifier_list_opt_RPAREN -> LPAREN
+binary_expression -> binary_expression_LE_binary_expression
+binary_expression_NE_binary_expression -> binary_expression
+postfix_expression_PLUSPLUS -> PLUSPLUS
+typeid_declarator -> pointer_direct_typeid_declarator
+designator -> LBRACKET_constant_expression_RBRACKET
+direct_typeid_declarator_LPAREN_identifier_list_opt_RPAREN -> LPAREN
+postfix_expression_PERIOD_TYPEID -> postfix_expression
+binary_expression_EQ_binary_expression -> binary_expression
+ENUM_ID_brace_open_enumerator_list_brace_close -> brace_open
+unified_wstring_literal -> unified_wstring_literal_U32STRING_LITERAL
+specifier_qualifier_list_type_qualifier -> specifier_qualifier_list
+typedef_name -> TYPEID
+CASE_constant_expression_COLON_pragmacomp_or_statement -> CASE
+direct_id_declarator -> direct_id_declarator_LBRACKET_STATIC_type_qualifier_list_opt_assignment_expression_RBRACKET
+id_declarator -> pointer_direct_id_declarator
+direct_id_declarator_LBRACKET_type_qualifier_list_opt_TIMES_RBRACKET -> TIMES
+declaration_specifiers_no_type -> type_qualifier_declaration_specifiers_no_type_opt
+struct_or_union_TYPEID_brace_open_struct_declaration_list_brace_close -> TYPEID
+init_declarator -> declarator
+primary_expression -> OFFSETOF_LPAREN_type_name_COMMA_offsetof_member_designator_RPAREN
+specifier_qualifier_list_struct_declarator_list_opt_SEMI -> struct_declarator_list_opt
+pppragma_directive_list_pppragma_directive -> pppragma_directive_list
+direct_id_declarator_LBRACKET_type_qualifier_list_opt_assignment_expression_opt_RBRACKET -> direct_id_declarator
+pppragma_directive_list_statement -> pppragma_directive_list
+ENUM_TYPEID -> ENUM
+binary_expression_LSHIFT_binary_expression -> LSHIFT
+ENUM_TYPEID_brace_open_enumerator_list_brace_close -> TYPEID
+enumerator_list -> enumerator_list_COMMA_enumerator
+_STATIC_ASSERT_LPAREN_constant_expression_RPAREN -> constant_expression
+_STATIC_ASSERT_LPAREN_constant_expression_RPAREN -> LPAREN
+direct_id_declarator_LBRACKET_type_qualifier_list_STATIC_assignment_expression_RBRACKET -> assignment_expression
+declaration_specifiers -> declaration_specifiers_storage_class_specifier
+WHILE_LPAREN_expression_RPAREN_pragmacomp_or_statement -> RPAREN
+init_declarator_list_COMMA_init_declarator -> init_declarator
+enum_specifier -> ENUM_ID_brace_open_enumerator_list_brace_close
+statement -> selection_statement
+direct_id_declarator_LBRACKET_STATIC_type_qualifier_list_opt_assignment_expression_RBRACKET -> STATIC
+direct_typeid_declarator -> LPAREN_typeid_declarator_RPAREN
+direct_typeid_noparen_declarator -> direct_typeid_noparen_declarator_LBRACKET_type_qualifier_list_opt_TIMES_RBRACKET
+declarator_EQUALS_initializer -> EQUALS
+GOTO_ID_SEMI -> SEMI
+expression_opt_SEMI -> SEMI
+FOR_LPAREN_expression_opt_SEMI_expression_opt_SEMI_expression_opt_RPAREN_pragmacomp_or_statement -> SEMI
+binary_expression_MOD_binary_expression -> binary_expression
+identifier -> ID
+direct_typeid_declarator_LBRACKET_type_qualifier_list_opt_TIMES_RBRACKET -> RBRACKET
+compound_expression -> COMPOUND_STMT_START_block_item_list_opt_COMPOUND_STMT_END
+postfix_expression_ARROW_TYPEID -> postfix_expression
+SWITCH_LPAREN_expression_RPAREN_pragmacomp_or_statement -> expression
+binary_expression_OR_binary_expression -> binary_expression
+direct_typeid_declarator -> direct_typeid_declarator_LPAREN_parameter_type_list_RPAREN
+direct_id_declarator_LBRACKET_type_qualifier_list_opt_assignment_expression_opt_RBRACKET -> assignment_expression_opt
+postfix_expression_PLUSPLUS -> postfix_expression
+postfix_expression_LBRACKET_expression_RBRACKET -> expression
+COLON_constant_expression -> constant_expression
+parameter_list_COMMA_ELLIPSIS -> parameter_list
+WHILE_LPAREN_expression_RPAREN_pragmacomp_or_statement -> pragmacomp_or_statement
+declaration_specifiers_type_specifier_no_typeid -> declaration_specifiers
+direct_typeid_noparen_declarator_LBRACKET_type_qualifier_list_opt_assignment_expression_opt_RBRACKET -> assignment_expression_opt
+type_specifier -> struct_or_union_specifier
+declaration_specifiers_type_qualifier -> type_qualifier
+id_init_declarator_list_COMMA_init_declarator -> id_init_declarator_list
+ID_COLON_pragmacomp_or_statement -> COLON
+binary_expression -> binary_expression_EQ_binary_expression
+atomic_specifier -> _ATOMIC_LPAREN_type_name_RPAREN
+struct_or_union_ID_brace_open_struct_declaration_list_brace_close -> brace_close
+IF_LPAREN_expression_RPAREN_statement_ELSE_pragmacomp_or_statement -> ELSE
+_STATIC_ASSERT_LPAREN_constant_expression_COMMA_unified_string_literal_RPAREN -> constant_expression
+declaration_specifiers_storage_class_specifier -> declaration_specifiers
+binary_expression_PLUS_binary_expression -> binary_expression
+IF_LPAREN_expression_RPAREN_pragmacomp_or_statement -> LPAREN
+direct_typeid_declarator_LBRACKET_type_qualifier_list_opt_TIMES_RBRACKET -> LBRACKET
+_ALIGNOF_LPAREN_type_name_RPAREN -> _ALIGNOF
+LPAREN_type_name_RPAREN_brace_open_initializer_list_brace_close -> brace_open
+_STATIC_ASSERT_LPAREN_constant_expression_COMMA_unified_string_literal_RPAREN -> LPAREN
+initializer -> brace_open_initializer_list_COMMA_brace_close
+id_init_declarator_list_COMMA_init_declarator -> init_declarator
+storage_class_specifier_declaration_specifiers_no_type_opt -> declaration_specifiers_no_type_opt
+identifier_list -> identifier_list_COMMA_identifier
+block_item_list_block_item -> block_item
+direct_typeid_noparen_declarator_LPAREN_identifier_list_opt_RPAREN -> direct_typeid_noparen_declarator
+direct_abstract_declarator_LBRACKET_TIMES_RBRACKET -> TIMES
+binary_expression_CONDOP_expression_COLON_conditional_expression -> conditional_expression
+type_specifier -> atomic_specifier
+assignment_operator -> ANDEQUAL
+unified_wstring_literal -> U16STRING_LITERAL
+FOR_LPAREN_declaration_expression_opt_SEMI_for_iter_RPAREN_pragmacomp_or_statement -> declaration
+statement -> compound_statement
+parameter_list_COMMA_parameter_declaration -> parameter_declaration
+_ATOMIC_LPAREN_type_name_RPAREN -> _ATOMIC
+type_qualifier_list_type_qualifier -> type_qualifier
+FOR_LPAREN_expression_opt_SEMI_expression_opt_SEMI_expression_opt_RPAREN_pragmacomp_or_statement -> expression_opt
+translation_unit_external_declaration -> translation_unit
+direct_id_declarator_LBRACKET_STATIC_type_qualifier_list_opt_assignment_expression_RBRACKET -> direct_id_declarator
+initializer_list_COMMA_designation_opt_initializer -> initializer
+jump_statement -> CONTINUE_SEMI
+LPAREN_expression_RPAREN -> expression
+postfix_expression -> postfix_expression_MINUSMINUS
+LBRACKET_constant_expression_RBRACKET -> LBRACKET
+_ALIGNOF_LPAREN_type_name_RPAREN -> type_name
+declaration_specifiers_no_type_opt -> empty
+designation_opt -> empty
+OFFSETOF_LPAREN_type_name_COMMA_offsetof_member_designator_RPAREN -> offsetof_member_designator
+binary_expression_LT_binary_expression -> binary_expression
+struct_or_union_ID_brace_open_brace_close -> struct_or_union
+_ALIGNAS_LPAREN_type_name_RPAREN -> _ALIGNAS
+type_name -> specifier_qualifier_list_abstract_declarator_opt
+_PRAGMA_LPAREN_unified_string_literal_RPAREN -> LPAREN
+enumerator_list_COMMA_enumerator -> enumerator_list
+struct_or_union_ID_brace_open_brace_close -> ID
+GOTO_ID_SEMI -> GOTO
+unified_wstring_literal_U32STRING_LITERAL -> U32STRING_LITERAL
+ID_EQUALS_constant_expression -> EQUALS
+RETURN_SEMI -> SEMI
+cast_expression -> LPAREN_VOID_RPAREN_compound_expression
+direct_typeid_noparen_declarator_LBRACKET_type_qualifier_list_STATIC_assignment_expression_RBRACKET -> STATIC
+specifier_qualifier_list_abstract_declarator_opt -> specifier_qualifier_list
+SIZEOF_LPAREN_type_name_RPAREN -> SIZEOF
+LPAREN_type_name_RPAREN_brace_open_initializer_list_brace_close -> LPAREN
+_ALIGNAS_LPAREN_constant_expression_RPAREN -> constant_expression
+function_definition -> declaration_specifiers_id_declarator_declaration_list_opt_compound_statement
+constant -> FLOAT_CONST
+SWITCH_LPAREN_expression_RPAREN_pragmacomp_or_statement -> RPAREN
+ENUM_TYPEID_brace_open_enumerator_list_brace_close -> ENUM
+_ALIGNAS_LPAREN_constant_expression_RPAREN -> LPAREN
+binary_expression_LAND_binary_expression -> LAND
+OFFSETOF_LPAREN_type_name_COMMA_offsetof_member_designator_RPAREN -> LPAREN
+direct_typeid_noparen_declarator_LBRACKET_STATIC_type_qualifier_list_opt_assignment_expression_RBRACKET -> STATIC
+direct_abstract_declarator_LBRACKET_assignment_expression_opt_RBRACKET -> assignment_expression_opt
+direct_id_declarator_LBRACKET_STATIC_type_qualifier_list_opt_assignment_expression_RBRACKET -> LBRACKET
+declarator_EQUALS_initializer -> declarator
+primary_expression -> unified_string_literal
+COMPOUND_STMT_START_block_item_list_opt_COMPOUND_STMT_END -> COMPOUND_STMT_END
+TIMES_type_qualifier_list_opt -> TIMES
+jump_statement -> GOTO_ID_SEMI
+assignment_operator -> OREQUAL
+brace_open_initializer_list_COMMA_brace_close -> COMMA
+postfix_expression_ARROW_ID -> ARROW
+SWITCH_LPAREN_expression_RPAREN_pragmacomp_or_statement -> pragmacomp_or_statement
+declarator_EQUALS_initializer -> initializer
+direct_id_declarator_LBRACKET_STATIC_type_qualifier_list_opt_assignment_expression_RBRACKET -> assignment_expression
+initializer -> assignment_expression
+specifier_qualifier_list_alignment_specifier -> alignment_specifier
+LBRACKET_type_qualifier_list_opt_assignment_expression_opt_RBRACKET -> type_qualifier_list_opt
+iteration_statement -> FOR_LPAREN_declaration_expression_opt_SEMI_for_iter_RPAREN_pragmacomp_or_statement
+ENUM_ID_brace_open_enumerator_list_brace_close -> ID
+COMPOUND_STMT_START_block_item_list_opt_COMPOUND_STMT_END -> COMPOUND_STMT_START
+decl_body_SEMI -> SEMI
+decl_body_SEMI -> decl_body
+binary_expression_CONDOP_expression_COLON_conditional_expression -> expression
+offsetof_member_designator -> offsetof_member_designator_PERIOD_identifier
+direct_typeid_declarator_LBRACKET_STATIC_type_qualifier_list_opt_assignment_expression_RBRACKET -> direct_typeid_declarator
+initializer_list_COMMA_designation_opt_initializer -> initializer_list
+LPAREN_expression_RPAREN -> RPAREN
+FOR_LPAREN_declaration_expression_opt_SEMI_for_iter_RPAREN_pragmacomp_or_statement -> FOR
+function_specifier_declaration_specifiers_no_type_opt -> function_specifier
+type_qualifier_declaration_specifiers_no_type_opt -> declaration_specifiers_no_type_opt
+storage_class_specifier -> EXTERN
+unified_wstring_literal -> U32STRING_LITERAL
+DO_pragmacomp_or_statement_WHILE_LPAREN_expression_RPAREN_SEMI -> SEMI
+declaration_specifiers_no_type_opt -> declaration_specifiers_no_type
+brace_open_initializer_list_COMMA_brace_close -> brace_close
+initializer_list_COMMA_designation_opt_initializer -> COMMA
+direct_id_declarator_LPAREN_identifier_list_opt_RPAREN -> RPAREN
+binary_expression_GT_binary_expression -> binary_expression
+direct_abstract_declarator_LPAREN_parameter_type_list_opt_RPAREN -> direct_abstract_declarator
+LPAREN_typeid_declarator_RPAREN -> LPAREN
+direct_typeid_declarator_LPAREN_identifier_list_opt_RPAREN -> RPAREN
+struct_or_union_ID_brace_open_struct_declaration_list_brace_close -> ID
+struct_or_union_TYPEID_brace_open_struct_declaration_list_brace_close -> brace_close
+declarator -> typeid_declarator
+unary_expression_assignment_operator_assignment_expression -> unary_expression
+jump_statement -> BREAK_SEMI
+pp_directive -> PPHASH
+expression -> expression_COMMA_assignment_expression
+ENUM_TYPEID_brace_open_enumerator_list_brace_close -> brace_close
+designator -> PERIOD_identifier
+direct_abstract_declarator_LPAREN_parameter_type_list_opt_RPAREN -> parameter_type_list_opt
+unary_expression -> postfix_expression
+unified_string_literal_STRING_LITERAL -> STRING_LITERAL
+selection_statement -> SWITCH_LPAREN_expression_RPAREN_pragmacomp_or_statement
+unary_expression -> MINUSMINUS_unary_expression
+constant -> INT_CONST_OCT
+specifier_qualifier_list_struct_declarator_list_opt_SEMI -> specifier_qualifier_list
+brace_open -> LBRACE
+declaration_specifiers_storage_class_specifier -> storage_class_specifier
+binary_expression -> binary_expression_DIVIDE_binary_expression
+parameter_declaration -> declaration_specifiers_typeid_noparen_declarator
+direct_id_declarator_LPAREN_parameter_type_list_RPAREN -> LPAREN
+declaration_specifiers_id_declarator_declaration_list_opt_compound_statement -> declaration_list_opt
+LPAREN_type_name_RPAREN_cast_expression -> type_name
+DO_pragmacomp_or_statement_WHILE_LPAREN_expression_RPAREN_SEMI -> DO
+init_declarator -> declarator_EQUALS_initializer
+abstract_declarator -> pointer
+binary_expression_GE_binary_expression -> binary_expression
+RETURN_expression_SEMI -> RETURN
+block_item_list_opt -> empty
+external_declaration -> static_assert
+assignment_operator -> PLUSEQUAL
+direct_typeid_declarator_LBRACKET_type_qualifier_list_STATIC_assignment_expression_RBRACKET -> direct_typeid_declarator
+typeid_noparen_declarator -> pointer_direct_typeid_noparen_declarator
+pragmacomp_or_statement -> statement
+
 }

@@ -1,12 +1,10 @@
-DOT_FILE_BEGIN =
-'''
+DOT_FILE_BEGIN = '''
 digraph G {
     rankdir=LR;
     node [shape=box];
 '''
 
-DOT_FILE_END = 
-'''
+DOT_FILE_END = '''
 }
 '''
 
@@ -51,5 +49,5 @@ transform_rules('rules.txt', 'graph.dot')
 
 ''' 
 生成png文件:
-dot -Tpng grammar.dot -o grammar.png 
+dot -Tpng graph.dot -o grammar.png 
 '''
