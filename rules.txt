@@ -1,0 +1,345 @@
+Rule 0     S -> translation_unit_or_empty
+Rule 1     abstract_declarator_opt -> empty
+Rule 2     abstract_declarator_opt -> abstract_declarator
+Rule 3     assignment_expression_opt -> empty
+Rule 4     assignment_expression_opt -> assignment_expression
+Rule 5     block_item_list_opt -> empty
+Rule 6     block_item_list_opt -> block_item_list
+Rule 7     declaration_list_opt -> empty
+Rule 8     declaration_list_opt -> declaration_list
+Rule 9     declaration_specifiers_no_type_opt -> empty
+Rule 10    declaration_specifiers_no_type_opt -> declaration_specifiers_no_type
+Rule 11    designation_opt -> empty
+Rule 12    designation_opt -> designation
+Rule 13    expression_opt -> empty
+Rule 14    expression_opt -> expression
+Rule 15    id_init_declarator_list_opt -> empty
+Rule 16    id_init_declarator_list_opt -> id_init_declarator_list
+Rule 17    identifier_list_opt -> empty
+Rule 18    identifier_list_opt -> identifier_list
+Rule 19    init_declarator_list_opt -> empty
+Rule 20    init_declarator_list_opt -> init_declarator_list
+Rule 21    initializer_list_opt -> empty
+Rule 22    initializer_list_opt -> initializer_list
+Rule 23    parameter_type_list_opt -> empty
+Rule 24    parameter_type_list_opt -> parameter_type_list
+Rule 25    struct_declarator_list_opt -> empty
+Rule 26    struct_declarator_list_opt -> struct_declarator_list
+Rule 27    type_qualifier_list_opt -> empty
+Rule 28    type_qualifier_list_opt -> type_qualifier_list
+Rule 29    direct_id_declarator -> ID
+Rule 30    direct_id_declarator -> LPAREN id_declarator RPAREN
+Rule 31    direct_id_declarator -> direct_id_declarator LBRACKET type_qualifier_list_opt assignment_expression_opt RBRACKET
+Rule 32    direct_id_declarator -> direct_id_declarator LBRACKET STATIC type_qualifier_list_opt assignment_expression RBRACKET
+Rule 33    direct_id_declarator -> direct_id_declarator LBRACKET type_qualifier_list STATIC assignment_expression RBRACKET
+Rule 34    direct_id_declarator -> direct_id_declarator LBRACKET type_qualifier_list_opt TIMES RBRACKET
+Rule 35    direct_id_declarator -> direct_id_declarator LPAREN parameter_type_list RPAREN
+Rule 36    direct_id_declarator -> direct_id_declarator LPAREN identifier_list_opt RPAREN
+Rule 37    direct_typeid_declarator -> TYPEID
+Rule 38    direct_typeid_declarator -> LPAREN typeid_declarator RPAREN
+Rule 39    direct_typeid_declarator -> direct_typeid_declarator LBRACKET type_qualifier_list_opt assignment_expression_opt RBRACKET
+Rule 40    direct_typeid_declarator -> direct_typeid_declarator LBRACKET STATIC type_qualifier_list_opt assignment_expression RBRACKET
+Rule 41    direct_typeid_declarator -> direct_typeid_declarator LBRACKET type_qualifier_list STATIC assignment_expression RBRACKET
+Rule 42    direct_typeid_declarator -> direct_typeid_declarator LBRACKET type_qualifier_list_opt TIMES RBRACKET
+Rule 43    direct_typeid_declarator -> direct_typeid_declarator LPAREN parameter_type_list RPAREN
+Rule 44    direct_typeid_declarator -> direct_typeid_declarator LPAREN identifier_list_opt RPAREN
+Rule 45    direct_typeid_noparen_declarator -> TYPEID
+Rule 46    direct_typeid_noparen_declarator -> direct_typeid_noparen_declarator LBRACKET type_qualifier_list_opt assignment_expression_opt RBRACKET
+Rule 47    direct_typeid_noparen_declarator -> direct_typeid_noparen_declarator LBRACKET STATIC type_qualifier_list_opt assignment_expression RBRACKET
+Rule 48    direct_typeid_noparen_declarator -> direct_typeid_noparen_declarator LBRACKET type_qualifier_list STATIC assignment_expression RBRACKET
+Rule 49    direct_typeid_noparen_declarator -> direct_typeid_noparen_declarator LBRACKET type_qualifier_list_opt TIMES RBRACKET
+Rule 50    direct_typeid_noparen_declarator -> direct_typeid_noparen_declarator LPAREN parameter_type_list RPAREN
+Rule 51    direct_typeid_noparen_declarator -> direct_typeid_noparen_declarator LPAREN identifier_list_opt RPAREN
+Rule 52    id_declarator -> direct_id_declarator
+Rule 53    id_declarator -> pointer direct_id_declarator
+Rule 54    typeid_declarator -> direct_typeid_declarator
+Rule 55    typeid_declarator -> pointer direct_typeid_declarator
+Rule 56    typeid_noparen_declarator -> direct_typeid_noparen_declarator
+Rule 57    typeid_noparen_declarator -> pointer direct_typeid_noparen_declarator
+Rule 58    translation_unit_or_empty -> translation_unit
+Rule 59    translation_unit_or_empty -> empty
+Rule 60    translation_unit -> external_declaration
+Rule 61    translation_unit -> translation_unit external_declaration
+Rule 62    external_declaration -> function_definition
+Rule 63    external_declaration -> declaration
+Rule 64    external_declaration -> pp_directive
+Rule 65    external_declaration -> pppragma_directive
+Rule 66    external_declaration -> SEMI
+Rule 67    external_declaration -> static_assert
+Rule 68    static_assert -> _STATIC_ASSERT LPAREN constant_expression COMMA unified_string_literal RPAREN
+Rule 69    static_assert -> _STATIC_ASSERT LPAREN constant_expression RPAREN
+Rule 70    pp_directive -> PPHASH
+Rule 71    pppragma_directive -> PPPRAGMA
+Rule 72    pppragma_directive -> PPPRAGMA PPPRAGMASTR
+Rule 73    pppragma_directive -> _PRAGMA LPAREN unified_string_literal RPAREN
+Rule 74    pppragma_directive_list -> pppragma_directive
+Rule 75    pppragma_directive_list -> pppragma_directive_list pppragma_directive
+Rule 76    function_definition -> id_declarator declaration_list_opt compound_statement
+Rule 77    function_definition -> declaration_specifiers id_declarator declaration_list_opt compound_statement
+Rule 78    statement -> labeled_statement
+Rule 79    statement -> expression_statement
+Rule 80    statement -> compound_statement
+Rule 81    statement -> selection_statement
+Rule 82    statement -> iteration_statement
+Rule 83    statement -> jump_statement
+Rule 84    statement -> pppragma_directive
+Rule 85    statement -> static_assert
+Rule 86    pragmacomp_or_statement -> pppragma_directive_list statement
+Rule 87    pragmacomp_or_statement -> statement
+Rule 88    decl_body -> declaration_specifiers init_declarator_list_opt
+Rule 89    decl_body -> declaration_specifiers_no_type id_init_declarator_list_opt
+Rule 90    declaration -> decl_body SEMI
+Rule 91    declaration_list -> declaration
+Rule 92    declaration_list -> declaration_list declaration
+Rule 93    declaration_specifiers_no_type -> type_qualifier declaration_specifiers_no_type_opt
+Rule 94    declaration_specifiers_no_type -> storage_class_specifier declaration_specifiers_no_type_opt
+Rule 95    declaration_specifiers_no_type -> function_specifier declaration_specifiers_no_type_opt
+Rule 96    declaration_specifiers_no_type -> atomic_specifier declaration_specifiers_no_type_opt
+Rule 97    declaration_specifiers_no_type -> alignment_specifier declaration_specifiers_no_type_opt
+Rule 98    declaration_specifiers -> declaration_specifiers type_qualifier
+Rule 99    declaration_specifiers -> declaration_specifiers storage_class_specifier
+Rule 100   declaration_specifiers -> declaration_specifiers function_specifier
+Rule 101   declaration_specifiers -> declaration_specifiers type_specifier_no_typeid
+Rule 102   declaration_specifiers -> type_specifier
+Rule 103   declaration_specifiers -> declaration_specifiers_no_type type_specifier
+Rule 104   declaration_specifiers -> declaration_specifiers alignment_specifier
+Rule 105   storage_class_specifier -> AUTO
+Rule 106   storage_class_specifier -> REGISTER
+Rule 107   storage_class_specifier -> STATIC
+Rule 108   storage_class_specifier -> EXTERN
+Rule 109   storage_class_specifier -> TYPEDEF
+Rule 110   storage_class_specifier -> _THREAD_LOCAL
+Rule 111   function_specifier -> INLINE
+Rule 112   function_specifier -> _NORETURN
+Rule 113   type_specifier_no_typeid -> VOID
+Rule 114   type_specifier_no_typeid -> _BOOL
+Rule 115   type_specifier_no_typeid -> CHAR
+Rule 116   type_specifier_no_typeid -> SHORT
+Rule 117   type_specifier_no_typeid -> INT
+Rule 118   type_specifier_no_typeid -> LONG
+Rule 119   type_specifier_no_typeid -> FLOAT
+Rule 120   type_specifier_no_typeid -> DOUBLE
+Rule 121   type_specifier_no_typeid -> _COMPLEX
+Rule 122   type_specifier_no_typeid -> SIGNED
+Rule 123   type_specifier_no_typeid -> UNSIGNED
+Rule 124   type_specifier_no_typeid -> __INT128
+Rule 125   type_specifier -> typedef_name
+Rule 126   type_specifier -> enum_specifier
+Rule 127   type_specifier -> struct_or_union_specifier
+Rule 128   type_specifier -> type_specifier_no_typeid
+Rule 129   type_specifier -> atomic_specifier
+Rule 130   atomic_specifier -> _ATOMIC LPAREN type_name RPAREN
+Rule 131   type_qualifier -> CONST
+Rule 132   type_qualifier -> RESTRICT
+Rule 133   type_qualifier -> VOLATILE
+Rule 134   type_qualifier -> _ATOMIC
+Rule 135   init_declarator_list -> init_declarator
+Rule 136   init_declarator_list -> init_declarator_list COMMA init_declarator
+Rule 137   init_declarator -> declarator
+Rule 138   init_declarator -> declarator EQUALS initializer
+Rule 139   id_init_declarator_list -> id_init_declarator
+Rule 140   id_init_declarator_list -> id_init_declarator_list COMMA init_declarator
+Rule 141   id_init_declarator -> id_declarator
+Rule 142   id_init_declarator -> id_declarator EQUALS initializer
+Rule 143   specifier_qualifier_list -> specifier_qualifier_list type_specifier_no_typeid
+Rule 144   specifier_qualifier_list -> specifier_qualifier_list type_qualifier
+Rule 145   specifier_qualifier_list -> type_specifier
+Rule 146   specifier_qualifier_list -> type_qualifier_list type_specifier
+Rule 147   specifier_qualifier_list -> alignment_specifier
+Rule 148   specifier_qualifier_list -> specifier_qualifier_list alignment_specifier
+Rule 149   struct_or_union_specifier -> struct_or_union ID
+Rule 150   struct_or_union_specifier -> struct_or_union TYPEID
+Rule 151   struct_or_union_specifier -> struct_or_union brace_open struct_declaration_list brace_close
+Rule 152   struct_or_union_specifier -> struct_or_union brace_open brace_close
+Rule 153   struct_or_union_specifier -> struct_or_union ID brace_open struct_declaration_list brace_close
+Rule 154   struct_or_union_specifier -> struct_or_union ID brace_open brace_close
+Rule 155   struct_or_union_specifier -> struct_or_union TYPEID brace_open struct_declaration_list brace_close
+Rule 156   struct_or_union_specifier -> struct_or_union TYPEID brace_open brace_close
+Rule 157   struct_or_union -> STRUCT
+Rule 158   struct_or_union -> UNION
+Rule 159   struct_declaration_list -> struct_declaration
+Rule 160   struct_declaration_list -> struct_declaration_list struct_declaration
+Rule 161   struct_declaration -> specifier_qualifier_list struct_declarator_list_opt SEMI
+Rule 162   struct_declaration -> SEMI
+Rule 163   struct_declaration -> pppragma_directive
+Rule 164   struct_declarator_list -> struct_declarator
+Rule 165   struct_declarator_list -> struct_declarator_list COMMA struct_declarator
+Rule 166   struct_declarator -> declarator
+Rule 167   struct_declarator -> declarator COLON constant_expression
+Rule 168   struct_declarator -> COLON constant_expression
+Rule 169   enum_specifier -> ENUM ID
+Rule 170   enum_specifier -> ENUM TYPEID
+Rule 171   enum_specifier -> ENUM brace_open enumerator_list brace_close
+Rule 172   enum_specifier -> ENUM ID brace_open enumerator_list brace_close
+Rule 173   enum_specifier -> ENUM TYPEID brace_open enumerator_list brace_close
+Rule 174   enumerator_list -> enumerator
+Rule 175   enumerator_list -> enumerator_list COMMA
+Rule 176   enumerator_list -> enumerator_list COMMA enumerator
+Rule 177   alignment_specifier -> _ALIGNAS LPAREN type_name RPAREN
+Rule 178   alignment_specifier -> _ALIGNAS LPAREN constant_expression RPAREN
+Rule 179   enumerator -> ID
+Rule 180   enumerator -> ID EQUALS constant_expression
+Rule 181   declarator -> id_declarator
+Rule 182   declarator -> typeid_declarator
+Rule 183   pointer -> TIMES type_qualifier_list_opt
+Rule 184   pointer -> TIMES type_qualifier_list_opt pointer
+Rule 185   type_qualifier_list -> type_qualifier
+Rule 186   type_qualifier_list -> type_qualifier_list type_qualifier
+Rule 187   parameter_type_list -> parameter_list
+Rule 188   parameter_type_list -> parameter_list COMMA ELLIPSIS
+Rule 189   parameter_list -> parameter_declaration
+Rule 190   parameter_list -> parameter_list COMMA parameter_declaration
+Rule 191   parameter_declaration -> declaration_specifiers id_declarator
+Rule 192   parameter_declaration -> declaration_specifiers typeid_noparen_declarator
+Rule 193   parameter_declaration -> declaration_specifiers abstract_declarator_opt
+Rule 194   identifier_list -> identifier
+Rule 195   identifier_list -> identifier_list COMMA identifier
+Rule 196   initializer -> assignment_expression
+Rule 197   initializer -> brace_open initializer_list_opt brace_close
+Rule 198   initializer -> brace_open initializer_list COMMA brace_close
+Rule 199   initializer_list -> designation_opt initializer
+Rule 200   initializer_list -> initializer_list COMMA designation_opt initializer
+Rule 201   designation -> designator_list EQUALS
+Rule 202   designator_list -> designator
+Rule 203   designator_list -> designator_list designator
+Rule 204   designator -> LBRACKET constant_expression RBRACKET
+Rule 205   designator -> PERIOD identifier
+Rule 206   type_name -> specifier_qualifier_list abstract_declarator_opt
+Rule 207   abstract_declarator -> pointer
+Rule 208   abstract_declarator -> pointer direct_abstract_declarator
+Rule 209   abstract_declarator -> direct_abstract_declarator
+Rule 210   direct_abstract_declarator -> LPAREN abstract_declarator RPAREN
+Rule 211   direct_abstract_declarator -> direct_abstract_declarator LBRACKET assignment_expression_opt RBRACKET
+Rule 212   direct_abstract_declarator -> LBRACKET type_qualifier_list_opt assignment_expression_opt RBRACKET
+Rule 213   direct_abstract_declarator -> direct_abstract_declarator LBRACKET TIMES RBRACKET
+Rule 214   direct_abstract_declarator -> LBRACKET TIMES RBRACKET
+Rule 215   direct_abstract_declarator -> direct_abstract_declarator LPAREN parameter_type_list_opt RPAREN
+Rule 216   direct_abstract_declarator -> LPAREN parameter_type_list_opt RPAREN
+Rule 217   block_item -> declaration
+Rule 218   block_item -> statement
+Rule 219   block_item_list -> block_item
+Rule 220   block_item_list -> block_item_list block_item
+Rule 221   compound_statement -> brace_open block_item_list_opt brace_close
+Rule 222   labeled_statement -> ID COLON pragmacomp_or_statement
+Rule 223   labeled_statement -> CASE constant_expression COLON pragmacomp_or_statement
+Rule 224   labeled_statement -> DEFAULT COLON pragmacomp_or_statement
+Rule 225   selection_statement -> IF LPAREN expression RPAREN pragmacomp_or_statement
+Rule 226   selection_statement -> IF LPAREN expression RPAREN statement ELSE pragmacomp_or_statement
+Rule 227   selection_statement -> SWITCH LPAREN expression RPAREN pragmacomp_or_statement
+Rule 228   iteration_statement -> WHILE LPAREN expression RPAREN pragmacomp_or_statement
+Rule 229   iteration_statement -> DO pragmacomp_or_statement WHILE LPAREN expression RPAREN SEMI
+Rule 230   iteration_statement -> FOR LPAREN expression_opt SEMI expression_opt SEMI expression_opt RPAREN pragmacomp_or_statement
+Rule 231   iteration_statement -> FOR LPAREN declaration expression_opt SEMI for_iter RPAREN pragmacomp_or_statement
+Rule 232   for_iter -> expression_opt
+Rule 233   jump_statement -> GOTO ID SEMI
+Rule 234   jump_statement -> BREAK SEMI
+Rule 235   jump_statement -> CONTINUE SEMI
+Rule 236   jump_statement -> RETURN expression SEMI
+Rule 237   jump_statement -> RETURN SEMI
+Rule 238   expression_statement -> expression_opt SEMI
+Rule 239   expression -> assignment_expression
+Rule 240   expression -> expression COMMA assignment_expression
+Rule 241   expression -> COMPOUND_STMT_START block_item_list_opt COMPOUND_STMT_END
+Rule 242   compound_expression -> COMPOUND_STMT_START block_item_list_opt COMPOUND_STMT_END
+Rule 243   typedef_name -> TYPEID
+Rule 244   assignment_expression -> conditional_expression
+Rule 245   assignment_expression -> unary_expression assignment_operator assignment_expression
+Rule 246   assignment_expression -> compound_expression
+Rule 247   assignment_operator -> EQUALS
+Rule 248   assignment_operator -> XOREQUAL
+Rule 249   assignment_operator -> TIMESEQUAL
+Rule 250   assignment_operator -> DIVEQUAL
+Rule 251   assignment_operator -> MODEQUAL
+Rule 252   assignment_operator -> PLUSEQUAL
+Rule 253   assignment_operator -> MINUSEQUAL
+Rule 254   assignment_operator -> LSHIFTEQUAL
+Rule 255   assignment_operator -> RSHIFTEQUAL
+Rule 256   assignment_operator -> ANDEQUAL
+Rule 257   assignment_operator -> OREQUAL
+Rule 258   constant_expression -> conditional_expression
+Rule 259   conditional_expression -> binary_expression
+Rule 260   conditional_expression -> binary_expression CONDOP expression COLON conditional_expression
+Rule 261   binary_expression -> cast_expression
+Rule 262   binary_expression -> binary_expression TIMES binary_expression
+Rule 263   binary_expression -> binary_expression DIVIDE binary_expression
+Rule 264   binary_expression -> binary_expression MOD binary_expression
+Rule 265   binary_expression -> binary_expression PLUS binary_expression
+Rule 266   binary_expression -> binary_expression MINUS binary_expression
+Rule 267   binary_expression -> binary_expression RSHIFT binary_expression
+Rule 268   binary_expression -> binary_expression LSHIFT binary_expression
+Rule 269   binary_expression -> binary_expression LT binary_expression
+Rule 270   binary_expression -> binary_expression LE binary_expression
+Rule 271   binary_expression -> binary_expression GE binary_expression
+Rule 272   binary_expression -> binary_expression GT binary_expression
+Rule 273   binary_expression -> binary_expression EQ binary_expression
+Rule 274   binary_expression -> binary_expression NE binary_expression
+Rule 275   binary_expression -> binary_expression AND binary_expression
+Rule 276   binary_expression -> binary_expression OR binary_expression
+Rule 277   binary_expression -> binary_expression XOR binary_expression
+Rule 278   binary_expression -> binary_expression LAND binary_expression
+Rule 279   binary_expression -> binary_expression LOR binary_expression
+Rule 280   cast_expression -> unary_expression
+Rule 281   cast_expression -> LPAREN type_name RPAREN cast_expression
+Rule 282   cast_expression -> LPAREN VOID RPAREN compound_expression
+Rule 283   unary_expression -> postfix_expression
+Rule 284   unary_expression -> PLUSPLUS unary_expression
+Rule 285   unary_expression -> MINUSMINUS unary_expression
+Rule 286   unary_expression -> unary_operator cast_expression
+Rule 287   unary_expression -> SIZEOF unary_expression
+Rule 288   unary_expression -> SIZEOF LPAREN type_name RPAREN
+Rule 289   unary_expression -> _ALIGNOF LPAREN type_name RPAREN
+Rule 290   unary_operator -> AND
+Rule 291   unary_operator -> TIMES
+Rule 292   unary_operator -> PLUS
+Rule 293   unary_operator -> MINUS
+Rule 294   unary_operator -> NOT
+Rule 295   unary_operator -> LNOT
+Rule 296   postfix_expression -> primary_expression
+Rule 297   postfix_expression -> postfix_expression LBRACKET expression RBRACKET
+Rule 298   postfix_expression -> postfix_expression LPAREN argument_expression_list RPAREN
+Rule 299   postfix_expression -> postfix_expression LPAREN RPAREN
+Rule 300   postfix_expression -> postfix_expression PERIOD ID
+Rule 301   postfix_expression -> postfix_expression PERIOD TYPEID
+Rule 302   postfix_expression -> postfix_expression ARROW ID
+Rule 303   postfix_expression -> postfix_expression ARROW TYPEID
+Rule 304   postfix_expression -> postfix_expression PLUSPLUS
+Rule 305   postfix_expression -> postfix_expression MINUSMINUS
+Rule 306   postfix_expression -> LPAREN type_name RPAREN brace_open initializer_list brace_close
+Rule 307   postfix_expression -> LPAREN type_name RPAREN brace_open initializer_list COMMA brace_close
+Rule 308   primary_expression -> identifier
+Rule 309   primary_expression -> constant
+Rule 310   primary_expression -> unified_string_literal
+Rule 311   primary_expression -> unified_wstring_literal
+Rule 312   primary_expression -> LPAREN expression RPAREN
+Rule 313   primary_expression -> OFFSETOF LPAREN type_name COMMA offsetof_member_designator RPAREN
+Rule 314   offsetof_member_designator -> identifier
+Rule 315   offsetof_member_designator -> offsetof_member_designator PERIOD identifier
+Rule 316   offsetof_member_designator -> offsetof_member_designator LBRACKET expression RBRACKET
+Rule 317   argument_expression_list -> assignment_expression
+Rule 318   argument_expression_list -> argument_expression_list COMMA assignment_expression
+Rule 319   identifier -> ID
+Rule 320   constant -> INT_CONST_DEC
+Rule 321   constant -> INT_CONST_OCT
+Rule 322   constant -> INT_CONST_HEX
+Rule 323   constant -> INT_CONST_BIN
+Rule 324   constant -> INT_CONST_CHAR
+Rule 325   constant -> FLOAT_CONST
+Rule 326   constant -> HEX_FLOAT_CONST
+Rule 327   constant -> CHAR_CONST
+Rule 328   constant -> WCHAR_CONST
+Rule 329   constant -> U8CHAR_CONST
+Rule 330   constant -> U16CHAR_CONST
+Rule 331   constant -> U32CHAR_CONST
+Rule 332   unified_string_literal -> STRING_LITERAL
+Rule 333   unified_string_literal -> unified_string_literal STRING_LITERAL
+Rule 334   unified_wstring_literal -> WSTRING_LITERAL
+Rule 335   unified_wstring_literal -> U8STRING_LITERAL
+Rule 336   unified_wstring_literal -> U16STRING_LITERAL
+Rule 337   unified_wstring_literal -> U32STRING_LITERAL
+Rule 338   unified_wstring_literal -> unified_wstring_literal WSTRING_LITERAL
+Rule 339   unified_wstring_literal -> unified_wstring_literal U8STRING_LITERAL
+Rule 340   unified_wstring_literal -> unified_wstring_literal U16STRING_LITERAL
+Rule 341   unified_wstring_literal -> unified_wstring_literal U32STRING_LITERAL
+Rule 342   brace_open -> LBRACE
+Rule 343   brace_close -> RBRACE
+Rule 344   empty -> <empty>
