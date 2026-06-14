@@ -1922,7 +1922,7 @@ class CParser:
         return expr
 
     # BNF: primary_expression : ID | constant | string_literal
-    #                        | '(' expression ')' | offsetof
+    #                        | '(' expression ')' | '(' compound_statement ')' | offsetof
     def _parse_primary_expression(self) -> c_ast.Node:
         tok_type = self._peek_type()
         if tok_type == "ID":
@@ -1939,6 +1939,10 @@ class CParser:
             return self._parse_unified_wstring_literal()
         if tok_type == "LPAREN":
             self._advance()
+            if "LBRACE" == self._peek_type():
+                tmp = self._parse_compound_statement()
+                self._expect("RPAREN")
+                return tmp
             expr = self._parse_expression()
             self._expect("RPAREN")
             return expr
@@ -1956,7 +1960,7 @@ class CParser:
                 coord,
             )
 
-        self._parse_error("Invalid expression", self.clex.filename)
+        self._parse_error(f"Invalid expression {self.clex.filename}, {tok_type}", self.clex.filename)
 
     # BNF: offsetof_member_designator : identifier_or_typeid
     #                                ('.' identifier_or_typeid | '[' expression ']')*
