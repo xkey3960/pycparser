@@ -75,6 +75,16 @@ For reporting problems with **pycparser** or submitting feature requests, please
 open an `issue <https://github.com/eliben/pycparser/issues>`_, or submit a
 pull request.
 
+What's this repository for?
+---------------------------
+
+First off, I created this repository to learn C syntax, C parsers, and the pycparser project.
+
+Additionally, I require a C parser fully compatible with GCC. For this reason, I plan to extend the implementation with support for various GCC-specific extensions and features.
+
+The master branch will be kept synchronized to track the upstream master branch from eliben’s original repository. All my custom modifications and experimental work will reside under branches prefixed with lab/*.
+
+This is an experimental project. Please do not rely on it for any production-critical scenarios.
 
 Installing
 ==========
