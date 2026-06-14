@@ -153,6 +153,12 @@ typedef int uintmax_t;
 /* C99 stdbool.h bool type. _Bool is built-in in C99 */
 typedef _Bool bool;
 
+/* GNU Extension for 64-bit targets */
+#ifdef __SIZEOF_INT128__
+typedef int __int128_t;
+typedef int __uint128_t;
+#endif /* __SIZEOF_INT128__ */
+
 /* Mir typedefs */
 typedef void* MirEGLNativeWindowType;
 typedef void* MirEGLNativeDisplayType;
@@ -170,6 +176,14 @@ typedef struct MirDisplayConfig MirDisplayConfig;
 typedef struct xcb_connection_t xcb_connection_t;
 typedef uint32_t xcb_window_t;
 typedef uint32_t xcb_visualid_t;
+
+/* dirent typedef */
+typedef void* DIR;
+
+/* socket typedefs */
+typedef	__uint32_t  __socklen_t;
+typedef __socklen_t socklen_t;
+typedef unsigned short __kernel_sa_family_t;
 
 /* C11 stdatomic.h types */
 typedef _Atomic(_Bool)              atomic_bool;

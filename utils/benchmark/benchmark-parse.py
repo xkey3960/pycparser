@@ -1,17 +1,17 @@
-#-----------------------------------------------------------------
+# -----------------------------------------------------------------
 # Benchmarking utility for internal use.
 #
 # Use with Python 3.6+
 #
 # Eli Bendersky [https://eli.thegreenplace.net/]
 # License: BSD
-#-----------------------------------------------------------------
+# -----------------------------------------------------------------
 import os
 import statistics
 import sys
 import time
 
-sys.path.extend(['.', '..'])
+sys.path.extend([".", ".."])
 
 from pycparser import c_parser, c_ast
 
@@ -28,7 +28,7 @@ def measure_parse(text, n, progress_cb):
     for i in range(n):
         parser = c_parser.CParser()
         t1 = time.time()
-        ast = parser.parse(text, '')
+        ast = parser.parse(text, "")
         elapsed = time.time() - t1
         assert isinstance(ast, c_ast.FileAST)
         times.append(elapsed)
@@ -37,21 +37,24 @@ def measure_parse(text, n, progress_cb):
 
 
 def measure_file(filename, n):
-    progress_cb = lambda i: print('.', sep='', end='', flush=True)
+    def progress_cb(i):
+        print(".", sep="", end="", flush=True)
+
     with open(filename) as f:
-        print('%-25s' % os.path.basename(filename), end='', flush=True)
+        print(f"{os.path.basename(filename):<25}", end="", flush=True)
         text = f.read()
         times = measure_parse(text, n, progress_cb)
-    print('    Mean: %.3f  Stddev: %.3f' % (statistics.mean(times),
-                                            statistics.stdev(times)))
+    mean = statistics.mean(times)
+    stdev = statistics.stdev(times)
+    print(f"    Mean: {mean:.3f}  Stddev: {stdev:.3f}")
 
 
 NUM_RUNS = 5
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     if len(sys.argv) < 2:
-        print("Usage: %s <dir with input files>")
+        print(f"Usage: {sys.argv[0]} <dir with input files>")
         sys.exit(1)
     for filename in os.listdir(sys.argv[1]):
         filename = os.path.join(sys.argv[1], filename)
