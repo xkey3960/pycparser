@@ -1761,11 +1761,11 @@ class CParser:
     # BNF: assignment_expression : conditional_expression
     #                            | unary_expression assignment_op assignment_expression
     def _parse_assignment_expression(self) -> c_ast.Node:
-        if self._peek_type() == "LPAREN" and self._peek_type(2) == "LBRACE":
-            self._advance()
-            comp = self._parse_compound_statement()
-            self._expect("RPAREN")
-            return comp
+        # if self._peek_type() == "LPAREN" and self._peek_type(2) == "LBRACE":
+        #     self._advance()
+        #     comp = self._parse_compound_statement()
+        #     self._expect("RPAREN")
+        #     return comp
 
         expr = self._parse_conditional_expression()
         if self._is_assignment_op():
