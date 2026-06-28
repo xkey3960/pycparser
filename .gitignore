@@ -19,3 +19,4 @@ utils/z.c
 ast.pickle
 .codex
 .venv/*
+.vscode/*
