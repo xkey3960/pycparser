@@ -1,16 +1,9 @@
 from typing import (
-    Any,
-    Dict,
     List,
-    Literal,
-    NoReturn,
     Optional,
-    Tuple,
-    TypedDict,
-    cast,
 )
 from pycparserext import ext_c_parser
-from pycparser import parse_file
+from pycparser import c_ast, parse_file
 
 from pycparserext.ext_c_parser import TypeDeclExt
 
@@ -27,6 +20,13 @@ args = [
     '-E'
 ]
 
+# 同时遍历找到 函数定义和结构体定义
+class DependVisitor(c_ast.NodeVisitor):
+    def visit_FuncDef(self, node: c_ast.FuncDef) -> None:
+        print(f"{node.decl.name} at {node.decl.coord}")
+    def visit_Struct(self, node: c_ast.Struct) -> None:
+        print(f"{node.name} at {node.coord}")
+ 
 from pycparser import c_ast
 # 定制化类，支持 函数指针
 class CustomerCParser(ext_c_parser.GnuCParser):
@@ -75,4 +75,6 @@ v.visit(ast)
 v = FuncCallVisitor("func1")
 v.visit(ast)
 
+v = DependVisitor()
+v.visit(ast)
 parser.print_funcs()
