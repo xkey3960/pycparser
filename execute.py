@@ -22,14 +22,17 @@ def execute(node):
     if class_name in g_exe_class:
         return g_exe_class[class_name](node).execute()
     else:
-        return AssertionError()
+        raise AssertionError(f"Unexpected AST node: '{class_name}'")
 
 class ExeID(Execute):
     def __init__(self, id: ID):
         super().__init__()
         self.id = id
     def execute(self):
-        return g_symbol_table[self.id.name] if self.id.name in g_symbol_table else AssertionError()
+        if self.id.name in g_symbol_table:
+            return g_symbol_table[self.id.name]
+        else:
+            raise AssertionError()
 
 class ExeConstant(Execute):
     def __init__(self, constant:Constant):
@@ -40,9 +43,10 @@ class ExeConstant(Execute):
         }
 
     def execute(self):
-        return self.type_force[self.constant.type](self.constant.value) \
-                if self.constant.type in self.type_force.keys() \
-                else AssertionError()
+        if self.constant.type in self.type_force.keys():
+            return self.type_force[self.constant.type](self.constant.value)
+        else:
+            raise AssertionError(f"Unexpected constant typpe: '{self.constant.type}'")
 
 class ExeBinaryOp(Execute):
     def __init__(self, binary:BinaryOp):
@@ -57,7 +61,10 @@ class ExeBinaryOp(Execute):
     def sub_execute(self):
         return execute(self.binary.left) - execute(self.binary.right)
     def execute(self):
-        return self.funcs[self.binary.op]() if self.binary.op in self.funcs else AssertionError()
+        if self.binary.op in self.funcs:
+            return self.funcs[self.binary.op]()
+        else:
+            raise AssertionError(f"Unexpected binary operation: '{self.binary.op}'")
 
 class ExeAssignment(Execute):
     def __init__(self, assign:Assignment):
