@@ -72,8 +72,8 @@ class ExeAssignment(Execute):
         self.assign = assign
 
     def execute(self):
-        g_symbol_table[execute(self.assign.lvalue)] = execute(self.assign.rvalue)
-        return g_symbol_table[execute(self.assign.lvalue)]
+        g_symbol_table[execute(self.assign.lvalue)].value = execute(self.assign.rvalue)
+        return g_symbol_table[execute(self.assign.lvalue)].value
 
 g_exe_class = {
         "ID" : ExeID,
