@@ -1,34 +1,345 @@
-Version Update
---------------
+================================================================================
+  pycparser AST Interpreter — 开发路线图
+================================================================================
 
-pyproject.toml, pycparser/__init__.py, README
+本文档记录 execute.py（C AST 解释器）的已知问题与改进计划，
+按优先级从高到低排列。
 
-Building
---------
+当前覆盖：49 个标准节点 + 11 个 GNU C 扩展节点 = 60 个 AST 节点类型
+当前状态：基本功能可用，但存在语义偏差和功能缺失
 
-If the AST was modified `_c_ast.cfg`, make sure that `_ast_gen.py` was run and
-`c_ast.py` is up to date.
+================================================================================
+阶段一：紧急修复（短期，1-2 天）
+================================================================================
 
-Run:
+[BUG-1] sizeof 语义错误 — operand 不应求值
+--------------------------------------------------
+问题描述：
+  sizeof 是编译期运算符，不会对 operand 求值。
+  当前 _sizeof(val) 对 operand 的求值结果计算大小。
 
-    uv build
+  举例（C 语义）：
+    int x = 0;
+    sizeof(x++);   // x 仍然是 0（不求值），返回 sizeof(int)=4
+  当前行为：
+    x++ 被求值，x 变为 1，再计算 sizeof(1)=4  （值正确但副作用错误）
 
-Copy the newly created tarball and untar it; check that the permissions of
-Python files in the pycparser/ directory are OK.
+  更严重的 case：
+    sizeof(*NULL)    // 在 C 中合法返回 4，因为不求值就不会解引用
+    sizeof(*p)       // p 是空指针时也不崩溃
 
-Now create a new virtualenv and in it install the tarball with
-`pip install <tarballname>`.
+实施步骤：
+  1. 在 ExeUnaryOp 中，为 'sizeof' 创建独立的分支
+  2. 从 self.node.expr 中提取类型信息，而不是调用 execute()
+  3. 实现 _sizeof_from_type(type_node) 函数，递归计算类型大小
+     - IdentifierType(['int'])          → 4
+     - IdentifierType(['char'])         → 1
+     - IdentifierType(['long'])         → 8
+     - IdentifierType(['double'])       → 8
+     - PtrDecl(...)                     → 8 (指针大小)
+     - ArrayDecl(type=..., dim=...)     → 元素大小 × 维度
+     - TypeDecl(...)                    → 递归 inner type
+     - Struct 含 decls                 → 各成员大小之和 + padding
+     - FuncDecl                         → 1 (C 标准：函数类型的 sizeof 非法)
+  4. 更新测试，验证 sizeof 不求值 operand
 
-See that pycparser is importable in the Python interpreter of this virtualenv;
-run pycparser tests from this virtualenv.
+[BUG-2] __alignof__ 应为编译期操作（与 sizeof 同理）
+--------------------------------------------------
+问题描述：
+  与 sizeof 一样，__alignof__ 不应求值 operand，而应从类型推导。
 
-To upload to PyPI:
+实施步骤：
+  1. 同上，在 ExeUnaryOp 中为 '__alignof__' 创建独立分支
+  2. 实现 _alignof_from_type(type_node) 函数
+     - int → 4, char → 1, float → 4, double → 8, 指针 → 8
+     - struct: 最大成员对齐值
+  3. 更新测试
 
-  $ uv publish dist/*
+[BUG-3] _Static_assert 的 cond 不应在运行时求值
+--------------------------------------------------
+问题描述：
+  _Static_assert 是编译期检查，当前却在 execute() 时求值。
+  虽然对于"解释器"场景可以接受，但语义上应当在解析/类型检查阶段处理。
 
-(can use ``--token``)
+实施步骤：
+  1. 评估两种策略：
+     a) 保留现状（运行时检查），但在文档中注明语义差异
+     b) 移到 ExeFileAST 执行前做一次性检查
+  2. 至少确保 StaticAssert 的 cond 使用常量折叠求值
 
-Check that `pip` can install and load pycparser from PyPI in this new version.
+================================================================================
+阶段二：内存模型（中期，1-2 周）
+================================================================================
 
-Tag in git. When pushing to GitHub, git push --tags
-Create new GitHub release to capture changes from the previous one
+[MEM-1] 指针与地址模型
+--------------------------------------------------
+当前缺失：
+  - &（取地址）运算符
+  - *（解引用）运算符
+  - 指针算术（ptr + n）
+  - NULL 指针
+  - 指针比较
+  - 函数指针调用
+
+设计思路：
+  引入 Address 类表示内存地址：
+
+  class Address:
+      def __init__(self, target_name, offset=0):
+          self.target_name = target_name  # 变量名
+          self.offset = offset            # 字节偏移
+
+  class Memory:
+      """线性内存空间，地址 → 值"""
+      def __init__(self, size=65536):
+          self._data = [0] * size
+
+  变量存储方式改变：
+  - Scope 中存储 (Address, type_info) 而非直接值
+  - 所有读写通过 Memory 进行
+  - 支持指针解引用链
+
+实施步骤：
+  1. 设计 Address/Memory 数据结构
+  2. 修改 Scope 存储方式
+  3. 实现 & 运算符（UnaryOp op='&'）
+  4. 实现 * 运算符（UnaryOp op='*'）
+  5. 实现指针算术（BinaryOp op='+' 中检测 Address 操作数）
+  6. 实现 NULL 常量（Constant(type='int', value='0') 在指针上下文特殊处理）
+  7. 实现函数指针调用（检测 ID 是否为函数指针类型）
+
+[MEM-2] 栈帧与递归支持
+--------------------------------------------------
+当前缺失：
+  - 函数递归调用时变量冲突
+  - 每次函数调用应有独立栈帧
+
+当前实现的问题：
+  g_scope = Scope(func.closure_scope)  // 复用闭包作用域，不完全正确
+
+设计思路：
+  引入 CallStack：
+
+  class StackFrame:
+      def __init__(self, func_name, scope, return_address=None):
+          self.func_name = func_name
+          self.scope = scope
+          self.return_address = return_address
+
+  g_call_stack = []  # 调用栈
+
+实施步骤：
+  1. 每次 FuncCall 创建全新 StackFrame，scope parent 为空
+  2. 在 StackFrame 中存储返回地址（代码位置）
+  3. ReturnException 携带返回值 + 恢复到调用帧
+  4. 支持尾递归优化（可选）
+
+[MEM-3] struct 内存布局与成员访问
+--------------------------------------------------
+当前缺失：
+  - struct 成员对齐与 padding
+  - struct 的 sizeof 计算
+  - struct 赋值（值语义）
+  - 嵌套 struct
+  - struct 指针成员访问（-> vs .）
+
+设计思路：
+  引入 StructLayout 表示 struct 的类型布局：
+
+  class StructLayout:
+      def __init__(self, name):
+          self.name = name
+          self.members = []  # [(name, type, offset, size)]
+
+  g_struct_layouts = {}  # struct 名 → StructLayout
+
+  struct 实例存储为 dict（当前方式可保留），但成员访问需计算偏移
+
+实施步骤：
+  1. 实现 StructLayout 计算（含对齐规则）
+  2. ExeStruct/ExeStructExt 执行时注册 layout
+  3. StructRef 通过 layout 计算成员偏移
+  4. struct 间赋值实现为 memcpy
+
+[MEM-4] 堆与 malloc/free
+--------------------------------------------------
+当前缺失：
+  - 动态内存分配
+  - 内存泄漏检测（可选）
+
+设计思路：
+  class Heap:
+      def __init__(self, size=1048576):
+          self._data = [0] * size
+          self._free_list = [(0, size)]  # (offset, size)
+
+实施步骤：
+  1. 实现简单的 first-fit 分配器
+  2. 添加 malloc/free/realloc/calloc 内置函数
+  3. 添加内存越界检查（可选）
+
+================================================================================
+阶段三：类型系统（中期，2-3 周）
+================================================================================
+
+[TYPE-1] 完整的类型表示
+--------------------------------------------------
+当前缺失：
+  - 类型信息存储（当前只有 Python 类型推断）
+  - 类型兼容性判断
+  - typedef 解析链
+
+设计思路：
+  引入 CType 类层次：
+
+  class CType:
+      """基类"""
+      def sizeof(self): ...
+      def alignof(self): ...
+
+  class IntType(CType): ...
+  class FloatType(CType): ...
+  class CharType(CType): ...
+  class PtrType(CType): ...
+  class ArrayType(CType): ...
+  class FuncType(CType): ...
+  class StructType(CType): ...
+  class TypedefType(CType): ...
+
+实施步骤：
+  1. 设计 CType 类层次
+  2. 在 Decl 执行时，将类型信息与变量一起存储
+  3. 在 BinaryOp/Assignment 中使用类型信息做类型检查
+  4. 实现 TypedefType 解析链
+
+[TYPE-2] 隐式类型转换
+--------------------------------------------------
+C 的隐式转换规则（Usual Arithmetic Conversions）：
+
+  long double > double > float
+  unsigned long long > long long > unsigned long > long
+  > unsigned int > int
+
+  以及：
+  - 整数提升（char/short → int）
+  - 赋值时的类型转换
+  - 函数参数的类型转换
+
+实施步骤：
+  1. 实现类型提升等级（rank）系统
+  2. 在 BinaryOp 的每个操作中加入类型提升
+  3. 在 Assignment 中加入赋值类型转换
+  4. 在 FuncCall 中加入参数类型转换
+
+[TYPE-3] 常量折叠（Constant Folding）
+--------------------------------------------------
+编译期常量表达式求值：
+
+  int x = (1 + 2) * 3;   // 编译期计算为 9
+
+  当前已部分支持（execute 自然求值），但需要在以下场景增强：
+  - 数组维度：int arr[10 + 20];  // 维度应为常量表达式
+  - case 标签值：case 1 + 2:
+  - enum 初始值
+  - 位域宽度
+
+实施步骤：
+  1. 实现 _fold_constant(node) 函数
+  2. 在 ArrayDecl 的 dim 求值时调用
+  3. 在 Case 的 expr 求值时调用
+  4. 在 Enumerator 的 value 求值时调用
+
+================================================================================
+阶段四：控制流与高级特性（长期，3-4 周）
+================================================================================
+
+[CTRL-1] Goto 与标签
+--------------------------------------------------
+当前状态：抛出 AssertionError("Goto not supported")
+
+设计思路：
+  需要两遍扫描：
+  第一遍：收集所有 Label 节点的位置（以语句索引形式）
+  第二遍：Goto 执行时查表跳转到对应位置
+
+实施步骤：
+  1. 在 Compound 执行时，扫描 block_items 收集 Label → index 映射
+  2. GotoException(label_name) 异常携带目标标签
+  3. Compound 捕获 GotoException，跳转到对应语句
+
+[CTRL-2] setjmp/longjmp
+--------------------------------------------------
+非局部跳转，需要在调用栈上做 unwinding。
+
+实施步骤：
+  1. 实现 jmp_buf 存储（保存栈帧状态）
+  2. setjmp 返回 0（第一次）或 longjmp 传入的值
+  3. longjmp 通过异常机制 unwind 到 setjmp 所在的栈帧
+
+[CTRL-3] 可变参数函数
+--------------------------------------------------
+当前：EllipsisParam 节点被跳过处理。
+
+实施步骤：
+  1. 在 FuncCall 中，如果函数声明有 ...，将多余参数包装为 tuple
+  2. 添加 va_list/va_start/va_arg/va_end 内置函数模拟
+
+================================================================================
+阶段五：性能与质量（持续）
+================================================================================
+
+[QOL-1] 错误信息改进
+--------------------------------------------------
+当前：
+  - AssertionError("Undefined variable: 'x'")
+  - AssertionError("Unexpected AST node: 'XXX'")
+
+改进方向：
+  1. 自定义异常类（InterpreterError, UndefinedVariable, TypeError 等）
+  2. 堆栈跟踪（显示调用链和源码位置）
+  3. 行号信息（利用 node.coord 属性）
+
+[QOL-2] 测试覆盖率
+--------------------------------------------------
+当前：~30 个测试覆盖基本功能。
+
+需要补充：
+  1. 边界条件测试（空数组、超大值、负值）
+  2. 错误路径测试（未定义变量、类型不匹配等）
+  3. 复杂嵌套测试（多层循环、递归函数、多维数组）
+  4. GNU C 扩展的解析+执行端到端测试（用 GnuCParser 解析 test_ext.c）
+
+[QOL-3] 性能优化
+--------------------------------------------------
+当前问题：
+  - 频繁的全局状态切换（g_scope 的重新赋值）
+  - 字符串匹配查找（g_exe_class 字典，每次 execute() 都要查）
+  - 异常控制流的开销（BreakException/ContinueException/ReturnException）
+
+改进方向：
+  1. execute() 改用缓存查找（NodeVisitor 模式）
+  2. 循环使用本地变量而非异常（while 中的 BreakException 可改用 return 标记）
+  3. 内联简单节点（Constant、ID 等可以直接返回而无需创建 Executor 对象）
+
+================================================================================
+总结：实施优先级
+================================================================================
+
+  P0（紧急）  │ BUG-1 sizeof 语义  │ 立即修复
+  P0（紧急）  │ BUG-2 alignof 语义 │ 立即修复
+  ────────────┼────────────────────┼────────────
+  P1（短期）  │ MEM-1 指针模型     │ 第 1 周
+  P1（短期）  │ MEM-2 栈帧与递归   │ 第 1 周
+  P1（短期）  │ MEM-3 struct 布局  │ 第 2 周
+  ────────────┼────────────────────┼────────────
+  P2（中期）  │ TYPE-1 类型系统    │ 第 2-3 周
+  P2（中期）  │ TYPE-2 隐式转换    │ 第 3 周
+  P2（中期）  │ MEM-4 堆与 malloc  │ 第 3 周
+  ────────────┼────────────────────┼────────────
+  P3（长期）  │ CTRL-1 Goto        │ 第 4 周
+  P3（长期）  │ TYPE-3 常量折叠    │ 第 4 周
+  P3（长期）  │ QOL-1 错误信息     │ 持续
+  ────────────┼────────────────────┼────────────
+  P4（远期）  │ CTRL-2 setjmp      │ 待定
+  P4（远期）  │ CTRL-3 可变参数    │ 待定
+  P4（远期）  │ QOL-3 性能优化     │ 待定
