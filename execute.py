@@ -1182,6 +1182,19 @@ def test_unary_operators():
         ok = "✓" if result == expected else "✗"
         print(f"    {op}{operand.value} = {result} (expected {expected}) {ok}")
         assert result == expected, f"{op}{operand.value}: expected {expected}, got {result}"
+    
+    cases = [
+        ('p++', ID(name='i'), 5, 6),
+        ('p--', ID(name='i'), 5, 4),
+    ]
+    for op, operand, expected, virable_expected in cases:
+        g_scope.set('i', 5)
+        node = UnaryOp(op=op, expr=operand)
+        result = execute(node)
+        ok = "✓" if result == expected and g_scope.get('i') == virable_expected else "✗"
+        print(f"{op} for {operand.name} {ok}")
+        assert result == expected, f"{result} != {expected}"
+        assert g_scope.get('i') == virable_expected, f"{g_scope.get('i')} != {virable_expected}"
 
 
 def test_ternary_operator():
