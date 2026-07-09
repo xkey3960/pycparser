@@ -20,3 +20,4 @@ ast.pickle
 .codex
 .venv/*
 .vscode/*
+**/a.out
