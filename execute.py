@@ -242,8 +242,8 @@ class ExeUnaryOp(Execute):
             '-': lambda: -val,
             '!': lambda: not val,
             '~': lambda: ~val,
-            'p++': lambda: val,
-            'p--': lambda: val,
+            'p++': lambda: _p_plus_plus(self.node.expr, val),
+            'p--': lambda: _p_sub_sub(self.node.expr, val),
             'sizeof': lambda: _sizeof(val),
             '__alignof__': lambda: _alignof(val),
             '__real__': lambda: val,
@@ -254,6 +254,19 @@ class ExeUnaryOp(Execute):
             return handlers[op]()
         raise AssertionError(f"Unknown unary operator: '{op}'")
 
+def _p_plus_plus(node, val):
+    if isinstance(node, ID):
+        g_scope.set(node.name, val+1)
+    else:
+        raise AssertionError(f"{node.__class__.__name__} can't support for p++")
+    return val
+
+def _p_sub_sub(node, val):
+    if isinstance(node, ID):
+        g_scope.set(node.name, val-1)
+    else:
+        raise AssertionError(f"{node.__class__.__name__} can't support for p--")
+    return val
 
 def _sizeof(val):
     """Simulate sizeof: return an approximate byte size for common types."""
