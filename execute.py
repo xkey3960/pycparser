@@ -2,8 +2,8 @@
 
 """pycparser AST Interpreter
 
-Executes C AST nodes by dispatching to type-specific executor classes.
-Supports all node types defined in pycparser.c_ast.
+Executes C AST nodes (standard + GNU C extensions) by dispatching
+to type-specific executor classes.
 """
 
 from pycparser.c_ast import (
@@ -27,6 +27,21 @@ from pycparser.c_ast import (
     CompoundLiteral, Alignas, StaticAssert,
     FileAST, ParamList, EllipsisParam, Pragma,
     Node,
+)
+
+# GNU C extension nodes
+from pycparserext.ext_c_parser import (
+    TypeList,
+    AttributeSpecifier,
+    Asm,
+    PreprocessorLine,
+    TypeOfDeclaration,
+    TypeOfExpression,
+    RangeExpression,
+    TypeDeclExt,
+    ArrayDeclExt,
+    StructExt,
+    FuncDeclExt,
 )
 
 
@@ -84,10 +99,7 @@ class Function:
 
 # ==================== Global State ====================
 
-# Current active scope (replaced when entering/leaving blocks)
 g_scope = Scope()
-
-# Global function table: name -> Function
 g_functions = {}
 
 
@@ -108,7 +120,6 @@ _TYPE_CONVERTERS = {
 
 
 def _resolve_type(type_names):
-    """Resolve a list of type name strings to a Python converter function."""
     name = ' '.join(type_names).lower()
     for key, converter in _TYPE_CONVERTERS.items():
         if name == key or name.endswith(' ' + key):
@@ -117,7 +128,6 @@ def _resolve_type(type_names):
 
 
 def _convert_value(value, type_names=None):
-    """Convert a Python value to the target C type."""
     if type_names is None:
         return int(value) if value is not None else 0
     converter = _resolve_type(type_names if isinstance(type_names, (list, tuple)) else [type_names])
@@ -130,7 +140,7 @@ def _convert_value(value, type_names=None):
 # ==================== Base Executor ====================
 
 class Execute:
-    """Base executor class. Subclasses implement execute()."""
+    """Base executor class."""
 
     def __init__(self, node):
         self.node = node
@@ -173,7 +183,6 @@ class ExeConstant(Execute):
         t = self.node.type
         if t in self._type_force:
             return self._type_force[t](self.node.value)
-        # Fallback: try numeric conversion
         try:
             return int(self.node.value)
         except (ValueError, TypeError):
@@ -222,7 +231,7 @@ class ExeBinaryOp(Execute):
 
 
 class ExeUnaryOp(Execute):
-    """Unary operator expression."""
+    """Unary operator expression (including GNU __alignof__)."""
 
     def execute(self):
         op = self.node.op
@@ -233,6 +242,12 @@ class ExeUnaryOp(Execute):
             '-': lambda: -val,
             '!': lambda: not val,
             '~': lambda: ~val,
+            'p++': lambda: val,
+            'p--': lambda: val,
+            'sizeof': lambda: _sizeof(val),
+            '__alignof__': lambda: _alignof(val),
+            '__real__': lambda: val,
+            '__imag__': lambda: 0,
         }
 
         if op in handlers:
@@ -240,11 +255,40 @@ class ExeUnaryOp(Execute):
         raise AssertionError(f"Unknown unary operator: '{op}'")
 
 
+def _sizeof(val):
+    """Simulate sizeof: return an approximate byte size for common types."""
+    if isinstance(val, bool):
+        return 1
+    if isinstance(val, int):
+        return 4
+    if isinstance(val, float):
+        return 8
+    if isinstance(val, str):
+        return len(val) + 1
+    if isinstance(val, list):
+        return len(val) * 4
+    if isinstance(val, dict):
+        return len(val) * 8
+    return 4
+
+
+def _alignof(val):
+    """Simulate __alignof__: return alignment for common types."""
+    if isinstance(val, bool):
+        return 1
+    if isinstance(val, int):
+        return 4
+    if isinstance(val, float):
+        return 8
+    if isinstance(val, str):
+        return 1
+    return 4
+
+
 class ExeAssignment(Execute):
     """Assignment expression (including compound assignments)."""
 
     def _set_lvalue(self, lvalue_node, value):
-        """Set a value through an lvalue node."""
         if isinstance(lvalue_node, ID):
             g_scope.set(lvalue_node.name, value)
         elif isinstance(lvalue_node, ArrayRef):
@@ -272,7 +316,6 @@ class ExeAssignment(Execute):
             self._set_lvalue(self.node.lvalue, rval)
             return rval
 
-        # Compound assignment: +=, -=, *=, etc.
         current = execute(self.node.lvalue)
         compound_ops = {
             '+=': lambda: current + rval,
@@ -296,7 +339,7 @@ class ExeAssignment(Execute):
 
 
 class ExeTernaryOp(Execute):
-    """Ternary conditional operator (cond ? iftrue : iffalse)."""
+    """Ternary conditional operator."""
 
     def execute(self):
         cond = execute(self.node.cond)
@@ -314,7 +357,6 @@ class ExeCast(Execute):
         return _convert_value(val, type_names)
 
     def _extract_type_names(self, type_node):
-        """Walk through type declaration nodes to find IdentifierType names."""
         if isinstance(type_node, TypeDecl):
             return self._extract_type_names(type_node.type)
         if isinstance(type_node, Typename):
@@ -328,7 +370,7 @@ class ExeCast(Execute):
 
 
 class ExeArrayRef(Execute):
-    """Array subscript expression (arr[idx])."""
+    """Array subscript expression."""
 
     def execute(self):
         arr = execute(self.node.name)
@@ -355,24 +397,20 @@ class ExeFuncCall(Execute):
     """Function call expression."""
 
     def _eval_args(self, args_node):
-        """Evaluate function arguments from various container nodes."""
         if args_node is None:
             return []
-
         if isinstance(args_node, ExprList):
             return [execute(e) for e in args_node.exprs]
-
         if isinstance(args_node, ParamList):
             return [execute(p) for p in args_node.params]
-
-        # Single argument
+        if isinstance(args_node, TypeList):
+            # __builtin_types_compatible_p(TypeList) - evaluate types
+            return [execute(t) for t in args_node.types]
         return [execute(args_node)]
 
     def _call_builtin(self, name, args):
-        """Handle built-in / known library functions."""
         if name == 'printf':
             fmt = str(args[0]) if args else ''
-            # Simulate: just output to stdout
             print(fmt % tuple(args[1:]) if len(args) > 1 else fmt, end='')
             return len(fmt)
         if name == 'putchar':
@@ -380,16 +418,17 @@ class ExeFuncCall(Execute):
             print(chr(char_code) if isinstance(char_code, int) else str(char_code), end='')
             return char_code
         if name == 'getchar':
-            # Not interactive; return 0
             return 0
         if name in ('exit', '_exit'):
             raise SystemExit(args[0] if args else 0)
         if name == 'abs':
             return abs(args[0]) if args else 0
+        if name == '__builtin_types_compatible_p':
+            # type1 and type2 are always compatible in this simple interpreter
+            return 1
         raise AssertionError(f"Undefined function: '{name}'")
 
     def execute(self):
-        # Resolve function name
         name_node = self.node.name
         if isinstance(name_node, ID):
             func_name = name_node.name
@@ -398,16 +437,12 @@ class ExeFuncCall(Execute):
 
         args = self._eval_args(self.node.args)
 
-        # Look up user-defined function
         if func_name in g_functions:
             func = g_functions[func_name]
-
-            # Save current scope and create new one for the call
             global g_scope
             outer_scope = g_scope
             g_scope = Scope(func.closure_scope)
 
-            # Bind parameters
             for i, pname in enumerate(func.param_names):
                 g_scope.declare(pname, args[i] if i < len(args) else 0)
 
@@ -419,7 +454,6 @@ class ExeFuncCall(Execute):
             finally:
                 g_scope = outer_scope
 
-        # Fallback to built-in
         return self._call_builtin(func_name, args)
 
 
@@ -486,41 +520,32 @@ class ExeDoWhile(Execute):
             except BreakException:
                 break
             except ContinueException:
-                pass  # falls through to condition check
+                pass
             if not execute(self.node.cond):
                 break
 
 
 class ExeFor(Execute):
-    """For loop.
-
-    In C99+: the init declaration has its own scope.
-    continue jumps to the 'next' expression.
-    """
+    """For loop."""
 
     def execute(self):
         global g_scope
-
-        # For loop introduces its own scope (C99+)
         outer = g_scope
         g_scope = Scope(outer)
         try:
             if self.node.init is not None:
                 execute(self.node.init)
-
             while True:
                 if self.node.cond is not None:
                     if not execute(self.node.cond):
                         break
-
                 try:
                     if self.node.stmt is not None:
                         execute(self.node.stmt)
                 except BreakException:
                     break
                 except ContinueException:
-                    pass  # falls through to next expression
-
+                    pass
                 if self.node.next is not None:
                     execute(self.node.next)
         finally:
@@ -550,17 +575,12 @@ class ExeContinue(Execute):
 
 
 class ExeSwitch(Execute):
-    """Switch statement.
-
-    Walks the body's block_items to find the matching case,
-    then executes all subsequent statements (fall-through).
-    """
+    """Switch statement."""
 
     def execute(self):
         cond = execute(self.node.cond)
         body = self.node.stmt
 
-        # Collect all statements after the matching case
         stmts_to_run = []
         matched = False
         default_stmts = []
@@ -569,12 +589,21 @@ class ExeSwitch(Execute):
             for item in body.block_items:
                 if isinstance(item, Case):
                     if not matched:
-                        case_val = execute(item.expr)
-                        if case_val == cond:
-                            matched = True
+                        case_expr = item.expr
+                        # Handle RangeExpression in case ranges
+                        if isinstance(case_expr, RangeExpression):
+                            first = execute(case_expr.first)
+                            last = execute(case_expr.last)
+                            if first <= cond <= last:
+                                matched = True
+                            else:
+                                continue
                         else:
-                            continue  # skip this case's stmts
-                    # matched: collect all case stmts
+                            case_val = execute(case_expr)
+                            if case_val == cond:
+                                matched = True
+                            else:
+                                continue
                     for s in (item.stmts or []):
                         stmts_to_run.append(s)
                 elif isinstance(item, Default):
@@ -584,10 +613,8 @@ class ExeSwitch(Execute):
                         for s in (item.stmts or []):
                             stmts_to_run.append(s)
                 elif matched:
-                    # Regular statement inside switch after match
                     stmts_to_run.append(item)
 
-        # If no case matched, use default
         if not matched and default_stmts:
             stmts_to_run = list(default_stmts)
 
@@ -621,26 +648,23 @@ class ExeDecl(Execute):
 
     @staticmethod
     def _extract_type_names(type_node):
-        """Walk type declarations to find the base type name list."""
         if type_node is None:
             return ['int']
         if isinstance(type_node, IdentifierType):
             return type_node.names
-        if isinstance(type_node, TypeDecl):
+        if isinstance(type_node, (TypeDecl, TypeDeclExt)):
             return ExeDecl._extract_type_names(type_node.type)
-        if isinstance(type_node, ArrayDecl):
+        if isinstance(type_node, (ArrayDecl, ArrayDeclExt)):
             return ExeDecl._extract_type_names(type_node.type) + ['[]']
         if isinstance(type_node, PtrDecl):
             return ExeDecl._extract_type_names(type_node.type) + ['*']
-        if isinstance(type_node, FuncDecl):
+        if isinstance(type_node, (FuncDecl, FuncDeclExt)):
             return ExeDecl._extract_type_names(type_node.type) + ['()']
         return ['int']
 
     def _default_value(self, type_node):
-        """Get a sensible default value based on the type."""
         names = self._extract_type_names(type_node)
         type_str = ' '.join(n.lower() for n in names)
-
         if 'float' in type_str or 'double' in type_str:
             return 0.0
         if '_Bool' in type_str or 'bool' in type_str:
@@ -654,7 +678,6 @@ class ExeDecl(Execute):
         if name is None:
             return
 
-        # Evaluate initializer if present
         if self.node.init is not None:
             init_val = execute(self.node.init)
         else:
@@ -675,22 +698,15 @@ class ExeFuncDef(Execute):
     """Function definition."""
 
     def _get_param_names(self, func_decl):
-        """Extract parameter names from a FuncDecl."""
-        if func_decl.args is None:
+        if func_decl is None or func_decl.args is None:
             return []
         if isinstance(func_decl.args, ParamList):
-            names = []
-            for p in func_decl.args.params:
-                if isinstance(p, Decl):
-                    names.append(p.name)
-            return names
+            return [p.name for p in func_decl.args.params if isinstance(p, Decl)]
         return []
 
     def execute(self):
         decl = self.node.decl
         func_name = decl.name
-
-        # Extract param names from the FuncDecl
         func_decl = decl.type
         param_names = self._get_param_names(func_decl)
 
@@ -710,7 +726,7 @@ class ExeEmptyStatement(Execute):
 
 
 class ExeLabel(Execute):
-    """Labeled statement (label: stmt)."""
+    """Labeled statement."""
 
     def execute(self):
         if self.node.stmt is not None:
@@ -718,7 +734,7 @@ class ExeLabel(Execute):
 
 
 class ExeGoto(Execute):
-    """Goto statement (not supported in interpreter)."""
+    """Goto statement (not supported)."""
 
     def execute(self):
         raise AssertionError(
@@ -753,49 +769,42 @@ class ExeCompoundLiteral(Execute):
 
 class ExeIdentifierType(Execute):
     """Base type name reference (e.g. 'int', 'float')."""
-
     def execute(self):
-        return None  # type info only, no runtime effect
+        return None
 
 
 class ExeTypeDecl(Execute):
     """Type declaration wrapper."""
-
     def execute(self):
         return None
 
 
 class ExePtrDecl(Execute):
     """Pointer type declaration."""
-
     def execute(self):
         return None
 
 
 class ExeArrayDecl(Execute):
     """Array type declaration."""
-
     def execute(self):
         return None
 
 
 class ExeFuncDecl(Execute):
     """Function type declaration."""
-
     def execute(self):
         return None
 
 
 class ExeParamList(Execute):
     """Function parameter list."""
-
     def execute(self):
         return None
 
 
 class ExeEllipsisParam(Execute):
     """Ellipsis parameter (...)."""
-
     def execute(self):
         return None
 
@@ -806,7 +815,6 @@ class ExeStruct(Execute):
     """Struct type definition."""
 
     def execute(self):
-        # Register struct name (optional) and process member declarations
         if self.node.decls:
             for decl in self.node.decls:
                 if isinstance(decl, Decl) and decl.name:
@@ -847,7 +855,6 @@ class ExeEnumerator(Execute):
 
 class ExeEnumeratorList(Execute):
     """List of enumerators."""
-
     def execute(self):
         return None
 
@@ -856,9 +863,7 @@ class ExeEnumeratorList(Execute):
 
 class ExeTypedef(Execute):
     """Typedef declaration."""
-
     def execute(self):
-        # Register the typedef name (minimal support)
         name = self.node.name
         if name:
             g_scope.declare(name, None)
@@ -866,16 +871,14 @@ class ExeTypedef(Execute):
 
 class ExeTypename(Execute):
     """Type name in a context like sizeof or cast."""
-
     def execute(self):
         return None
 
 
 class ExeAlignas(Execute):
     """Alignment specifier (_Alignas)."""
-
     def execute(self):
-        pass  # alignment is a compile-time concept
+        pass
 
 
 class ExeStaticAssert(Execute):
@@ -890,9 +893,8 @@ class ExeStaticAssert(Execute):
 
 class ExePragma(Execute):
     """Pragma directive."""
-
     def execute(self):
-        pass  # pragmas are compiler directives
+        pass
 
 
 class ExeFileAST(Execute):
@@ -905,9 +907,116 @@ class ExeFileAST(Execute):
         return result
 
 
+# ==================== GNU C Extension Executors ====================
+
+class ExeTypeList(Execute):
+    """Type list (used in __builtin_types_compatible_p())."""
+
+    def execute(self):
+        return [execute(t) for t in self.node.types or []]
+
+
+class ExeAttributeSpecifier(Execute):
+    """__attribute__((...)) specifier - compile-time annotation, no runtime effect."""
+
+    def execute(self):
+        return None
+
+
+class ExeAsm(Execute):
+    """Inline assembly statement / label.
+
+    In a real interpreter this would be a no-op or delegate to a
+    platform-specific assembler. Here we simply evaluate the
+    template and operands as expressions and return the template.
+    """
+
+    def execute(self):
+        template_val = execute(self.node.template) if self.node.template is not None else ""
+        output_val = execute(self.node.output_operands) if self.node.output_operands is not None else None
+        input_val = execute(self.node.input_operands) if self.node.input_operands is not None else None
+        clobber_val = execute(self.node.clobbered_regs) if self.node.clobbered_regs is not None else None
+        return str(template_val) if template_val else ""
+
+
+class ExePreprocessorLine(Execute):
+    """Preprocessor line directive (OpenCL)."""
+
+    def execute(self):
+        return None
+
+
+class ExeTypeOfDeclaration(Execute):
+    """typeof(declaration) - returns the type name as a string."""
+
+    def execute(self):
+        # Evaluate the declaration to register it, then return type info
+        execute(self.node.declaration)
+        return 'typeof_decl'
+
+
+class ExeTypeOfExpression(Execute):
+    """typeof(expression) - returns the Python type name of the expression result."""
+
+    def execute(self):
+        val = execute(self.node.expr)
+        return type(val).__name__
+
+
+class ExeRangeExpression(Execute):
+    """Range expression (first ... last), used in case ranges and designated initializers."""
+
+    def execute(self):
+        first = execute(self.node.first)
+        last = execute(self.node.last)
+        return first, last  # Return as a tuple range
+
+
+class ExeTypeDeclExt(Execute):
+    """Extended TypeDecl with asm/attributes fields."""
+
+    def execute(self):
+        return None
+
+
+class ExeArrayDeclExt(Execute):
+    """Extended ArrayDecl with asm/attributes fields."""
+
+    def execute(self):
+        return None
+
+
+class ExeStructExt(Execute):
+    """Extended Struct with attributes.
+
+    Similar to ExeStruct but also handles the attrib field.
+    """
+
+    def execute(self):
+        if self.node.decls:
+            for decl in self.node.decls:
+                if isinstance(decl, Decl) and decl.name:
+                    g_scope.declare(decl.name, 0)
+        # attrib is compile-time metadata, no runtime effect
+        return None
+
+
+class ExeFuncDeclExt(Execute):
+    """Extended function declaration with attributes and asm.
+
+    Similar to FuncDecl but registers the function with extended metadata.
+    """
+
+    def execute(self):
+        # At this point the function definition (FuncDef) handles registration.
+        # FuncDeclExt alone is just a type fragment.
+        return None
+
+
 # ==================== Dispatch Table ====================
 
 g_exe_class = {
+    # === Standard nodes ===
     # Expressions
     'Constant': ExeConstant,
     'ID': ExeID,
@@ -943,7 +1052,7 @@ g_exe_class = {
     'InitList': ExeInitList,
     'NamedInitializer': ExeNamedInitializer,
     'CompoundLiteral': ExeCompoundLiteral,
-    # Type fragments (compile-time, no runtime effect)
+    # Type fragments
     'IdentifierType': ExeIdentifierType,
     'TypeDecl': ExeTypeDecl,
     'PtrDecl': ExePtrDecl,
@@ -966,6 +1075,19 @@ g_exe_class = {
     'Pragma': ExePragma,
     # Top-level
     'FileAST': ExeFileAST,
+
+    # === GNU C Extension nodes ===
+    'TypeList': ExeTypeList,
+    'AttributeSpecifier': ExeAttributeSpecifier,
+    'Asm': ExeAsm,
+    'PreprocessorLine': ExePreprocessorLine,
+    'TypeOfDeclaration': ExeTypeOfDeclaration,
+    'TypeOfExpression': ExeTypeOfExpression,
+    'RangeExpression': ExeRangeExpression,
+    'TypeDeclExt': ExeTypeDeclExt,
+    'ArrayDeclExt': ExeArrayDeclExt,
+    'StructExt': ExeStructExt,
+    'FuncDeclExt': ExeFuncDeclExt,
 }
 
 
@@ -980,8 +1102,9 @@ def setup_global_scope():
     g_functions = {}
 
 
+# ----- Standard Node Tests -----
+
 def test_basic_expression():
-    """Test: 1 + 1 == 2"""
     print("  [Expression] 1 + 1 =", end=' ')
     node = BinaryOp(
         op='+',
@@ -994,7 +1117,6 @@ def test_basic_expression():
 
 
 def test_assignment_and_variable():
-    """Test: i = 2 + 3"""
     print("  [Assignment] i = 2 + 3", end=' ')
     node = Assignment(
         op='=',
@@ -1012,7 +1134,6 @@ def test_assignment_and_variable():
 
 
 def test_all_binary_operators():
-    """Test all binary arithmetic and comparison operators."""
     print("  [BinaryOp] All operators:")
     a = Constant(type='int', value='10')
     b = Constant(type='int', value='3')
@@ -1034,7 +1155,6 @@ def test_all_binary_operators():
 
 
 def test_unary_operators():
-    """Test unary operators."""
     print("  [UnaryOp] Unary operators:")
 
     cases = [
@@ -1052,10 +1172,8 @@ def test_unary_operators():
 
 
 def test_ternary_operator():
-    """Test ternary conditional operator."""
     print("  [TernaryOp] Ternary operator:")
 
-    # 1 ? 10 : 20 => 10
     node = TernaryOp(
         cond=Constant(type='int', value='1'),
         iftrue=Constant(type='int', value='10'),
@@ -1065,7 +1183,6 @@ def test_ternary_operator():
     assert result == 10, f"Expected 10, got {result}"
     print(f"    1 ? 10 : 20 = {result} ✓")
 
-    # 0 ? 10 : 20 => 20
     node = TernaryOp(
         cond=Constant(type='int', value='0'),
         iftrue=Constant(type='int', value='10'),
@@ -1077,28 +1194,26 @@ def test_ternary_operator():
 
 
 def test_compound_assignment():
-    """Test compound assignment operators."""
     print("  [Assignment] Compound assignments:")
 
     g_scope.set('i', 10)
     node = Assignment(op='+=', lvalue=ID('i'), rvalue=Constant(type='int', value='5'))
-    result = execute(node)
+    execute(node)
     assert g_scope.get('i') == 15, f"Expected i=15, got i={g_scope.get('i')}"
     print(f"    i = 10; i += 5 => i = {g_scope.get('i')} ✓")
 
     node = Assignment(op='-=', lvalue=ID('i'), rvalue=Constant(type='int', value='3'))
-    result = execute(node)
+    execute(node)
     assert g_scope.get('i') == 12, f"Expected i=12, got i={g_scope.get('i')}"
     print(f"    i -= 3 => i = {g_scope.get('i')} ✓")
 
     node = Assignment(op='*=', lvalue=ID('i'), rvalue=Constant(type='int', value='2'))
-    result = execute(node)
+    execute(node)
     assert g_scope.get('i') == 24, f"Expected i=24, got i={g_scope.get('i')}"
     print(f"    i *= 2 => i = {g_scope.get('i')} ✓")
 
 
 def test_expr_list():
-    """Test comma expression."""
     print("  [ExprList] Comma expression:", end=' ')
     node = ExprList(exprs=[
         Constant(type='int', value='1'),
@@ -1111,12 +1226,10 @@ def test_expr_list():
 
 
 def test_if_statement():
-    """Test if/else control flow."""
     print("  [If] If/else statement:")
 
     g_scope.declare('result', 0)
 
-    # if (1) { result = 42; }
     if_node = If(
         cond=Constant(type='int', value='1'),
         iftrue=Compound(block_items=[
@@ -1128,7 +1241,6 @@ def test_if_statement():
     assert g_scope.get('result') == 42, f"Expected 42, got {g_scope.get('result')}"
     print(f"    if (1) result=42 => result = {g_scope.get('result')} ✓")
 
-    # if (0) { result = 100; } else { result = 200; }
     g_scope.set('result', 0)
     if_node = If(
         cond=Constant(type='int', value='0'),
@@ -1145,179 +1257,108 @@ def test_if_statement():
 
 
 def test_while_loop():
-    """Test while loop with sum 0..4."""
     print("  [While] While loop:")
     g_scope.declare('count', 0)
     g_scope.declare('sum', 0)
 
     body = Compound(block_items=[
-        Assignment(
-            op='=',
-            lvalue=ID('sum'),
-            rvalue=BinaryOp(op='+', left=ID('sum'), right=ID('count')),
-        ),
-        Assignment(
-            op='=',
-            lvalue=ID('count'),
-            rvalue=BinaryOp(op='+', left=ID('count'), right=Constant(type='int', value='1')),
-        ),
+        Assignment(op='=', lvalue=ID('sum'), rvalue=BinaryOp(op='+', left=ID('sum'), right=ID('count'))),
+        Assignment(op='=', lvalue=ID('count'), rvalue=BinaryOp(op='+', left=ID('count'), right=Constant(type='int', value='1'))),
     ])
     wnode = While(
         cond=BinaryOp(op='<', left=ID('count'), right=Constant(type='int', value='5')),
         stmt=body,
     )
     execute(wnode)
-
     assert g_scope.get('sum') == 10, f"Expected sum=10, got {g_scope.get('sum')}"
     assert g_scope.get('count') == 5, f"Expected count=5, got {g_scope.get('count')}"
     print(f"    sum 0..4 = {g_scope.get('sum')}, count = {g_scope.get('count')} ✓")
 
 
 def test_for_loop():
-    """Test for loop."""
     print("  [For] For loop:")
     g_scope.declare('s', 0)
 
     for_node = For(
-        init=Assignment(
-            op='=',
-            lvalue=ID('i'),
-            rvalue=Constant(type='int', value='0'),
-        ),
-        cond=BinaryOp(
-            op='<',
-            left=ID('i'),
-            right=Constant(type='int', value='3'),
-        ),
-        next=Assignment(
-            op='=',
-            lvalue=ID('i'),
-            rvalue=BinaryOp(op='+', left=ID('i'), right=Constant(type='int', value='1')),
-        ),
+        init=Assignment(op='=', lvalue=ID('i'), rvalue=Constant(type='int', value='0')),
+        cond=BinaryOp(op='<', left=ID('i'), right=Constant(type='int', value='3')),
+        next=Assignment(op='=', lvalue=ID('i'), rvalue=BinaryOp(op='+', left=ID('i'), right=Constant(type='int', value='1'))),
         stmt=Compound(block_items=[
-            Assignment(
-                op='=',
-                lvalue=ID('s'),
-                rvalue=BinaryOp(op='+', left=ID('s'), right=ID('i')),
-            ),
+            Assignment(op='=', lvalue=ID('s'), rvalue=BinaryOp(op='+', left=ID('s'), right=ID('i'))),
         ]),
     )
     execute(for_node)
-
     assert g_scope.get('s') == 3, f"Expected s=3, got {g_scope.get('s')}"
     print(f"    for (i=0; i<3; i++) s+=i => s = {g_scope.get('s')} ✓")
 
 
 def test_do_while_loop():
-    """Test do-while loop (executes at least once)."""
     print("  [DoWhile] Do-While loop:")
     g_scope.declare('x', 0)
 
     body = Compound(block_items=[
-        Assignment(
-            op='=',
-            lvalue=ID('x'),
-            rvalue=BinaryOp(op='+', left=ID('x'), right=Constant(type='int', value='1')),
-        ),
+        Assignment(op='=', lvalue=ID('x'), rvalue=BinaryOp(op='+', left=ID('x'), right=Constant(type='int', value='1'))),
     ])
     dnode = DoWhile(
         cond=BinaryOp(op='<', left=ID('x'), right=Constant(type='int', value='3')),
         stmt=body,
     )
     execute(dnode)
-
     assert g_scope.get('x') == 3, f"Expected x=3, got {g_scope.get('x')}"
     print(f"    do {{ x++; }} while(x<3) => x = {g_scope.get('x')} ✓")
 
 
 def test_block_scope():
-    """Test that block scope isolates inner variables."""
     print("  [Scope] Block scoping:")
     g_scope.declare('x', 1)
 
     inner = Compound(block_items=[
         Decl(
-            name='x',
-            quals=[], align=None, storage=[], funcspec=[],
-            type=TypeDecl(
-                declname='x', quals=[], align=None,
-                type=IdentifierType(names=['int']),
-            ),
-            init=Constant(type='int', value='2'),
-            bitsize=None,
+            name='x', quals=[], align=None, storage=[], funcspec=[],
+            type=TypeDecl(declname='x', quals=[], align=None, type=IdentifierType(names=['int'])),
+            init=Constant(type='int', value='2'), bitsize=None,
         ),
-        Assignment(
-            op='=',
-            lvalue=ID('x'),
-            rvalue=BinaryOp(op='+', left=ID('x'), right=Constant(type='int', value='1')),
-        ),
+        Assignment(op='=', lvalue=ID('x'), rvalue=BinaryOp(op='+', left=ID('x'), right=Constant(type='int', value='1'))),
     ])
     execute(inner)
-
     assert g_scope.get('x') == 1, f"Expected outer x=1, got {g_scope.get('x')}"
     print(f"    outer x stays {g_scope.get('x')} after inner block ✓")
 
 
 def test_function_call():
-    """Test function definition and call."""
     print("  [FuncDef/FuncCall] Function call:")
 
-    # int add(int a, int b) { return a + b; }
     func_decl = Decl(
-        name='add',
-        quals=[], align=None, storage=[], funcspec=[],
+        name='add', quals=[], align=None, storage=[], funcspec=[],
         type=FuncDecl(
             args=ParamList(params=[
-                Decl(
-                    name='a',
-                    quals=[], align=None, storage=[], funcspec=[],
-                    type=TypeDecl(
-                        declname='a', quals=[], align=None,
-                        type=IdentifierType(names=['int']),
-                    ),
-                    init=None, bitsize=None,
-                ),
-                Decl(
-                    name='b',
-                    quals=[], align=None, storage=[], funcspec=[],
-                    type=TypeDecl(
-                        declname='b', quals=[], align=None,
-                        type=IdentifierType(names=['int']),
-                    ),
-                    init=None, bitsize=None,
-                ),
+                Decl(name='a', quals=[], align=None, storage=[], funcspec=[],
+                     type=TypeDecl(declname='a', quals=[], align=None, type=IdentifierType(names=['int'])),
+                     init=None, bitsize=None),
+                Decl(name='b', quals=[], align=None, storage=[], funcspec=[],
+                     type=TypeDecl(declname='b', quals=[], align=None, type=IdentifierType(names=['int'])),
+                     init=None, bitsize=None),
             ]),
-            type=TypeDecl(
-                declname='add', quals=[], align=None,
-                type=IdentifierType(names=['int']),
-            ),
+            type=TypeDecl(declname='add', quals=[], align=None, type=IdentifierType(names=['int'])),
         ),
         init=None, bitsize=None,
     )
-
     func_body = Compound(block_items=[
         Return(expr=BinaryOp(op='+', left=ID('a'), right=ID('b'))),
     ])
-
     func_def = FuncDef(decl=func_decl, param_decls=None, body=func_body)
     execute(func_def)
 
-    # Call add(3, 4)
     call_node = FuncCall(
         name=ID('add'),
-        args=ExprList(exprs=[
-            Constant(type='int', value='3'),
-            Constant(type='int', value='4'),
-        ]),
+        args=ExprList(exprs=[Constant(type='int', value='3'), Constant(type='int', value='4')]),
     )
     result = execute(call_node)
     assert result == 7, f"Expected 7, got {result}"
     print(f"    add(3, 4) = {result} ✓")
 
-    # Test function with no args
     g_functions['fortytwo'] = Function(
-        name='fortytwo',
-        param_names=[],
+        name='fortytwo', param_names=[],
         body=Compound(block_items=[Return(expr=Constant(type='int', value='42'))]),
         closure_scope=g_scope,
     )
@@ -1327,93 +1368,59 @@ def test_function_call():
 
 
 def test_break_continue():
-    """Test break and continue in loops."""
     print("  [Break/Continue] Loop control:")
     g_scope.declare('found', 0)
 
-    # while (1) { if (found >= 3) break; found++; continue; found = 999; }
     body = Compound(block_items=[
         If(
-            cond=BinaryOp(
-                op='>=',
-                left=ID('found'),
-                right=Constant(type='int', value='3'),
-            ),
+            cond=BinaryOp(op='>=', left=ID('found'), right=Constant(type='int', value='3')),
             iftrue=Break(),
             iffalse=None,
         ),
-        Assignment(
-            op='=',
-            lvalue=ID('found'),
-            rvalue=BinaryOp(
-                op='+',
-                left=ID('found'),
-                right=Constant(type='int', value='1'),
-            ),
-        ),
+        Assignment(op='=', lvalue=ID('found'), rvalue=BinaryOp(op='+', left=ID('found'), right=Constant(type='int', value='1'))),
         Continue(),
-        Assignment(
-            op='=',
-            lvalue=ID('found'),
-            rvalue=Constant(type='int', value='999'),
-        ),
+        Assignment(op='=', lvalue=ID('found'), rvalue=Constant(type='int', value='999')),
     ])
     wnode = While(cond=Constant(type='int', value='1'), stmt=body)
     execute(wnode)
-
     assert g_scope.get('found') == 3, f"Expected found=3, got {g_scope.get('found')}"
     print(f"    break after found=3, continue skips assignment ✓")
 
 
 def test_switch_case():
-    """Test switch-case with fall-through."""
     print("  [Switch/Case] Switch statement:")
     g_scope.declare('val', 0)
 
-    # switch (2) { case 1: val=10; break; case 2: val=20; case 3: val=30; break; default: val=99; }
     switch_node = Switch(
         cond=Constant(type='int', value='2'),
         stmt=Compound(block_items=[
-            Case(
-                expr=Constant(type='int', value='1'),
-                stmts=[
-                    Assignment(op='=', lvalue=ID('val'), rvalue=Constant(type='int', value='10')),
-                    Break(),
-                ],
-            ),
-            Case(
-                expr=Constant(type='int', value='2'),
-                stmts=[
-                    Assignment(op='=', lvalue=ID('val'), rvalue=Constant(type='int', value='20')),
-                    # fall-through to case 3!
-                ],
-            ),
-            Case(
-                expr=Constant(type='int', value='3'),
-                stmts=[
-                    Assignment(op='=', lvalue=ID('val'), rvalue=Constant(type='int', value='30')),
-                    Break(),
-                ],
-            ),
+            Case(expr=Constant(type='int', value='1'), stmts=[
+                Assignment(op='=', lvalue=ID('val'), rvalue=Constant(type='int', value='10')),
+                Break(),
+            ]),
+            Case(expr=Constant(type='int', value='2'), stmts=[
+                Assignment(op='=', lvalue=ID('val'), rvalue=Constant(type='int', value='20')),
+            ]),
+            Case(expr=Constant(type='int', value='3'), stmts=[
+                Assignment(op='=', lvalue=ID('val'), rvalue=Constant(type='int', value='30')),
+                Break(),
+            ]),
             Default(stmts=[
                 Assignment(op='=', lvalue=ID('val'), rvalue=Constant(type='int', value='99')),
             ]),
         ]),
     )
     execute(switch_node)
-
     assert g_scope.get('val') == 30, f"Expected val=30 (fall-through), got {g_scope.get('val')}"
     print(f"    switch(2) fall-through case 2 -> case 3 => val = {g_scope.get('val')} ✓")
 
-    # Test default case
     g_scope.set('val', 0)
     switch_node2 = Switch(
         cond=Constant(type='int', value='99'),
         stmt=Compound(block_items=[
-            Case(
-                expr=Constant(type='int', value='1'),
-                stmts=[Assignment(op='=', lvalue=ID('val'), rvalue=Constant(type='int', value='10'))],
-            ),
+            Case(expr=Constant(type='int', value='1'), stmts=[
+                Assignment(op='=', lvalue=ID('val'), rvalue=Constant(type='int', value='10')),
+            ]),
             Default(stmts=[
                 Assignment(op='=', lvalue=ID('val'), rvalue=Constant(type='int', value='42')),
             ]),
@@ -1425,25 +1432,19 @@ def test_switch_case():
 
 
 def test_declaration():
-    """Test variable declaration with and without initializer."""
     print("  [Decl] Variable declaration:")
 
-    # int x = 10;
     decl = Decl(
-        name='x',
-        quals=[], align=None, storage=[], funcspec=[],
+        name='x', quals=[], align=None, storage=[], funcspec=[],
         type=TypeDecl(declname='x', quals=[], align=None, type=IdentifierType(names=['int'])),
-        init=Constant(type='int', value='10'),
-        bitsize=None,
+        init=Constant(type='int', value='10'), bitsize=None,
     )
     execute(decl)
     assert g_scope.get('x') == 10, f"Expected x=10, got {g_scope.get('x')}"
     print(f"    int x = 10 => x = {g_scope.get('x')} ✓")
 
-    # int y;  (default: 0)
     decl2 = Decl(
-        name='y',
-        quals=[], align=None, storage=[], funcspec=[],
+        name='y', quals=[], align=None, storage=[], funcspec=[],
         type=TypeDecl(declname='y', quals=[], align=None, type=IdentifierType(names=['int'])),
         init=None, bitsize=None,
     )
@@ -1453,7 +1454,6 @@ def test_declaration():
 
 
 def test_enum():
-    """Test enum definition."""
     print("  [Enum] Enum definition:")
 
     enum_node = Enum(
@@ -1466,17 +1466,15 @@ def test_enum():
         ]),
     )
     execute(enum_node)
-
-    assert g_scope.get('RED') == 0, f"Expected RED=0, got {g_scope.get('RED')}"
-    assert g_scope.get('GREEN') == 1, f"Expected GREEN=1, got {g_scope.get('GREEN')}"
-    assert g_scope.get('BLUE') == 10, f"Expected BLUE=10, got {g_scope.get('BLUE')}"
-    assert g_scope.get('YELLOW') == 11, f"Expected YELLOW=11, got {g_scope.get('YELLOW')}"
+    assert g_scope.get('RED') == 0
+    assert g_scope.get('GREEN') == 1
+    assert g_scope.get('BLUE') == 10
+    assert g_scope.get('YELLOW') == 11
     print(f"    RED={g_scope.get('RED')}, GREEN={g_scope.get('GREEN')}, "
           f"BLUE={g_scope.get('BLUE')}, YELLOW={g_scope.get('YELLOW')} ✓")
 
 
 def test_cast():
-    """Test type casting."""
     print("  [Cast] Type cast:", end=' ')
     cast_node = Cast(
         to_type=Typename(
@@ -1491,22 +1489,13 @@ def test_cast():
 
 
 def test_static_assert():
-    """Test static assertion."""
     print("  [StaticAssert] Static assert:", end=' ')
 
-    # _Static_assert(1, "ok") should pass
-    node = StaticAssert(
-        cond=Constant(type='int', value='1'),
-        message=Constant(type='string', value='ok'),
-    )
-    execute(node)  # should not raise
+    node = StaticAssert(cond=Constant(type='int', value='1'), message=Constant(type='string', value='ok'))
+    execute(node)
     print("pass ✓")
 
-    # _Static_assert(0, "fail") should raise
-    node = StaticAssert(
-        cond=Constant(type='int', value='0'),
-        message=Constant(type='string', value='fail'),
-    )
+    node = StaticAssert(cond=Constant(type='int', value='0'), message=Constant(type='string', value='fail'))
     try:
         execute(node)
         assert False, "Should have raised AssertionError"
@@ -1515,7 +1504,6 @@ def test_static_assert():
 
 
 def test_init_list():
-    """Test initializer list."""
     print("  [InitList] Initializer list:", end=' ')
     node = InitList(exprs=[
         Constant(type='int', value='1'),
@@ -1528,21 +1516,12 @@ def test_init_list():
 
 
 def test_file_ast():
-    """Test FileAST top-level execution."""
     print("  [FileAST] File-level execution:", end=' ')
     file_node = FileAST(ext=[
-        Decl(
-            name='a',
-            quals=[], align=None, storage=[], funcspec=[],
-            type=TypeDecl(declname='a', quals=[], align=None, type=IdentifierType(names=['int'])),
-            init=Constant(type='int', value='100'),
-            bitsize=None,
-        ),
-        Assignment(
-            op='=',
-            lvalue=ID('a'),
-            rvalue=BinaryOp(op='+', left=ID('a'), right=Constant(type='int', value='1')),
-        ),
+        Decl(name='a', quals=[], align=None, storage=[], funcspec=[],
+             type=TypeDecl(declname='a', quals=[], align=None, type=IdentifierType(names=['int'])),
+             init=Constant(type='int', value='100'), bitsize=None),
+        Assignment(op='=', lvalue=ID('a'), rvalue=BinaryOp(op='+', left=ID('a'), right=Constant(type='int', value='1'))),
     ])
     result = execute(file_node)
     assert g_scope.get('a') == 101, f"Expected a=101, got {g_scope.get('a')}"
@@ -1550,95 +1529,70 @@ def test_file_ast():
 
 
 def test_return_value():
-    """Test return statement."""
     print("  [Return] Return statement:")
 
-    # Create a simple function that returns a value
     g_functions['getval'] = Function(
-        name='getval',
-        param_names=[],
-        body=Compound(block_items=[
-            Return(expr=Constant(type='int', value='77')),
-        ]),
+        name='getval', param_names=[],
+        body=Compound(block_items=[Return(expr=Constant(type='int', value='77'))]),
         closure_scope=g_scope,
     )
-
     result = execute(FuncCall(name=ID('getval'), args=None))
     assert result == 77, f"Expected 77, got {result}"
     print(f"    return 77 => {result} ✓")
 
 
 def test_label_empty():
-    """Test labeled and empty statements."""
     print("  [Label/Empty] Label + EmptyStatement:")
 
     g_scope.declare('labeled_val', 0)
 
-    # label: { labeled_val = 5; }
     label_node = Label(
         name='mylabel',
         stmt=Compound(block_items=[
-            Assignment(
-                op='=',
-                lvalue=ID('labeled_val'),
-                rvalue=Constant(type='int', value='5'),
-            ),
+            Assignment(op='=', lvalue=ID('labeled_val'), rvalue=Constant(type='int', value='5')),
         ]),
     )
     execute(label_node)
-    assert g_scope.get('labeled_val') == 5, f"Expected 5, got {g_scope.get('labeled_val')}"
+    assert g_scope.get('labeled_val') == 5
     print(f"    label: compound works ✓")
 
-    # Empty statement should not crash
     execute(EmptyStatement())
     print(f"    EmptyStatement: no-op ✓")
 
 
 def test_struct_union():
-    """Test struct and union member declarations."""
     print("  [Struct/Union] Struct/Union declarations:")
 
     struct_node = Struct(
         name='Point',
         decls=[
-            Decl(
-                name='px',
-                quals=[], align=None, storage=[], funcspec=[],
-                type=TypeDecl(declname='px', quals=[], align=None, type=IdentifierType(names=['int'])),
-                init=None, bitsize=None,
-            ),
-            Decl(
-                name='py',
-                quals=[], align=None, storage=[], funcspec=[],
-                type=TypeDecl(declname='py', quals=[], align=None, type=IdentifierType(names=['int'])),
-                init=None, bitsize=None,
-            ),
+            Decl(name='px', quals=[], align=None, storage=[], funcspec=[],
+                 type=TypeDecl(declname='px', quals=[], align=None, type=IdentifierType(names=['int'])),
+                 init=None, bitsize=None),
+            Decl(name='py', quals=[], align=None, storage=[], funcspec=[],
+                 type=TypeDecl(declname='py', quals=[], align=None, type=IdentifierType(names=['int'])),
+                 init=None, bitsize=None),
         ],
     )
     execute(struct_node)
-    # Members should be declared with default value 0
-    assert g_scope.get('px') == 0, f"Expected px=0, got {g_scope.get('px')}"
-    assert g_scope.get('py') == 0, f"Expected py=0, got {g_scope.get('py')}"
+    assert g_scope.get('px') == 0
+    assert g_scope.get('py') == 0
     print(f"    struct Point members px={g_scope.get('px')}, py={g_scope.get('py')} ✓")
 
 
 def test_compound_literal():
-    """Test compound literal."""
     print("  [CompoundLiteral] Compound literal:", end=' ')
     node = CompoundLiteral(
         type=TypeDecl(declname=None, quals=[], align=None, type=IdentifierType(names=['int'])),
-        init=InitList(exprs=[
-            Constant(type='int', value='10'),
-            Constant(type='int', value='20'),
-        ]),
+        init=InitList(exprs=[Constant(type='int', value='10'), Constant(type='int', value='20')]),
     )
     result = execute(node)
     assert result == [10, 20], f"Expected [10, 20], got {result}"
     print(f"{result} ✓")
 
 
-def test_typedecl_ptr_array():
-    """Test that type declaration fragments don't crash."""
+def test_type_fragments():
+    """Test that all type/fragment nodes don't crash."""
     print("  [TypeNodes] Type declaration fragments (no-op):")
 
     execute(IdentifierType(names=['int']))
@@ -1652,12 +1606,278 @@ def test_typedecl_ptr_array():
     execute(Typename(name=None, quals=[], align=None, type=IdentifierType(names=['int'])))
     execute(Alignas(alignment=Constant(type='int', value='8')))
     execute(Pragma(string="once"))
-    execute(NamedInitializer(
-        name=[ID('x')],
-        expr=Constant(type='int', value='5'),
-    ))
+    execute(NamedInitializer(name=[ID('x')], expr=Constant(type='int', value='5')))
 
     print(f"    All 12 type/fragment nodes executed without error ✓")
+
+
+# ----- GNU C Extension Tests -----
+
+def test_gnu_type_list():
+    """Test TypeList node."""
+    print("  [TypeList] Type list:", end=' ')
+    node = TypeList(types=[
+        TypeDecl(declname='a', quals=[], align=None, type=IdentifierType(names=['int'])),
+        TypeDecl(declname='b', quals=[], align=None, type=IdentifierType(names=['float'])),
+    ])
+    result = execute(node)
+    assert isinstance(result, list), f"Expected list, got {type(result)}"
+    print(f"list of {len(result)} types ✓")
+
+
+def test_gnu_attribute_specifier():
+    """Test AttributeSpecifier node (no runtime effect)."""
+    print("  [AttributeSpecifier] __attribute__:", end=' ')
+    node = AttributeSpecifier(
+        exprlist=ExprList(exprs=[ID('aligned'), Constant(type='int', value='8')]),
+    )
+    result = execute(node)
+    assert result is None, f"Expected None, got {result}"
+    print("no-op ✓")
+
+
+def test_gnu_asm():
+    """Test Asm node (inline assembly)."""
+    print("  [Asm] Inline assembly:")
+
+    # asm("nop")
+    node = Asm(
+        asm_keyword='asm',
+        template=Constant(type='string', value='nop'),
+        output_operands=None,
+        input_operands=None,
+        clobbered_regs=None,
+    )
+    result = execute(node)
+    print(f"    asm(\"nop\") => '{result}' ✓")
+
+    # asm volatile("mov %0, %1" : "=r"(x) : "r"(y))
+    node2 = Asm(
+        asm_keyword='asm volatile',
+        template=Constant(type='string', value='mov %0, %1'),
+        output_operands=ExprList(exprs=[Constant(type='string', value='=r(x)')]),
+        input_operands=ExprList(exprs=[Constant(type='string', value='r(y)')]),
+        clobbered_regs=ExprList(exprs=[Constant(type='string', value='memory')]),
+    )
+    result2 = execute(node2)
+    assert 'mov' in str(result2), "Expected template to contain 'mov'"
+    print(f"    asm volatile(\"mov %0, %1\" : ...) => '{result2}' ✓")
+
+
+def test_gnu_preprocessor_line():
+    """Test PreprocessorLine node."""
+    print("  [PreprocessorLine] Preprocessor line:", end=' ')
+    node = PreprocessorLine(contents="#line 42 \"test.c\"")
+    result = execute(node)
+    assert result is None, f"Expected None, got {result}"
+    print("no-op ✓")
+
+
+def test_gnu_typeof_declaration():
+    """Test TypeOfDeclaration node."""
+    print("  [TypeOfDeclaration] typeof(declaration):", end=' ')
+    decl = Decl(
+        name='tmp', quals=[], align=None, storage=[], funcspec=[],
+        type=TypeDecl(declname='tmp', quals=[], align=None, type=IdentifierType(names=['int'])),
+        init=Constant(type='int', value='42'), bitsize=None,
+    )
+    node = TypeOfDeclaration(typeof_keyword='typeof', declaration=decl)
+    result = execute(node)
+    print(f"'{result}' ✓")
+
+
+def test_gnu_typeof_expression():
+    """Test TypeOfExpression node."""
+    print("  [TypeOfExpression] typeof(expression):", end=' ')
+    node = TypeOfExpression(
+        typeof_keyword='typeof',
+        expr=Constant(type='int', value='42'),
+    )
+    result = execute(node)
+    assert result == 'int', f"Expected 'int', got {result}"
+    print(f"typeof(42) => '{result}' ✓")
+
+    node2 = TypeOfExpression(
+        typeof_keyword='typeof',
+        expr=Constant(type='float', value='3.14'),
+    )
+    result2 = execute(node2)
+    print(f"    typeof(3.14) => '{result2}' ✓")
+
+
+def test_gnu_range_expression():
+    """Test RangeExpression node (case ranges, designated init ranges)."""
+    print("  [RangeExpression] Range expression:", end=' ')
+    node = RangeExpression(
+        first=Constant(type='int', value='1'),
+        last=Constant(type='int', value='5'),
+    )
+    result = execute(node)
+    assert result == (1, 5), f"Expected (1, 5), got {result}"
+    print(f"1...5 = {result} ✓")
+
+
+def test_gnu_case_range():
+    """Test switch case with RangeExpression (GNU extension)."""
+    print("  [Case+RangeExpression] Case range switch:")
+    g_scope.declare('val2', 0)
+
+    # switch (3) { case 1...2: val2=10; break; case 3...5: val2=20; break; default: val2=99; }
+    switch_node = Switch(
+        cond=Constant(type='int', value='3'),
+        stmt=Compound(block_items=[
+            Case(
+                expr=RangeExpression(
+                    first=Constant(type='int', value='1'),
+                    last=Constant(type='int', value='2'),
+                ),
+                stmts=[
+                    Assignment(op='=', lvalue=ID('val2'), rvalue=Constant(type='int', value='10')),
+                    Break(),
+                ],
+            ),
+            Case(
+                expr=RangeExpression(
+                    first=Constant(type='int', value='3'),
+                    last=Constant(type='int', value='5'),
+                ),
+                stmts=[
+                    Assignment(op='=', lvalue=ID('val2'), rvalue=Constant(type='int', value='20')),
+                    Break(),
+                ],
+            ),
+            Default(stmts=[
+                Assignment(op='=', lvalue=ID('val2'), rvalue=Constant(type='int', value='99')),
+            ]),
+        ]),
+    )
+    execute(switch_node)
+    assert g_scope.get('val2') == 20, f"Expected val2=20 (case 3...5), got {g_scope.get('val2')}"
+    print(f"    switch(3) case 3...5 => val2 = {g_scope.get('val2')} ✓")
+
+    # Test value in lower range
+    g_scope.set('val2', 0)
+    switch_node2 = Switch(
+        cond=Constant(type='int', value='2'),
+        stmt=Compound(block_items=[
+            Case(
+                expr=RangeExpression(first=Constant(type='int', value='1'), last=Constant(type='int', value='2')),
+                stmts=[Assignment(op='=', lvalue=ID('val2'), rvalue=Constant(type='int', value='10')), Break()],
+            ),
+            Case(
+                expr=RangeExpression(first=Constant(type='int', value='3'), last=Constant(type='int', value='5')),
+                stmts=[Assignment(op='=', lvalue=ID('val2'), rvalue=Constant(type='int', value='20')), Break()],
+            ),
+        ]),
+    )
+    execute(switch_node2)
+    assert g_scope.get('val2') == 10, f"Expected val2=10 (case 1...2), got {g_scope.get('val2')}"
+    print(f"    switch(2) case 1...2 => val2 = {g_scope.get('val2')} ✓")
+
+
+def test_gnu_type_decl_ext():
+    """Test TypeDeclExt node (extended TypeDecl with asm/attributes)."""
+    print("  [TypeDeclExt] Extended TypeDecl:", end=' ')
+
+    # TypeDeclExt behaves like TypeDecl at runtime
+    node = TypeDeclExt(
+        declname='x', quals=[], align=None,
+        type=IdentifierType(names=['int']),
+    )
+    result = execute(node)
+    assert result is None
+    print("no-op ✓")
+
+
+def test_gnu_array_decl_ext():
+    """Test ArrayDeclExt node."""
+    print("  [ArrayDeclExt] Extended ArrayDecl:", end=' ')
+    node = ArrayDeclExt(
+        type=IdentifierType(names=['int']),
+        dim=Constant(type='int', value='10'),
+        dim_quals=[],
+    )
+    result = execute(node)
+    assert result is None
+    print("no-op ✓")
+
+
+def test_gnu_struct_ext():
+    """Test StructExt node (extended Struct with attributes)."""
+    print("  [StructExt] Extended Struct with attributes:", end=' ')
+
+    node = StructExt(
+        name='AlignedPoint',
+        decls=[
+            Decl(name='x', quals=[], align=None, storage=[], funcspec=[],
+                 type=TypeDecl(declname='x', quals=[], align=None, type=IdentifierType(names=['int'])),
+                 init=None, bitsize=None),
+            Decl(name='y', quals=[], align=None, storage=[], funcspec=[],
+                 type=TypeDecl(declname='y', quals=[], align=None, type=IdentifierType(names=['int'])),
+                 init=None, bitsize=None),
+        ],
+    )
+    execute(node)
+    assert g_scope.get('x') == 0
+    assert g_scope.get('y') == 0
+    print(f"members x={g_scope.get('x')}, y={g_scope.get('y')} ✓")
+
+
+def test_gnu_func_decl_ext():
+    """Test FuncDeclExt node."""
+    print("  [FuncDeclExt] Extended function declaration:", end=' ')
+
+    node = FuncDeclExt(
+        args=ParamList(params=[]),
+        type=TypeDecl(declname='foo', quals=[], align=None, type=IdentifierType(names=['int'])),
+        attributes=ExprList(exprs=[ID('constructor')]),
+        asm=None,
+    )
+    result = execute(node)
+    assert result is None
+    print("no-op ✓")
+
+
+def test_gnu_alignof():
+    """Test __alignof__ operator (GNU extension)."""
+    print("  [UnaryOp] __alignof__:", end=' ')
+    node = UnaryOp(
+        op='__alignof__',
+        expr=Constant(type='int', value='42'),
+    )
+    result = execute(node)
+    assert result == 4, f"Expected 4 (alignof int), got {result}"
+    print(f"__alignof__(42) = {result} ✓")
+
+
+def test_gnu_builtin_types_compatible():
+    """Test __builtin_types_compatible_p."""
+    print("  [FuncCall] __builtin_types_compatible_p:", end=' ')
+
+    call_node = FuncCall(
+        name=ID('__builtin_types_compatible_p'),
+        args=TypeList(types=[
+            TypeDecl(declname=None, quals=[], align=None, type=IdentifierType(names=['int'])),
+            TypeDecl(declname=None, quals=[], align=None, type=IdentifierType(names=['int'])),
+        ]),
+    )
+    result = execute(call_node)
+    assert result == 1, f"Expected 1 (always compatible), got {result}"
+    print(f"({result}) ✓")
+
+
+def test_gnu_all_extension_fragments():
+    """Test that all GNU extension type fragments don't crash."""
+    print("  [GNU Ext] All extension type fragments (no-op):")
+    execute(AttributeSpecifier(exprlist=ExprList(exprs=[])))
+    execute(PreprocessorLine(contents="#define FOO 1"))
+    execute(TypeOfDeclaration(typeof_keyword='typeof',
+        declaration=Decl(name='_t', quals=[], align=None, storage=[], funcspec=[],
+            type=TypeDecl(declname='_t', quals=[], align=None, type=IdentifierType(names=['int'])),
+            init=None, bitsize=None)))
+    execute(TypeOfExpression(typeof_keyword='typeof', expr=Constant(type='int', value='0')))
+    execute(RangeExpression(first=Constant(type='int', value='0'), last=Constant(type='int', value='10')))
+    print(f"    All 5 extension fragments executed without error ✓")
 
 
 # ==================== Main ====================
@@ -1669,7 +1889,7 @@ def main():
 
     setup_global_scope()
 
-    # Expression tests
+    # --- Standard Nodes ---
     print("\n--- Expressions ---")
     test_basic_expression()
     test_assignment_and_variable()
@@ -1680,7 +1900,6 @@ def main():
     test_expr_list()
     test_cast()
 
-    # Control flow tests
     print("\n--- Control Flow ---")
     test_if_statement()
     test_while_loop()
@@ -1690,25 +1909,58 @@ def main():
     test_switch_case()
     test_return_value()
 
-    # Declaration tests
     print("\n--- Declarations ---")
     test_declaration()
     test_enum()
     test_struct_union()
     test_function_call()
 
-    # Other tests
-    print("\n--- Other ---")
+    print("\n--- Other Standard Nodes ---")
     test_block_scope()
     test_static_assert()
     test_init_list()
     test_compound_literal()
     test_label_empty()
     test_file_ast()
-    test_typedecl_ptr_array()
+    test_type_fragments()
 
+    # --- GNU C Extension Nodes ---
     print("\n" + "=" * 60)
-    print("  All 49 AST node types covered ✅")
+    print("  GNU C Extension Nodes")
+    print("=" * 60)
+
+    setup_global_scope()
+
+    print("\n--- GNU Extension Types ---")
+    test_gnu_type_list()
+    test_gnu_attribute_specifier()
+    test_gnu_asm()
+    test_gnu_preprocessor_line()
+    test_gnu_typeof_declaration()
+    test_gnu_typeof_expression()
+    test_gnu_range_expression()
+    test_gnu_case_range()
+    test_gnu_type_decl_ext()
+    test_gnu_array_decl_ext()
+    test_gnu_struct_ext()
+    test_gnu_func_decl_ext()
+
+    print("\n--- GNU Operator Extensions ---")
+    test_gnu_alignof()
+    test_gnu_builtin_types_compatible()
+
+    print("\n--- GNU Fragment Tests ---")
+    test_gnu_all_extension_fragments()
+
+    # Summary
+    std_count = 49
+    ext_count = 11  # TypeList, AttributeSpecifier, Asm, PreprocessorLine,
+                    # TypeOfDeclaration, TypeOfExpression, RangeExpression,
+                    # TypeDeclExt, ArrayDeclExt, StructExt, FuncDeclExt
+    print("\n" + "=" * 60)
+    print(f"  Standard nodes: {std_count} ✓")
+    print(f"  GNU C extension nodes: {ext_count} ✓")
+    print(f"  Total: {std_count + ext_count} AST node types")
     print("  All tests passed! ✅")
     print("=" * 60)
 
