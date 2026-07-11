@@ -67,6 +67,12 @@ class Scope:
     def __init__(self, parent=None):
         self._symbols = {}
         self._parent = parent
+    
+    def __str__(self):
+        ret = str(self._symbols)
+        if self._parent:
+            ret += str(self._parent)
+        return ret
 
     def get(self, name):
         if name in self._symbols:

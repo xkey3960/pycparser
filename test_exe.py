@@ -30,3 +30,4 @@ from execute import execute, g_scope
 
 ast.ext.append(c_ast.FuncCall(name=c_ast.ID(name='main'),args=None))
 execute(ast)
+print(g_scope)
