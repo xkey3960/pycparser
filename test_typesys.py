@@ -368,6 +368,98 @@ def test_m1_struct_self_reference():
     print("    先注册不完整类型再算成员：next 指向自身 ✓")
 
 
+# ==================== 6. M2 enum 类型注册 ====================
+
+def _enum_def(name, enumerators):
+    """构造枚举定义节点：`enum <name> { ... };`"""
+    return c_ast.Enum(name=name, values=c_ast.EnumeratorList(
+        enumerators=[c_ast.Enumerator(name=n, value=v) for n, v in enumerators]))
+
+
+def test_m2_enum_standalone():
+    print("  [M2] enum Color {RED, GREEN, BLUE=10, YELLOW};")
+    exe_mod.setup_global_scope()
+    node = _enum_def('Color', [
+        ('RED', None), ('GREEN', None),
+        ('BLUE', c_ast.Constant(type='int', value='10')), ('YELLOW', None),
+    ])
+    exe_mod.execute(node)
+    # 常量注入（现有 test_enum 语义保持）
+    assert exe_mod.g_scope.get('RED') == 0
+    assert exe_mod.g_scope.get('GREEN') == 1
+    assert exe_mod.g_scope.get('BLUE') == 10
+    assert exe_mod.g_scope.get('YELLOW') == 11
+    # 常量带类型
+    assert exe_mod.g_scope.get_type('RED') is g_types.resolve(['int'])
+    # 标签注册 + 常量表
+    et = g_types.lookup_tag('enum', 'Color')
+    assert isinstance(et, EnumType)
+    assert et.constants == {'RED': 0, 'GREEN': 1, 'BLUE': 10, 'YELLOW': 11}
+    print("    RED=0 GREEN=1 BLUE=10 YELLOW=11；常量带 IntType；标签注册 ✓")
+
+
+def test_m2_enum_reference_previous():
+    print("  [M2] enum {A, B = A + 5, C};（引用前一常量）")
+    exe_mod.setup_global_scope()
+    node = _enum_def(None, [
+        ('A', None),
+        ('B', c_ast.BinaryOp(op='+', left=c_ast.ID(name='A'),
+                              right=c_ast.Constant(type='int', value='5'))),
+        ('C', None),
+    ])
+    exe_mod.execute(node)
+    assert exe_mod.g_scope.get('A') == 0
+    assert exe_mod.g_scope.get('B') == 5
+    assert exe_mod.g_scope.get('C') == 6
+    print("    B 引用前一常量 A：A=0 B=5 C=6 ✓")
+
+
+def test_m2_enum_variable():
+    print("  [M2] enum Color c; c = GREEN;")
+    exe_mod.setup_global_scope()
+    exe_mod.execute(_enum_def('Color', [('RED', None), ('GREEN', None)]))
+    et = g_types.lookup_tag('enum', 'Color')
+    # enum Color c; —— pycparser 用 Enum(name, values=None) 引用节点
+    decl = c_ast.Decl(
+        name='c', quals=[], align=None, storage=[], funcspec=[],
+        type=c_ast.TypeDecl(declname='c', quals=[], align=None,
+                            type=c_ast.Enum(name='Color', values=None)),
+        init=None, bitsize=None)
+    exe_mod.execute(decl)
+    assert exe_mod.g_scope.get_type('c') is et
+    assert exe_mod.g_scope.get('c') == 0
+    exe_mod.execute(c_ast.Assignment(op='=', lvalue=c_ast.ID(name='c'),
+                                     rvalue=c_ast.ID(name='GREEN')))
+    assert exe_mod.g_scope.get('c') == 1
+    print("    c 类型为 EnumType（引用节点经标签解析）；c = GREEN → 1 ✓")
+
+
+def test_m2_typedef_enum_anon():
+    print("  [M2] typedef enum {A, B} MyColor; MyColor c;")
+    exe_mod.setup_global_scope()
+    exe_mod.execute(c_ast.Typedef(name='MyColor', quals=[], storage=[],
+                                  type=_enum_def(None, [('A', None), ('B', None)])))
+    # 匿名 enum typedef：常量注入 + 别名指向带常量表的 EnumType
+    assert exe_mod.g_scope.get('A') == 0 and exe_mod.g_scope.get('B') == 1
+    et = g_types.resolve(['MyColor'])
+    assert isinstance(et, EnumType) and et.constants == {'A': 0, 'B': 1}
+    exe_mod.execute(_decl('c', ['MyColor']))
+    assert exe_mod.g_scope.get_type('c') is et
+    print("    常量注入 + 别名解析 + 变量类型同一 EnumType ✓")
+
+
+def test_m2_typedef_named_enum():
+    print("  [M2] typedef enum Color {RED, GREEN} MyColor;（标签 + 别名同体）")
+    exe_mod.setup_global_scope()
+    exe_mod.execute(c_ast.Typedef(name='MyColor', quals=[], storage=[],
+                                  type=_enum_def('Color', [('RED', None), ('GREEN', None)])))
+    assert g_types.lookup_tag('enum', 'Color') is g_types.resolve(['MyColor'])
+    et = g_types.lookup_tag('enum', 'Color')
+    assert et.constants == {'RED': 0, 'GREEN': 1}
+    assert exe_mod.g_scope.get('RED') == 0 and exe_mod.g_scope.get('GREEN') == 1
+    print("    tag('enum','Color') 与 alias('MyColor') 同一对象 ✓")
+
+
 # ==================== Main ====================
 
 def main():
@@ -400,8 +492,14 @@ def main():
     test_m1_typedef_anon_struct()
     test_m1_typedef_named_struct_tag()
     test_m1_struct_self_reference()
+    print("\n--- 6. M2 enum 类型注册 ---")
+    test_m2_enum_standalone()
+    test_m2_enum_reference_previous()
+    test_m2_enum_variable()
+    test_m2_typedef_enum_anon()
+    test_m2_typedef_named_enum()
     print("\n" + "=" * 60)
-    print("  M0 + M1 全部测试通过! ✅")
+    print("  M0 + M1 + M2 全部测试通过! ✅")
     print("=" * 60)
 
 

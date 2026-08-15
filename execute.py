@@ -6,6 +6,7 @@ Executes C AST nodes (standard + GNU C extensions) by dispatching
 to type-specific executor classes.
 """
 
+from pycparser import c_ast
 from pycparser.c_ast import (
     # Expressions
     Assignment, ID, BinaryOp, Constant,
@@ -869,17 +870,38 @@ class ExeUnion(Execute):
                     g_scope.declare(decl.name, 0)
 
 
+def _process_enum_node(node):
+    """枚举定义处理（M2）：计算常量表 → 注入当前作用域（带 IntType）→ 注册/更新类型标签。
+
+    node: c_ast.Enum（values 非空）
+    返回 EnumType。被 ExeEnum（独立枚举声明）与 ExeTypedef（typedef enum {...}）
+    共用，保证常量表与类型注册只走一条路径。
+    """
+    int_type = g_types.resolve(['int'])
+    constants = {}
+    next_value = 0
+    for e in node.values.enumerators or []:
+        # 显式值可为常量表达式，且可引用前面已注入的枚举常量（如 B = A + 1）
+        v = execute(e.value) if e.value is not None else next_value
+        constants[e.name] = v
+        g_scope.declare(e.name, v, int_type)
+        next_value = v + 1
+    if node.name and g_types.has_tag('enum', node.name):
+        et = g_types.lookup_tag('enum', node.name)
+        et.constants = constants          # 前置引用已注册：补全常量表
+    else:
+        et = EnumType(node.name, constants)
+        if node.name:
+            g_types.register_tag('enum', node.name, et)
+    return et
+
+
 class ExeEnum(Execute):
-    """Enum type definition."""
+    """Enum type definition (M2): 常量注入作用域（带 IntType）+ 注册枚举类型标签。"""
 
     def execute(self):
-        value = 0
-        if self.node.values is not None and isinstance(self.node.values, EnumeratorList):
-            for enumerator in self.node.values.enumerators or []:
-                if enumerator.value is not None:
-                    value = execute(enumerator.value)
-                g_scope.declare(enumerator.name, value)
-                value += 1
+        if self.node.values is not None:
+            _process_enum_node(self.node)
 
 
 class ExeEnumerator(Execute):
@@ -900,11 +922,17 @@ class ExeEnumeratorList(Execute):
 # ==================== Other Executors ====================
 
 class ExeTypedef(Execute):
-    """Typedef declaration (M1): 注册类型别名到 g_types，不产生运行时变量。"""
+    """Typedef declaration (M1+M2): 注册类型别名；typedef enum 同时注入枚举常量。"""
 
     def execute(self):
         name = self.node.name
         if not name:
+            return
+        # typedef enum {...} E; —— 枚举定义：常量注入 + 类型注册（C 语义），
+        # 先处理再取类型，确保别名指向带常量表的同一 EnumType
+        if isinstance(self.node.type, c_ast.Enum) and self.node.type.values is not None:
+            et = _process_enum_node(self.node.type)
+            g_types.register_typedef(name, et)
             return
         ctype = type_of_decl(self.node.type)
         g_types.register_typedef(name, ctype)
