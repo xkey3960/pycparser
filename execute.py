@@ -44,6 +44,23 @@ from pycparserext.ext_c_parser import (
     FuncDeclExt,
 )
 
+# C 类型系统基础设施（M0）
+from typesys import (
+    g_types,
+    CType,
+    BasicType,
+    PtrType,
+    ArrayType,
+    FuncType,
+    EnumType,
+    StructType,
+    UnionType,
+    Member,
+    align_up,
+    compute_struct_layout,
+    compute_union_layout,
+)
+
 
 # ==================== Runtime Support ====================
 
@@ -61,36 +78,64 @@ class ContinueException(Exception):
     """Raised to skip to the next loop iteration."""
 
 
+class Symbol:
+    """变量绑定：值 + 可选 C 类型（M0 起存储；类型系统就绪前 type 为 None）。
+
+    向后兼容：Scope.get/set 仍返回/写入纯值，既有执行器与测试不受影响。
+    """
+
+    __slots__ = ("name", "value", "type")
+
+    def __init__(self, name, value=None, type=None):
+        self.name = name
+        self.value = value
+        self.type = type
+
+    def __repr__(self):
+        return f"Symbol({self.name!r}, value={self.value!r}, type={self.type!r})"
+
+
 class Scope:
     """Variable scope with parent chaining for block scoping."""
 
     def __init__(self, parent=None):
         self._symbols = {}
         self._parent = parent
-    
+
     def __str__(self):
-        ret = str(self._symbols)
+        ret = str({k: s.value for k, s in self._symbols.items()})
         if self._parent:
             ret += str(self._parent)
         return ret
 
-    def get(self, name):
+    def _get(self, name):
         if name in self._symbols:
             return self._symbols[name]
         if self._parent:
-            return self._parent.get(name)
+            return self._parent._get(name)
         raise AssertionError(f"Undefined variable: '{name}'")
 
-    def set(self, name, value):
-        if name in self._symbols:
-            self._symbols[name] = value
-        elif self._parent:
-            self._parent.set(name, value)
-        else:
-            raise AssertionError(f"Undefined variable: '{name}'")
+    def get(self, name):
+        return self._get(name).value
 
-    def declare(self, name, value=None):
-        self._symbols[name] = value
+    def set(self, name, value):
+        self._get(name).value = value
+
+    def declare(self, name, value=None, type=None):
+        self._symbols[name] = Symbol(name, value, type)
+
+    # ---- M0 新增：类型相关 API ----
+
+    def get_symbol(self, name):
+        """返回 Symbol（含 value 与 type）。"""
+        return self._get(name)
+
+    def get_type(self, name):
+        """返回变量的 C 类型（CType | None）。"""
+        return self._get(name).type
+
+    def set_type(self, name, type):
+        self._get(name).type = type
 
 
 class Function:
