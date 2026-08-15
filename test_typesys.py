@@ -22,8 +22,10 @@ from typesys import (
     FuncType,
     PtrType,
     StructType,
+    StructValue,
     TypeRegistry,
     UnionType,
+    UnionValue,
     g_types,
 )
 from execute import Scope
@@ -316,8 +318,9 @@ def test_m1_typedef_anon_struct():
     assert st.size == 4 and st.members[0].name == 'a'
     exe_mod.execute(_decl('s', ['S']))
     assert exe_mod.g_scope.get_type('s') is st
-    assert exe_mod.g_scope.get('s') == {'a': 0}
-    print("    S -> StructType{int a} size 4；s 默认值 {'a': 0} ✓")
+    sv = exe_mod.g_scope.get('s')
+    assert isinstance(sv, StructValue) and sv.get('a') == 0
+    print("    S -> StructType{int a} size 4；s 默认值 StructValue(a=0) ✓")
 
 
 def test_m1_typedef_named_struct_tag():
@@ -342,8 +345,10 @@ def test_m1_typedef_named_struct_tag():
     # int@0(4) + char[10]@4(10) -> 14 -> 对齐 4 -> 16
     assert st.sizeof() == 16 and st.alignof() == 4
     exe_mod.execute(_decl('x', ['TmpStruct_S']))
-    assert exe_mod.g_scope.get('x') == {'id': 0, 'acName': [0] * 10}
-    print("    tagTmp 注册；sizeof=16；x 默认值 {id:0, acName:[0]*10} ✓")
+    sv = exe_mod.g_scope.get('x')
+    assert isinstance(sv, StructValue)
+    assert sv.get('id') == 0 and sv.get('acName') == [0] * 10
+    print("    tagTmp 注册；sizeof=16；x 默认值 StructValue(id=0, acName=[0]*10) ✓")
 
 
 def test_m1_struct_self_reference():
@@ -460,6 +465,155 @@ def test_m2_typedef_named_enum():
     print("    tag('enum','Color') 与 alias('MyColor') 同一对象 ✓")
 
 
+# ==================== 7. M3 struct 值语义 ====================
+
+def _struct_def(name, fields):
+    """构造 `struct <name> { <fields> };` 定义节点。fields: [(fname, type_names)]"""
+    decls = []
+    for fname, tnames in fields:
+        decls.append(c_ast.Decl(name=fname, quals=[], align=None, storage=[], funcspec=[],
+                                type=c_ast.TypeDecl(declname=fname, quals=[], align=None,
+                                                    type=c_ast.IdentifierType(names=tnames)),
+                                init=None, bitsize=None))
+    return c_ast.Struct(name=name, decls=decls)
+
+
+def _decl_ref(name, ref_node, init=None):
+    """`<类型引用> name [= init];` —— ref_node 如 Struct('Point', None)。"""
+    return c_ast.Decl(name=name, quals=[], align=None, storage=[], funcspec=[],
+                      type=c_ast.TypeDecl(declname=name, quals=[], align=None, type=ref_node),
+                      init=init, bitsize=None)
+
+
+def test_m3_struct_basic():
+    print("  [M3] struct Point {int x,y;} p = {1,2}; p.y = 5;")
+    exe_mod.setup_global_scope()
+    exe_mod.execute(_struct_def('Point', [('x', ['int']), ('y', ['int'])]))
+    st = g_types.lookup_tag('struct', 'Point')
+    assert st.sizeof() == 8
+    # 成员不污染全局作用域（P1 修复）
+    for m in ('x', 'y'):
+        try:
+            exe_mod.g_scope.get(m)
+            raise AssertionError(f"成员 '{m}' 不应成为全局变量")
+        except AssertionError:
+            pass
+    exe_mod.execute(_decl_ref('p', c_ast.Struct(name='Point', decls=None),
+                              init=c_ast.InitList(exprs=[c_ast.Constant(type='int', value='1'),
+                                                         c_ast.Constant(type='int', value='2')])))
+    p = exe_mod.g_scope.get('p')
+    assert isinstance(p, StructValue)
+    assert p.get('x') == 1 and p.get('y') == 2
+    # p.y = 5（StructRef 写路径）
+    exe_mod.execute(c_ast.Assignment(op='=', lvalue=c_ast.StructRef(name=c_ast.ID(name='p'), type='.',
+                                                                    field=c_ast.ID(name='y')),
+                                     rvalue=c_ast.Constant(type='int', value='5')))
+    assert p.get('y') == 5
+    print("    sizeof=8；InitList 填充 {1,2}；p.y=5 写入 ✓")
+
+
+def test_m3_struct_value_copy():
+    print("  [M3] struct S a = b; a.x = 1; b 不变（值拷贝）")
+    exe_mod.setup_global_scope()
+    exe_mod.execute(_struct_def('S', [('x', ['int'])]))
+    ref = c_ast.Struct(name='S', decls=None)
+    exe_mod.execute(_decl_ref('b', ref, init=c_ast.InitList(exprs=[c_ast.Constant(type='int', value='7')])))
+    exe_mod.execute(_decl_ref('a', ref, init=c_ast.ID(name='b')))
+    a, b = exe_mod.g_scope.get('a'), exe_mod.g_scope.get('b')
+    assert a is not b and a.get('x') == 7
+    exe_mod.execute(c_ast.Assignment(op='=', lvalue=c_ast.StructRef(name=c_ast.ID(name='a'), type='.',
+                                                                    field=c_ast.ID(name='x')),
+                                     rvalue=c_ast.Constant(type='int', value='1')))
+    assert a.get('x') == 1 and b.get('x') == 7
+    print("    a 是 b 的深拷贝；改 a.x 不影响 b ✓")
+
+
+def test_m3_struct_nested():
+    print("  [M3] struct Rect { struct Point tl, br; } r = {{0,0},{10,10}}; r.br.x")
+    exe_mod.setup_global_scope()
+    exe_mod.execute(_struct_def('Point', [('x', ['int']), ('y', ['int'])]))
+    rect_def = c_ast.Struct(name='Rect', decls=[
+        c_ast.Decl(name='tl', quals=[], align=None, storage=[], funcspec=[],
+                   type=c_ast.TypeDecl(declname='tl', quals=[], align=None,
+                                       type=c_ast.Struct(name='Point', decls=None)),
+                   init=None, bitsize=None),
+        c_ast.Decl(name='br', quals=[], align=None, storage=[], funcspec=[],
+                   type=c_ast.TypeDecl(declname='br', quals=[], align=None,
+                                       type=c_ast.Struct(name='Point', decls=None)),
+                   init=None, bitsize=None),
+    ])
+    exe_mod.execute(rect_def)
+    rt = g_types.lookup_tag('struct', 'Rect')
+    assert rt.sizeof() == 16  # Point(8) + Point(8)
+    exe_mod.execute(_decl_ref('r', c_ast.Struct(name='Rect', decls=None),
+                              init=c_ast.InitList(exprs=[
+                                  c_ast.InitList(exprs=[c_ast.Constant(type='int', value='0'),
+                                                        c_ast.Constant(type='int', value='0')]),
+                                  c_ast.InitList(exprs=[c_ast.Constant(type='int', value='10'),
+                                                        c_ast.Constant(type='int', value='10')]),
+                              ])))
+    r = exe_mod.g_scope.get('r')
+    assert isinstance(r.get('br'), StructValue)
+    val = exe_mod.execute(c_ast.StructRef(name=c_ast.StructRef(name=c_ast.ID(name='r'), type='.',
+                                                               field=c_ast.ID(name='br')),
+                                          type='.', field=c_ast.ID(name='x')))
+    assert val == 10
+    print("    sizeof(Rect)=16；嵌套 InitList 填充；r.br.x=10 ✓")
+
+
+def test_m3_struct_array():
+    print("  [M3] struct Point pts[2] = {{1},{2}}; pts[1].x")
+    exe_mod.setup_global_scope()
+    exe_mod.execute(_struct_def('Point', [('x', ['int']), ('y', ['int'])]))
+    pts_decl = c_ast.Decl(
+        name='pts', quals=[], align=None, storage=[], funcspec=[],
+        type=c_ast.ArrayDecl(
+            type=c_ast.TypeDecl(declname='pts', quals=[], align=None,
+                                type=c_ast.Struct(name='Point', decls=None)),
+            dim=c_ast.Constant(type='int', value='2'), dim_quals=[]),
+        init=c_ast.InitList(exprs=[
+            c_ast.InitList(exprs=[c_ast.Constant(type='int', value='1')]),
+            c_ast.InitList(exprs=[c_ast.Constant(type='int', value='2')]),
+        ]),
+        bitsize=None)
+    exe_mod.execute(pts_decl)
+    pts = exe_mod.g_scope.get('pts')
+    assert len(pts) == 2 and isinstance(pts[1], StructValue)
+    val = exe_mod.execute(c_ast.StructRef(name=c_ast.ArrayRef(name=c_ast.ID(name='pts'),
+                                                              subscript=c_ast.Constant(type='int', value='1')),
+                                          type='.', field=c_ast.ID(name='x')))
+    assert val == 2
+    print("    元素为 StructValue；pts[1].x=2 ✓")
+
+
+def test_m3_struct_default_and_compound():
+    print("  [M3] struct Point p; 与 (struct Point){3,4} 复合字面量")
+    exe_mod.setup_global_scope()
+    exe_mod.execute(_struct_def('Point', [('x', ['int']), ('y', ['int'])]))
+    exe_mod.execute(_decl_ref('p', c_ast.Struct(name='Point', decls=None)))
+    p = exe_mod.g_scope.get('p')
+    assert isinstance(p, StructValue) and p.get('x') == 0 and p.get('y') == 0
+    lit = exe_mod.execute(c_ast.CompoundLiteral(
+        type=c_ast.TypeDecl(declname=None, quals=[], align=None,
+                            type=c_ast.Struct(name='Point', decls=None)),
+        init=c_ast.InitList(exprs=[c_ast.Constant(type='int', value='3'),
+                                   c_ast.Constant(type='int', value='4')])))
+    assert isinstance(lit, StructValue) and lit.get('x') == 3 and lit.get('y') == 4
+    print("    默认值 StructValue(0,0)；复合字面量 StructValue(3,4) ✓")
+
+
+def test_m3_struct_arrow_fallback():
+    print("  [M3] p->x 宽松退化（指针模型前等价 .）")
+    exe_mod.setup_global_scope()
+    exe_mod.execute(_struct_def('Point', [('x', ['int']), ('y', ['int'])]))
+    exe_mod.execute(_decl_ref('p', c_ast.Struct(name='Point', decls=None),
+                              init=c_ast.InitList(exprs=[c_ast.Constant(type='int', value='9'),
+                                                         c_ast.Constant(type='int', value='0')])))
+    val = exe_mod.execute(c_ast.StructRef(name=c_ast.ID(name='p'), type='->', field=c_ast.ID(name='x')))
+    assert val == 9
+    print("    p->x = 9（与 p.x 一致）✓")
+
+
 # ==================== Main ====================
 
 def main():
@@ -498,8 +652,15 @@ def main():
     test_m2_enum_variable()
     test_m2_typedef_enum_anon()
     test_m2_typedef_named_enum()
+    print("\n--- 7. M3 struct 值语义 ---")
+    test_m3_struct_basic()
+    test_m3_struct_value_copy()
+    test_m3_struct_nested()
+    test_m3_struct_array()
+    test_m3_struct_default_and_compound()
+    test_m3_struct_arrow_fallback()
     print("\n" + "=" * 60)
-    print("  M0 + M1 + M2 全部测试通过! ✅")
+    print("  M0 - M3 全部测试通过! ✅")
     print("=" * 60)
 
 

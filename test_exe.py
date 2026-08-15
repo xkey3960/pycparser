@@ -29,5 +29,6 @@ ast = parse_file(
 from execute import execute, g_scope 
 
 ast.ext.append(c_ast.FuncCall(name=c_ast.ID(name='main'),args=None))
-execute(ast)
+result = execute(ast)
+print(f"main() = {result}")
 print(g_scope)

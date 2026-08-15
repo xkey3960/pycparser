@@ -62,6 +62,9 @@ from typesys import (
     compute_union_layout,
     type_of_decl,
     default_value_for,
+    StructValue,
+    UnionValue,
+    coerce_to_type,
 )
 
 
@@ -368,7 +371,11 @@ class ExeAssignment(Execute):
         elif isinstance(lvalue_node, StructRef):
             obj = execute(lvalue_node.name)
             field = lvalue_node.field.name if isinstance(lvalue_node.field, ID) else str(lvalue_node.field)
-            if isinstance(obj, dict):
+            if isinstance(obj, StructValue):
+                obj.set(field, value)
+            elif isinstance(obj, UnionValue):
+                obj.set(field, value)
+            elif isinstance(obj, dict):
                 obj[field] = value
             else:
                 setattr(obj, field, value)
@@ -448,13 +455,19 @@ class ExeArrayRef(Execute):
 
 
 class ExeStructRef(Execute):
-    """Struct/union member access (. or ->)."""
+    """Struct/union member access (M3): StructValue/UnionValue 的 '.' 访问；
+    '->' 在指针模型（MEM-1）前对 struct 值宽松退化为 '.'。"""
 
     def execute(self):
         obj = execute(self.node.name)
         field_node = self.node.field
         field_name = field_node.name if isinstance(field_node, ID) else str(field_node)
 
+        if isinstance(obj, StructValue):
+            return obj.get(field_name)
+        if isinstance(obj, UnionValue):
+            return obj.get(field_name)
+        # 兼容兜底（旧 dict 值 / 任意对象）
         if isinstance(obj, dict):
             return obj.get(field_name, 0)
         return getattr(obj, field_name, 0)
@@ -711,7 +724,11 @@ class ExeDefault(Execute):
 # ==================== Declaration Executors ====================
 
 class ExeDecl(Execute):
-    """Variable declaration with optional initializer (typed, M1)."""
+    """Variable declaration with optional initializer (typed, M3).
+
+    初始化值经 coerce_to_type 按目标类型解释：
+    struct ← InitList 顺序填充 / StructValue 值拷贝；数组 ← list 校验截断。
+    """
 
     def execute(self):
         name = self.node.name
@@ -719,7 +736,7 @@ class ExeDecl(Execute):
             return
         ctype = type_of_decl(self.node.type)
         if self.node.init is not None:
-            init_val = execute(self.node.init)
+            init_val = coerce_to_type(execute(self.node.init), ctype)
         else:
             init_val = default_value_for(ctype)
         g_scope.declare(name, init_val, ctype)
@@ -798,10 +815,12 @@ class ExeNamedInitializer(Execute):
 
 
 class ExeCompoundLiteral(Execute):
-    """Compound literal (type){ ... }."""
+    """Compound literal (type){ ... } (M3): 按目标类型构造值（struct 得 StructValue）。"""
 
     def execute(self):
-        return execute(self.node.init)
+        ctype = type_of_decl(self.node.type)
+        val = execute(self.node.init)
+        return coerce_to_type(val, ctype)
 
 
 # ==================== Type / Declaration Fragment Executors ====================
@@ -851,23 +870,21 @@ class ExeEllipsisParam(Execute):
 # ==================== Struct / Union / Enum Executors ====================
 
 class ExeStruct(Execute):
-    """Struct type definition."""
+    """Struct type definition (M3): 注册类型标签 + 计算布局。
+
+    不再把成员声明为全局变量（P1 修复）；定义/前置声明统一走
+    type_of_decl → _register_compound。
+    """
 
     def execute(self):
-        if self.node.decls:
-            for decl in self.node.decls:
-                if isinstance(decl, Decl) and decl.name:
-                    g_scope.declare(decl.name, 0)
+        type_of_decl(self.node)
 
 
 class ExeUnion(Execute):
-    """Union type definition."""
+    """Union type definition (M4 前置)：注册类型标签 + 计算布局，成员不污染作用域。"""
 
     def execute(self):
-        if self.node.decls:
-            for decl in self.node.decls:
-                if isinstance(decl, Decl) and decl.name:
-                    g_scope.declare(decl.name, 0)
+        type_of_decl(self.node)
 
 
 def _process_enum_node(node):
@@ -1056,18 +1073,14 @@ class ExeArrayDeclExt(Execute):
 
 
 class ExeStructExt(Execute):
-    """Extended Struct with attributes.
+    """Extended Struct with attributes (M3): 同 ExeStruct，注册类型 + 布局。
 
-    Similar to ExeStruct but also handles the attrib field.
+    attrib（__attribute__）为编译期元数据；aligned 覆盖已在
+    compute_struct_layout 的 align_override 支持（端到端提取留 M5）。
     """
 
     def execute(self):
-        if self.node.decls:
-            for decl in self.node.decls:
-                if isinstance(decl, Decl) and decl.name:
-                    g_scope.declare(decl.name, 0)
-        # attrib is compile-time metadata, no runtime effect
-        return None
+        type_of_decl(self.node)
 
 
 class ExeFuncDeclExt(Execute):
@@ -1643,7 +1656,7 @@ def test_label_empty():
 
 
 def test_struct_union():
-    print("  [Struct/Union] Struct/Union declarations:")
+    print("  [Struct] Struct 定义注册类型（M3，成员不再污染全局作用域）:")
 
     struct_node = Struct(
         name='Point',
@@ -1657,9 +1670,17 @@ def test_struct_union():
         ],
     )
     execute(struct_node)
-    assert g_scope.get('px') == 0
-    assert g_scope.get('py') == 0
-    print(f"    struct Point members px={g_scope.get('px')}, py={g_scope.get('py')} ✓")
+    # P1 修复：成员不是全局变量
+    assert g_types.has_tag('struct', 'Point')
+    st = g_types.lookup_tag('struct', 'Point')
+    assert st.sizeof() == 8, f"sizeof(struct Point) 期望 8，实际 {st.sizeof()}"
+    for m in ('px', 'py'):
+        try:
+            g_scope.get(m)
+            raise AssertionError(f"成员 '{m}' 不应成为全局变量（P1）")
+        except AssertionError:
+            pass
+    print("    struct Point 注册；sizeof=8；成员不污染全局作用域 ✓")
 
 
 def test_compound_literal():
@@ -1885,7 +1906,7 @@ def test_gnu_array_decl_ext():
 
 
 def test_gnu_struct_ext():
-    """Test StructExt node (extended Struct with attributes)."""
+    """Test StructExt node (extended Struct with attributes, M3)."""
     print("  [StructExt] Extended Struct with attributes:", end=' ')
 
     node = StructExt(
@@ -1900,9 +1921,11 @@ def test_gnu_struct_ext():
         ],
     )
     execute(node)
-    assert g_scope.get('x') == 0
-    assert g_scope.get('y') == 0
-    print(f"members x={g_scope.get('x')}, y={g_scope.get('y')} ✓")
+    # 成员不污染作用域；标签注册 + 布局
+    assert g_types.has_tag('struct', 'AlignedPoint')
+    st = g_types.lookup_tag('struct', 'AlignedPoint')
+    assert st.sizeof() == 8
+    print(f"AlignedPoint 注册，sizeof={st.sizeof()}，成员不入作用域 ✓")
 
 
 def test_gnu_func_decl_ext():

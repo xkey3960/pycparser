@@ -428,9 +428,9 @@ def _enum_from_node(node):
 
 
 def default_value_for(ctype):
-    """按 CType 生成默认值（设计文档 §2.7.4 的 default_value 简化版）。
+    """按 CType 生成默认值（设计文档 §2.7.4 的 default_value）。
 
-    M1 范围：标量 / 枚举 / 指针 / 数组 / 结构体（dict 占位，M3 换 StructValue）。
+    M3 范围：标量 / 枚举 / 指针 / 数组 / 结构体（StructValue）/ 联合体（UnionValue）。
     """
     if isinstance(ctype, EnumType):
         return 0
@@ -439,8 +439,10 @@ def default_value_for(ctype):
     if isinstance(ctype, ArrayType):
         n = ctype.count or 0
         return [default_value_for(ctype.elem_type) for _ in range(n)]
-    if isinstance(ctype, (StructType, UnionType)):
-        return {m.name: default_value_for(m.type) for m in ctype.members}
+    if isinstance(ctype, StructType):
+        return StructValue(ctype)
+    if isinstance(ctype, UnionType):
+        return UnionValue(ctype)
     if isinstance(ctype, BasicType):
         name = ctype.name
         if "float" in name or "double" in name:
@@ -449,3 +451,136 @@ def default_value_for(ctype):
             return False
         return 0
     return 0
+
+
+# ==================== 结构体/联合体值对象（M3） ====================
+
+
+class StructValue:
+    """struct 实例（值语义）：携带类型 + 字段值表。
+
+    - 值拷贝：copy() 深拷贝（memcpy 语义），赋值不共享；
+    - 成员访问：get/set 校验成员名（未知成员报错）；
+    - 与 dict 区分：是"struct 实例"而非普通映射。
+    """
+
+    __slots__ = ("type", "fields")
+
+    def __init__(self, type):
+        self.type = type
+        self.fields = {}
+        for m in type.members or []:
+            self.fields[m.name] = default_value_for(m.type)
+
+    def get(self, name):
+        if name not in self.fields:
+            raise AssertionError(f"struct {self.type.name} 无成员 '{name}'")
+        return self.fields[name]
+
+    def set(self, name, value):
+        if name not in self.fields:
+            raise AssertionError(f"struct {self.type.name} 无成员 '{name}'")
+        self.fields[name] = value
+
+    def copy(self):
+        new = StructValue(self.type)
+        for k, v in self.fields.items():
+            new.fields[k] = deep_copy_value(v)
+        return new
+
+    def __repr__(self):
+        return f"<struct {self.type.name} {self.fields}>"
+
+
+class UnionValue:
+    """union 实例（活跃成员模型）：只记录已写入的成员值。
+
+    读未写入成员返回其默认值（宽松）；逐字节 reinterpret 语义依赖
+    内存模型（MEM-1），留待 M5。
+    """
+
+    __slots__ = ("type", "fields")
+
+    def __init__(self, type):
+        self.type = type
+        self.fields = {}
+        for m in type.members or []:
+            self.fields[m.name] = default_value_for(m.type)
+
+    def get(self, name):
+        if name not in self.fields:
+            raise AssertionError(f"union {self.type.name} 无成员 '{name}'")
+        return self.fields[name]
+
+    def set(self, name, value):
+        if name not in self.fields:
+            raise AssertionError(f"union {self.type.name} 无成员 '{name}'")
+        self.fields[name] = value
+
+    def copy(self):
+        new = UnionValue(self.type)
+        for k, v in self.fields.items():
+            new.fields[k] = deep_copy_value(v)
+        return new
+
+    def __repr__(self):
+        return f"<union {self.type.name} {self.fields}>"
+
+
+def deep_copy_value(v):
+    """递归深拷贝（struct/union/数组/标量）。"""
+    if isinstance(v, (StructValue, UnionValue)):
+        return v.copy()
+    if isinstance(v, list):
+        return [deep_copy_value(x) for x in v]
+    if isinstance(v, dict):
+        return {k: deep_copy_value(x) for k, x in v.items()}
+    return v
+
+
+def coerce_to_type(value, ctype):
+    """把初始化值转换为目标类型（设计文档 §2.7.4 的 coerce_to_type）。
+
+    - StructType：StructValue → copy（值拷贝）；list（InitList）→ 按成员顺序填充；
+      dict → 按名填充；其他 → 全默认
+    - UnionType：同上（活跃成员模型）
+    - ArrayType：list → 校验/截断到维度 + 元素递归转换；其他 → 元素默认值列表
+    - 标量/枚举/指针：原样返回（隐式类型转换在 M5 / TYPE-2）
+    """
+    if isinstance(ctype, StructType):
+        if isinstance(value, StructValue):
+            return value.copy()
+        sv = StructValue(ctype)
+        if isinstance(value, list):
+            for i, m in enumerate(ctype.members):
+                if i < len(value):
+                    sv.set(m.name, coerce_to_type(value[i], m.type))
+        elif isinstance(value, dict):
+            for k, v in value.items():
+                if k in sv.fields:
+                    sv.set(k, coerce_to_type(v, ctype.member_type(k)))
+        return sv
+    if isinstance(ctype, UnionType):
+        if isinstance(value, UnionValue):
+            return value.copy()
+        uv = UnionValue(ctype)
+        if isinstance(value, list):
+            for i, m in enumerate(ctype.members):
+                if i < len(value):
+                    uv.set(m.name, coerce_to_type(value[i], m.type))
+        elif isinstance(value, dict):
+            for k, v in value.items():
+                if k in uv.fields:
+                    uv.set(k, coerce_to_type(v, ctype.member_type(k)))
+        return uv
+    if isinstance(ctype, ArrayType):
+        if isinstance(value, list):
+            n = ctype.count
+            if n is not None:
+                elems = [coerce_to_type(v, ctype.elem_type) for v in value[:n]]
+                elems += [default_value_for(ctype.elem_type)
+                          for _ in range(max(0, n - len(elems)))]
+                return elems
+            return [coerce_to_type(v, ctype.elem_type) for v in value]
+        return [default_value_for(ctype.elem_type)] * (ctype.count or 0)
+    return value
