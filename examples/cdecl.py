@@ -34,13 +34,12 @@
 # -----------------------------------------------------------------
 import copy
 import sys
-from typing import Optional
 
 # This is not required if you've installed pycparser into
 # your site-packages/ with setup.py
 sys.path.extend([".", ".."])
 
-from pycparser import c_parser, c_ast
+from pycparser import c_ast, c_parser
 
 
 def explain_c_declaration(
@@ -73,7 +72,7 @@ def explain_c_declaration(
             expand_struct=expand_struct,
             expand_typedef=expand_typedef,
         )
-    except Exception as e:
+    except RuntimeError as e:
         return "Not a valid declaration: " + str(e)
 
     return _explain_decl_node(expanded)
@@ -174,16 +173,19 @@ def _expand_in_place(
     return decl
 
 
-def _find_struct(name: str, file_ast: c_ast.FileAST) -> Optional[c_ast.Struct]:
+def _find_struct(name: str, file_ast: c_ast.FileAST) -> c_ast.Struct | None:
     """Receives a struct name and return declared struct object in file_ast"""
     for node in file_ast.ext:
-        if isinstance(node, c_ast.Decl) and isinstance(node.type, c_ast.Struct):
-            if node.type.name == name:
-                return node.type
+        if (
+            isinstance(node, c_ast.Decl)
+            and isinstance(node.type, c_ast.Struct)
+            and node.type.name == name
+        ):
+            return node.type
     return None
 
 
-def _find_typedef(name: str, file_ast: c_ast.FileAST) -> Optional[c_ast.Typedef]:
+def _find_typedef(name: str, file_ast: c_ast.FileAST) -> c_ast.Typedef | None:
     """Receives a type name and return typedef object in file_ast"""
     for node in file_ast.ext:
         if isinstance(node, c_ast.Typedef) and node.name == name:

@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 
 import os
-import io
 import unittest
+
 from pycparser import c_parser
 from pycparser.c_ast import *
 
@@ -2956,6 +2956,15 @@ class TestCParser_fundamentals(TestCParser_base):
         )
 
 
+class TestUnmatchedRbrace(unittest.TestCase):
+    """Regression for #603: unmatched '}' raises ParseError, not AssertionError."""
+
+    def test_unmatched_rbrace_raises_parse_error(self):
+        parser = c_parser.CParser()
+        with self.assertRaises(ParseError):
+            parser.parse("}", filename="test.c")
+
+
 class TestCParser_whole_code(TestCParser_base):
     """Testing of parsing whole chunks of code.
 
@@ -3295,7 +3304,7 @@ class TestCParser_whole_code(TestCParser_base):
         testdir = os.path.dirname(__file__)
         name = os.path.join(testdir, "c_files", name)
         assert os.path.exists(name)
-        return io.open(name)
+        return open(name)
 
     def test_whole_file(self):
         # See how pycparser handles a whole, real C file.
@@ -3778,8 +3787,4 @@ class TestCParser_typenames(TestCParser_base):
 
 
 if __name__ == "__main__":
-    # ~ suite = unittest.TestLoader().loadTestsFromNames(
-    # ~ ['test_c_parser.TestCParser_fundamentals.test_typedef'])
-
-    # ~ unittest.TextTestRunner(verbosity=2).run(suite)
     unittest.main()
