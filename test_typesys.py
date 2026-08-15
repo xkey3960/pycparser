@@ -236,11 +236,143 @@ def test_scope_undefined():
         print("    get/set_type 未定义变量 -> AssertionError ✓")
 
 
+# ==================== 5. M1 typedef 别名解析（端到端执行） ====================
+
+import execute as exe_mod
+from pycparser import c_ast
+
+
+def _decl(name, type_names, init=None):
+    """构造 `类型名 name [= init];` 的 Decl AST。"""
+    return c_ast.Decl(
+        name=name, quals=[], align=None, storage=[], funcspec=[],
+        type=c_ast.TypeDecl(declname=name, quals=[], align=None,
+                            type=c_ast.IdentifierType(names=type_names)),
+        init=init, bitsize=None)
+
+
+def _typedef(name, type_node):
+    """构造 `typedef <type_node> name;` 的 Typedef AST。"""
+    return c_ast.Typedef(name=name, quals=[], storage=[], type=type_node)
+
+
+def test_m1_typedef_scalar():
+    print("  [M1] typedef int MyInt; MyInt x = 5;")
+    exe_mod.setup_global_scope()
+    exe_mod.execute(_typedef('MyInt', c_ast.IdentifierType(names=['int'])))
+    exe_mod.execute(_decl('x', ['MyInt'], c_ast.Constant(type='int', value='5')))
+    assert exe_mod.g_scope.get('x') == 5
+    assert exe_mod.g_scope.get_type('x') is g_types.resolve(['int'])
+    print("    x=5，get_type(x) is IntType ✓")
+
+
+def test_m1_typedef_chain():
+    print("  [M1] typedef MyInt MyInt2; MyInt2 y;（链式）")
+    exe_mod.setup_global_scope()
+    exe_mod.execute(_typedef('MyInt', c_ast.IdentifierType(names=['int'])))
+    exe_mod.execute(_typedef('MyInt2', c_ast.IdentifierType(names=['MyInt'])))
+    exe_mod.execute(_decl('y', ['MyInt2']))
+    assert exe_mod.g_scope.get('y') == 0
+    assert exe_mod.g_scope.get_type('y') is g_types.resolve(['int'])
+    print("    MyInt2 -> MyInt -> int 同一类型对象 ✓")
+
+
+def test_m1_typedef_no_runtime_var():
+    print("  [M1] typedef 不产生运行时变量:")
+    exe_mod.setup_global_scope()
+    exe_mod.execute(_typedef('MyInt', c_ast.IdentifierType(names=['int'])))
+    try:
+        exe_mod.g_scope.get('MyInt')
+        assert False, "typedef 名不应是运行时变量"
+    except AssertionError:
+        pass
+    assert g_types.resolve(['MyInt']) is g_types.resolve(['int'])
+    print("    MyInt 仅在类型注册表（aliases）中 ✓")
+
+
+def test_m1_undefined_type_error():
+    print("  [M1] 未知类型报错:")
+    exe_mod.setup_global_scope()
+    try:
+        exe_mod.execute(_decl('z', ['NoSuchType']))
+        assert False, "应抛未定义类型"
+    except AssertionError as e:
+        assert '未定义类型' in str(e)
+        print(f"    {e} ✓")
+
+
+def test_m1_typedef_anon_struct():
+    print("  [M1] typedef struct {int a;} S; S s;（内联匿名 struct）")
+    exe_mod.setup_global_scope()
+    struct_node = c_ast.Struct(name=None, decls=[
+        c_ast.Decl(name='a', quals=[], align=None, storage=[], funcspec=[],
+                   type=c_ast.TypeDecl(declname='a', quals=[], align=None,
+                                       type=c_ast.IdentifierType(names=['int'])),
+                   init=None, bitsize=None),
+    ])
+    exe_mod.execute(_typedef('S', struct_node))
+    st = g_types.resolve(['S'])
+    assert isinstance(st, StructType) and st.is_complete()
+    assert st.size == 4 and st.members[0].name == 'a'
+    exe_mod.execute(_decl('s', ['S']))
+    assert exe_mod.g_scope.get_type('s') is st
+    assert exe_mod.g_scope.get('s') == {'a': 0}
+    print("    S -> StructType{int a} size 4；s 默认值 {'a': 0} ✓")
+
+
+def test_m1_typedef_named_struct_tag():
+    print("  [M1] typedef struct tagTmp{...} TmpStruct_S;（命名标签 + 数组成员）")
+    exe_mod.setup_global_scope()
+    struct_node = c_ast.Struct(name='tagTmp', decls=[
+        c_ast.Decl(name='id', quals=[], align=None, storage=[], funcspec=[],
+                   type=c_ast.TypeDecl(declname='id', quals=[], align=None,
+                                       type=c_ast.IdentifierType(names=['int'])),
+                   init=None, bitsize=None),
+        c_ast.Decl(name='acName', quals=[], align=None, storage=[], funcspec=[],
+                   type=c_ast.ArrayDecl(
+                       type=c_ast.TypeDecl(declname='acName', quals=[], align=None,
+                                           type=c_ast.IdentifierType(names=['char'])),
+                       dim=c_ast.Constant(type='int', value='10'), dim_quals=[]),
+                   init=None, bitsize=None),
+    ])
+    exe_mod.execute(_typedef('TmpStruct_S', struct_node))
+    assert g_types.has_tag('struct', 'tagTmp')
+    assert g_types.resolve(['TmpStruct_S']) is g_types.lookup_tag('struct', 'tagTmp')
+    st = g_types.resolve(['TmpStruct_S'])
+    # int@0(4) + char[10]@4(10) -> 14 -> 对齐 4 -> 16
+    assert st.sizeof() == 16 and st.alignof() == 4
+    exe_mod.execute(_decl('x', ['TmpStruct_S']))
+    assert exe_mod.g_scope.get('x') == {'id': 0, 'acName': [0] * 10}
+    print("    tagTmp 注册；sizeof=16；x 默认值 {id:0, acName:[0]*10} ✓")
+
+
+def test_m1_struct_self_reference():
+    print("  [M1] struct Node {int v; struct Node *next;}（自引用）")
+    exe_mod.setup_global_scope()
+    struct_node = c_ast.Struct(name='Node', decls=[
+        c_ast.Decl(name='v', quals=[], align=None, storage=[], funcspec=[],
+                   type=c_ast.TypeDecl(declname='v', quals=[], align=None,
+                                       type=c_ast.IdentifierType(names=['int'])),
+                   init=None, bitsize=None),
+        c_ast.Decl(name='next', quals=[], align=None, storage=[], funcspec=[],
+                   type=c_ast.PtrDecl(quals=[], type=c_ast.Struct(name='Node', decls=None)),
+                   init=None, bitsize=None),
+    ])
+    exe_mod.execute(_typedef('Node', struct_node))
+    st = g_types.resolve(['Node'])
+    assert st.is_complete()
+    # int@0(4) + ptr@8(8) -> 16, align 8
+    assert st.sizeof() == 16 and st.alignof() == 8
+    next_t = st.member_type('next')
+    assert isinstance(next_t, PtrType) and next_t.points_to is st
+    print("    先注册不完整类型再算成员：next 指向自身 ✓")
+
+
 # ==================== Main ====================
 
 def main():
     print("=" * 60)
-    print("  typesys.py — M0 类型基础设施测试")
+    print("  typesys.py — M0/M1 类型系统测试")
     print("=" * 60)
     print("\n--- 1. CType 层次 ---")
     test_builtin_sizes()
@@ -260,8 +392,16 @@ def main():
     test_scope_parent_chain()
     test_scope_str()
     test_scope_undefined()
+    print("\n--- 5. M1 typedef 别名解析 ---")
+    test_m1_typedef_scalar()
+    test_m1_typedef_chain()
+    test_m1_typedef_no_runtime_var()
+    test_m1_undefined_type_error()
+    test_m1_typedef_anon_struct()
+    test_m1_typedef_named_struct_tag()
+    test_m1_struct_self_reference()
     print("\n" + "=" * 60)
-    print("  M0 全部测试通过! ✅")
+    print("  M0 + M1 全部测试通过! ✅")
     print("=" * 60)
 
 

@@ -44,7 +44,7 @@ from pycparserext.ext_c_parser import (
     FuncDeclExt,
 )
 
-# C 类型系统基础设施（M0）
+# C 类型系统基础设施（M0）+ 声明类型解析（M1）
 from typesys import (
     g_types,
     CType,
@@ -59,6 +59,8 @@ from typesys import (
     align_up,
     compute_struct_layout,
     compute_union_layout,
+    type_of_decl,
+    default_value_for,
 )
 
 
@@ -708,46 +710,18 @@ class ExeDefault(Execute):
 # ==================== Declaration Executors ====================
 
 class ExeDecl(Execute):
-    """Variable declaration with optional initializer."""
-
-    @staticmethod
-    def _extract_type_names(type_node):
-        if type_node is None:
-            return ['int']
-        if isinstance(type_node, IdentifierType):
-            return type_node.names
-        if isinstance(type_node, (TypeDecl, TypeDeclExt)):
-            return ExeDecl._extract_type_names(type_node.type)
-        if isinstance(type_node, (ArrayDecl, ArrayDeclExt)):
-            return ExeDecl._extract_type_names(type_node.type) + ['[]']
-        if isinstance(type_node, PtrDecl):
-            return ExeDecl._extract_type_names(type_node.type) + ['*']
-        if isinstance(type_node, (FuncDecl, FuncDeclExt)):
-            return ExeDecl._extract_type_names(type_node.type) + ['()']
-        return ['int']
-
-    def _default_value(self, type_node):
-        names = self._extract_type_names(type_node)
-        type_str = ' '.join(n.lower() for n in names)
-        if 'float' in type_str or 'double' in type_str:
-            return 0.0
-        if '_Bool' in type_str or 'bool' in type_str:
-            return False
-        if 'char' in type_str:
-            return 0
-        return 0
+    """Variable declaration with optional initializer (typed, M1)."""
 
     def execute(self):
         name = self.node.name
         if name is None:
             return
-
+        ctype = type_of_decl(self.node.type)
         if self.node.init is not None:
             init_val = execute(self.node.init)
         else:
-            init_val = self._default_value(self.node.type)
-
-        g_scope.declare(name, init_val)
+            init_val = default_value_for(ctype)
+        g_scope.declare(name, init_val, ctype)
 
 
 class ExeDeclList(Execute):
@@ -926,11 +900,14 @@ class ExeEnumeratorList(Execute):
 # ==================== Other Executors ====================
 
 class ExeTypedef(Execute):
-    """Typedef declaration."""
+    """Typedef declaration (M1): 注册类型别名到 g_types，不产生运行时变量。"""
+
     def execute(self):
         name = self.node.name
-        if name:
-            g_scope.declare(name, None)
+        if not name:
+            return
+        ctype = type_of_decl(self.node.type)
+        g_types.register_typedef(name, ctype)
 
 
 class ExeTypename(Execute):

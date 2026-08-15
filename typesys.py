@@ -264,7 +264,12 @@ class TypeRegistry:
         self.aliases[name] = ctype
 
     def resolve_typedef(self, name, seen=None):
-        """链式解析 typedef 别名，返回叶子目标类型；检测循环（A->B->A 报错）。"""
+        """链式解析 typedef 别名，返回叶子目标类型；检测循环（A->B->A 报错）。
+
+        注意：`typedef struct Node Node;` 这类"别名与目标类型同名"是合法 C
+        （别名 Node -> struct Node），此时 t.name == name，直接返回 t，
+        不算循环。
+        """
         seen = seen or set()
         if name in seen:
             raise AssertionError(f"typedef 循环: {' -> '.join(list(seen) + [name])}")
@@ -272,7 +277,7 @@ class TypeRegistry:
         t = self.aliases.get(name)
         if t is None:
             return self.builtins.get(name)  # 叶子：内建类型（或 None=未定义）
-        if t.name in self.aliases or t.name in self.builtins:
+        if t.name != name and (t.name in self.aliases or t.name in self.builtins):
             return self.resolve_typedef(t.name, seen)  # 别名指向别名，继续解析
         return t
 
@@ -330,3 +335,117 @@ def build_default_registry():
 
 # 全局默认注册表（execute.py 及执行器共用）
 g_types = build_default_registry()
+
+# ==================== AST → CType（声明类型解析，M1） ====================
+
+from pycparser import c_ast
+from pycparserext.ext_c_parser import FuncDeclExt
+
+
+def type_of_decl(t):
+    """把声明类型 AST 节点解析为 CType（设计文档 §2.9.1）。
+
+    t: pycparser 类型节点（Decl.type / Typedef.type / Cast.to_type 等）。
+    支持：TypeDecl（含 TypeDeclExt）、PtrDecl、ArrayDecl（含 ArrayDeclExt）、
+    FuncDecl（含 FuncDeclExt）、IdentifierType（typedef 链/内建/标签）、
+    内联 Struct/Union/Enum 定义或引用。
+    """
+    if t is None:
+        return g_types.resolve(["int"])  # 兼容现状：缺省 int
+    if isinstance(t, c_ast.TypeDecl):            # 含 TypeDeclExt
+        return type_of_decl(t.type)
+    if isinstance(t, c_ast.PtrDecl):
+        return PtrType(type_of_decl(t.type))
+    if isinstance(t, c_ast.ArrayDecl):           # 含 ArrayDeclExt
+        dim = None
+        if t.dim is not None and isinstance(t.dim, c_ast.Constant):
+            dim = int(t.dim.value)
+        # 非常量维度：常量折叠（TYPE-3）落地前按不完整数组处理
+        return ArrayType(type_of_decl(t.type), dim)
+    if isinstance(t, (c_ast.FuncDecl, FuncDeclExt)):
+        param_types, variadic = [], False
+        args = getattr(t, "args", None)
+        if args is not None and isinstance(args, c_ast.ParamList):
+            for p in args.params:
+                if isinstance(p, c_ast.Decl):
+                    param_types.append(type_of_decl(p.type))
+                elif isinstance(p, c_ast.EllipsisParam):
+                    variadic = True
+        return FuncType(type_of_decl(t.type), param_types, variadic)
+    if isinstance(t, c_ast.IdentifierType):
+        return g_types.resolve(t.names)
+    if isinstance(t, (c_ast.Struct, c_ast.Union, c_ast.Enum)):  # 含 StructExt
+        return _register_compound(t)
+    raise AssertionError(f"无法解析类型节点: {type(t).__name__}")
+
+
+def _register_compound(node):
+    """处理内联 Struct/Union/Enum 定义/引用（命名则注册标签，定义则计算布局）。
+
+    三种形态：
+      - 定义（decls 非空）：注册标签（若命名）+ 计算成员布局（M1 提前启用）
+      - 引用 / 前置声明（decls 为 None）：注册不完整类型
+      - 匿名定义（name 为 None）：仅作为类型返回，不注册
+    自引用（struct Node { struct Node *next; }）通过"先注册不完整类型再算成员"解决。
+    """
+    if isinstance(node, c_ast.Enum):
+        return _enum_from_node(node)
+    if isinstance(node, c_ast.Union):
+        kind, compute, ctor = "union", compute_union_layout, UnionType
+    else:                                        # Struct / StructExt
+        kind, compute, ctor = "struct", compute_struct_layout, StructType
+
+    name = node.name
+    if name and g_types.has_tag(kind, name):
+        st = g_types.lookup_tag(kind, name)
+        if st.is_complete():
+            return st                           # 已定义（重定义宽松返回）
+    else:
+        st = ctor(name, incomplete=True)
+        if name:
+            g_types.register_tag(kind, name, st)
+
+    if node.decls is None:
+        return st                               # 引用 / 前置声明
+
+    members = []
+    for d in node.decls or []:
+        if isinstance(d, c_ast.Decl) and d.name:
+            members.append((d.name, type_of_decl(d.type), d.bitsize))
+    layout, size, align = compute(members)
+    st.finalize(layout, size, align)
+    return st
+
+
+def _enum_from_node(node):
+    """内联枚举：注册标签 + 返回 EnumType（枚举常量值由 ExeEnum 在 M2 注入）。"""
+    if node.name and g_types.has_tag("enum", node.name):
+        return g_types.lookup_tag("enum", node.name)
+    e = EnumType(node.name)
+    if node.name:
+        g_types.register_tag("enum", node.name, e)
+    return e
+
+
+def default_value_for(ctype):
+    """按 CType 生成默认值（设计文档 §2.7.4 的 default_value 简化版）。
+
+    M1 范围：标量 / 枚举 / 指针 / 数组 / 结构体（dict 占位，M3 换 StructValue）。
+    """
+    if isinstance(ctype, EnumType):
+        return 0
+    if isinstance(ctype, PtrType):
+        return 0                                # 指针模型（MEM-1）落地前用 0 占位
+    if isinstance(ctype, ArrayType):
+        n = ctype.count or 0
+        return [default_value_for(ctype.elem_type) for _ in range(n)]
+    if isinstance(ctype, (StructType, UnionType)):
+        return {m.name: default_value_for(m.type) for m in ctype.members}
+    if isinstance(ctype, BasicType):
+        name = ctype.name
+        if "float" in name or "double" in name:
+            return 0.0
+        if name in ("_Bool", "bool"):
+            return False
+        return 0
+    return 0
