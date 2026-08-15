@@ -614,6 +614,94 @@ def test_m3_struct_arrow_fallback():
     print("    p->x = 9（与 p.x 一致）✓")
 
 
+# ==================== 8. M4 union 值语义 ====================
+
+def _union_def(name, fields):
+    """构造 `union <name> { <fields> };` 定义节点。fields: [(fname, type_names)]"""
+    decls = []
+    for fname, tnames in fields:
+        decls.append(c_ast.Decl(name=fname, quals=[], align=None, storage=[], funcspec=[],
+                                type=c_ast.TypeDecl(declname=fname, quals=[], align=None,
+                                                    type=c_ast.IdentifierType(names=tnames)),
+                                init=None, bitsize=None))
+    return c_ast.Union(name=name, decls=decls)
+
+
+def test_m4_union_basic():
+    print("  [M4] union U {char c; int i;} U u; u.i = 0x41;")
+    exe_mod.setup_global_scope()
+    exe_mod.execute(_union_def('U', [('c', ['char']), ('i', ['int'])]))
+    st = g_types.lookup_tag('union', 'U')
+    assert st.sizeof() == 4 and st.alignof() == 4     # max(1,4)，对齐 4
+    # 成员不污染全局作用域（P1 同规则）
+    for m in ('c', 'i'):
+        try:
+            exe_mod.g_scope.get(m)
+            raise AssertionError(f"union 成员 '{m}' 不应成为全局变量")
+        except AssertionError:
+            pass
+    # U u;
+    exe_mod.execute(_decl_ref('u', c_ast.Union(name='U', decls=None)))
+    u = exe_mod.g_scope.get('u')
+    assert isinstance(u, UnionValue)
+    assert u.get('c') == 0 and u.get('i') == 0
+    # u.i = 0x41（活跃成员写入）
+    exe_mod.execute(c_ast.Assignment(op='=', lvalue=c_ast.StructRef(name=c_ast.ID(name='u'), type='.',
+                                                                    field=c_ast.ID(name='i')),
+                                     rvalue=c_ast.Constant(type='int', value='65')))
+    assert u.get('i') == 65
+    # 读未活跃成员 c → 默认 0（宽松语义；逐字节 reinterpret 依赖 MEM-1）
+    assert u.get('c') == 0
+    print("    sizeof=4；成员不入作用域；u.i=65；读未活跃 c=0 ✓")
+
+
+def test_m4_union_size_max():
+    print("  [M4] union {char,int,double} sizeof = max 成员对齐后")
+    exe_mod.setup_global_scope()
+    exe_mod.execute(_union_def('U2', [('c', ['char']), ('i', ['int']), ('d', ['double'])]))
+    st = g_types.lookup_tag('union', 'U2')
+    assert st.sizeof() == 8 and st.alignof() == 8
+    print("    char/int/double -> sizeof 8, align 8 ✓")
+
+
+def test_m4_union_value_copy():
+    print("  [M4] union U a = b; 值拷贝")
+    exe_mod.setup_global_scope()
+    exe_mod.execute(_union_def('U', [('c', ['char']), ('i', ['int'])]))
+    ref = c_ast.Union(name='U', decls=None)
+    # union U b = {7}; —— InitList 填充第一个成员 c（C 语义）
+    exe_mod.execute(_decl_ref('b', ref, init=c_ast.InitList(exprs=[c_ast.Constant(type='int', value='7')])))
+    b = exe_mod.g_scope.get('b')
+    assert b.get('c') == 7 and b.get('i') == 0
+    # b.i = 7（显式写 int 成员）
+    exe_mod.execute(c_ast.Assignment(op='=', lvalue=c_ast.StructRef(name=c_ast.ID(name='b'), type='.',
+                                                                    field=c_ast.ID(name='i')),
+                                     rvalue=c_ast.Constant(type='int', value='7')))
+    assert b.get('i') == 7
+    # a = b（值拷贝）
+    exe_mod.execute(_decl_ref('a', ref, init=c_ast.ID(name='b')))
+    a = exe_mod.g_scope.get('a')
+    assert a is not b and a.get('i') == 7
+    exe_mod.execute(c_ast.Assignment(op='=', lvalue=c_ast.StructRef(name=c_ast.ID(name='a'), type='.',
+                                                                    field=c_ast.ID(name='i')),
+                                     rvalue=c_ast.Constant(type='int', value='9')))
+    assert a.get('i') == 9 and b.get('i') == 7
+    print("    InitList 填首成员 c；a 深拷贝自 b；改 a.i 不影响 b ✓")
+
+
+def test_m4_union_typedef():
+    print("  [M4] typedef union {char c; int i;} Val; Val v;")
+    exe_mod.setup_global_scope()
+    exe_mod.execute(c_ast.Typedef(name='Val', quals=[], storage=[],
+                                  type=_union_def(None, [('c', ['char']), ('i', ['int'])])))
+    ut = g_types.resolve(['Val'])
+    assert isinstance(ut, UnionType) and ut.sizeof() == 4
+    exe_mod.execute(_decl('v', ['Val']))
+    v = exe_mod.g_scope.get('v')
+    assert isinstance(v, UnionValue) and exe_mod.g_scope.get_type('v') is ut
+    print("    别名解析到 UnionType；v 为 UnionValue ✓")
+
+
 # ==================== Main ====================
 
 def main():
@@ -659,8 +747,13 @@ def main():
     test_m3_struct_array()
     test_m3_struct_default_and_compound()
     test_m3_struct_arrow_fallback()
+    print("\n--- 8. M4 union 值语义 ---")
+    test_m4_union_basic()
+    test_m4_union_size_max()
+    test_m4_union_value_copy()
+    test_m4_union_typedef()
     print("\n" + "=" * 60)
-    print("  M0 - M3 全部测试通过! ✅")
+    print("  M0 - M4 全部测试通过! ✅")
     print("=" * 60)
 
 
