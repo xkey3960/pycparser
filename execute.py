@@ -145,13 +145,15 @@ class Scope:
 
 
 class Function:
-    """Represents a callable user-defined function."""
+    """Represents a callable user-defined function (M5: 携带参数/返回类型)."""
 
-    def __init__(self, name, param_names, body, closure_scope):
+    def __init__(self, name, param_names, body, closure_scope, param_types=None, ret_type=None):
         self.name = name
         self.param_names = param_names
         self.body = body
         self.closure_scope = closure_scope
+        self.param_types = param_types or []   # [CType] 与 param_names 对齐
+        self.ret_type = ret_type               # CType | None
 
 
 # ==================== Global State ====================
@@ -288,10 +290,14 @@ class ExeBinaryOp(Execute):
 
 
 class ExeUnaryOp(Execute):
-    """Unary operator expression (including GNU __alignof__)."""
+    """Unary operator expression (M5: sizeof/__alignof__ 走类型路径，不求值 operand)."""
 
     def execute(self):
         op = self.node.op
+        if op == 'sizeof':
+            return _sizeof_type(self.node.expr)
+        if op in ('__alignof__', '__alignof', '_Alignof'):
+            return _alignof_type(self.node.expr)
         val = execute(self.node.expr)
 
         handlers = {
@@ -301,8 +307,6 @@ class ExeUnaryOp(Execute):
             '~': lambda: ~val,
             'p++': lambda: _p_plus_plus(self.node.expr, val),
             'p--': lambda: _p_sub_sub(self.node.expr, val),
-            'sizeof': lambda: _sizeof(val),
-            '__alignof__': lambda: _alignof(val),
             '__real__': lambda: val,
             '__imag__': lambda: 0,
         }
@@ -325,34 +329,89 @@ def _p_sub_sub(node, val):
         raise AssertionError(f"{node.__class__.__name__} can't support for p--")
     return val
 
-def _sizeof(val):
-    """Simulate sizeof: return an approximate byte size for common types."""
-    if isinstance(val, bool):
-        return 1
-    if isinstance(val, int):
-        return 4
-    if isinstance(val, float):
-        return 8
-    if isinstance(val, str):
-        return len(val) + 1
-    if isinstance(val, list):
-        return len(val) * 4
-    if isinstance(val, dict):
-        return len(val) * 8
-    return 4
+
+# ==================== 表达式类型推导（M5） ====================
+
+def infer_type(node):
+    """表达式静态类型推导（设计文档 §2.9.2）。
+
+    供 sizeof/__alignof__/类型检查使用：只推导类型，不求值（无副作用）。
+    """
+    if node is None:
+        return g_types.resolve(['int'])
+    if isinstance(node, Constant):
+        t = node.type
+        if t == 'char':
+            return g_types.resolve(['char'])
+        if t in ('float', 'double'):
+            return g_types.resolve(['double'])
+        if t in ('_Bool', 'bool'):
+            return g_types.resolve(['_Bool'])
+        if t == 'string':
+            return PtrType(g_types.resolve(['char']))
+        return g_types.resolve(['int'])      # int/long/short/unsigned 等
+    if isinstance(node, ID):
+        t = g_scope.get_type(node.name)
+        return t if t is not None else g_types.resolve(['int'])
+    if isinstance(node, Cast):
+        return type_of_decl(node.to_type)
+    if isinstance(node, UnaryOp):
+        if node.op == '*':
+            t = infer_type(node.expr)
+            if isinstance(t, PtrType):
+                return t.points_to
+            raise AssertionError("解引用非指针类型的表达式")
+        if node.op == '&':
+            return PtrType(infer_type(node.expr))
+        if node.op in ('sizeof', '__alignof__', '__alignof', '_Alignof'):
+            return g_types.resolve(['int'])  # 结果是 size_t，按 int 处理
+        return infer_type(node.expr)         # + - ! ~ p++ 保持类型（宽松）
+    if isinstance(node, BinaryOp):
+        lt, rt = infer_type(node.left), infer_type(node.right)
+        # 宽松提升：任一浮点 → double；否则 int
+        if isinstance(lt, BasicType) and ('float' in lt.name or 'double' in lt.name):
+            return lt
+        if isinstance(rt, BasicType) and ('float' in rt.name or 'double' in rt.name):
+            return rt
+        return g_types.resolve(['int'])
+    if isinstance(node, StructRef):
+        obj_t = infer_type(node.name)
+        field = node.field.name if isinstance(node.field, ID) else str(node.field)
+        if isinstance(obj_t, (StructType, UnionType)):
+            return obj_t.member_type(field)
+        if isinstance(obj_t, PtrType) and isinstance(obj_t.points_to, (StructType, UnionType)):
+            return obj_t.points_to.member_type(field)
+        raise AssertionError(f"无法对 {type(obj_t).__name__} 做成员访问类型推导")
+    if isinstance(node, ArrayRef):
+        t = infer_type(node.name)
+        if isinstance(t, ArrayType):
+            return t.elem_type
+        if isinstance(t, PtrType):
+            return t.points_to
+        raise AssertionError("对非数组/指针表达式做下标推导")
+    if isinstance(node, FuncCall):
+        name_node = node.name
+        fname = name_node.name if isinstance(name_node, ID) else None
+        if fname and fname in g_functions and g_functions[fname].ret_type is not None:
+            return g_functions[fname].ret_type
+        return g_types.resolve(['int'])      # 内建/未知按 int
+    if isinstance(node, TernaryOp):
+        return infer_type(node.iftrue)
+    raise AssertionError(f"无法推导类型: {type(node).__name__}")
 
 
-def _alignof(val):
-    """Simulate __alignof__: return alignment for common types."""
-    if isinstance(val, bool):
-        return 1
-    if isinstance(val, int):
-        return 4
-    if isinstance(val, float):
-        return 8
-    if isinstance(val, str):
-        return 1
-    return 4
+def _sizeof_type(node):
+    """sizeof 类型路径（M5，修 BUG-1：编译期求值，operand 不求值）。"""
+    if isinstance(node, c_ast.Typename):     # sizeof(类型)
+        return type_of_decl(node).sizeof()
+    return infer_type(node).sizeof()         # sizeof(表达式)：静态类型
+
+
+def _alignof_type(node):
+    """__alignof__/_Alignof 类型路径（M5，修 BUG-2：operand 不求值）。"""
+    if isinstance(node, c_ast.Typename):
+        return type_of_decl(node).alignof()
+    return infer_type(node).alignof()
 
 
 class ExeAssignment(Execute):
@@ -423,10 +482,16 @@ class ExeTernaryOp(Execute):
 
 
 class ExeCast(Execute):
-    """Type cast expression."""
+    """Type cast expression (M5: 复合类型走 coerce_to_type，标量沿用现有转换)."""
 
     def execute(self):
         val = execute(self.node.expr)
+        try:
+            ctype = type_of_decl(self.node.to_type)
+        except AssertionError:
+            ctype = None
+        if ctype is not None and isinstance(ctype, (StructType, UnionType, ArrayType, EnumType, PtrType)):
+            return coerce_to_type(val, ctype)
         type_names = self._extract_type_names(self.node.to_type)
         return _convert_value(val, type_names)
 
@@ -524,7 +589,11 @@ class ExeFuncCall(Execute):
             g_scope = Scope(func.closure_scope)
 
             for i, pname in enumerate(func.param_names):
-                g_scope.declare(pname, args[i] if i < len(args) else 0)
+                aval = args[i] if i < len(args) else 0
+                if isinstance(aval, (StructValue, UnionValue)):
+                    aval = aval.copy()            # M5 值传递：形参修改不影响实参
+                ptype = func.param_types[i] if i < len(func.param_types) else None
+                g_scope.declare(pname, aval, ptype)
 
             try:
                 result = execute(func.body)
@@ -765,12 +834,19 @@ class ExeFuncDef(Execute):
         func_name = decl.name
         func_decl = decl.type
         param_names = self._get_param_names(func_decl)
+        param_types, ret_type = None, None
+        ft = type_of_decl(func_decl)             # M5: 提取参数/返回类型
+        if isinstance(ft, FuncType):
+            param_types = ft.param_types
+            ret_type = ft.ret_type
 
         g_functions[func_name] = Function(
             name=func_name,
             param_names=param_names,
             body=self.node.body,
             closure_scope=g_scope,
+            param_types=param_types,
+            ret_type=ret_type,
         )
 
 
@@ -801,10 +877,32 @@ class ExeGoto(Execute):
 # ==================== Initializer Executors ====================
 
 class ExeInitList(Execute):
-    """Initializer list { ... }."""
+    """Initializer list { ... } (M5: 含指定初始化器时返回 {键: 值} dict)."""
 
     def execute(self):
-        return [execute(e) for e in self.node.exprs or []]
+        items = self.node.exprs or []
+        if any(isinstance(e, NamedInitializer) for e in items):
+            d = {}
+            for e in items:
+                if isinstance(e, NamedInitializer):
+                    d[_named_init_key(e)] = execute(e.expr)
+                # 混合（先位置后指定）C99 不允许，忽略非指定项
+            return d
+        return [execute(e) for e in items]
+
+
+def _named_init_key(node):
+    """指定初始化器键：.field → 字符串成员名；[idx] → int 索引。
+
+    仅支持单层；嵌套（.a.b / [i].c）留后续。
+    """
+    if node.name and len(node.name) == 1:
+        n0 = node.name[0]
+        if isinstance(n0, ID):
+            return n0.name
+        if isinstance(n0, Constant):
+            return int(n0.value)
+    raise AssertionError("暂不支持的指定初始化器（仅单层 .field 或 [idx]）")
 
 
 class ExeNamedInitializer(Execute):

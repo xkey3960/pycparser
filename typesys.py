@@ -352,6 +352,8 @@ def type_of_decl(t):
     """
     if t is None:
         return g_types.resolve(["int"])  # 兼容现状：缺省 int
+    if isinstance(t, c_ast.Typename):            # sizeof(类型) / 转型目标（M5）
+        return type_of_decl(t.type)
     if isinstance(t, c_ast.TypeDecl):            # 含 TypeDeclExt
         return type_of_decl(t.type)
     if isinstance(t, c_ast.PtrDecl):
@@ -582,5 +584,12 @@ def coerce_to_type(value, ctype):
                           for _ in range(max(0, n - len(elems)))]
                 return elems
             return [coerce_to_type(v, ctype.elem_type) for v in value]
+        if isinstance(value, dict):               # 指定初始化器 [idx] = v（M5）
+            n = ctype.count or 0
+            elems = [default_value_for(ctype.elem_type) for _ in range(n)]
+            for k, v in value.items():
+                if isinstance(k, int) and 0 <= k < n:
+                    elems[k] = coerce_to_type(v, ctype.elem_type)
+            return elems
         return [default_value_for(ctype.elem_type)] * (ctype.count or 0)
     return value

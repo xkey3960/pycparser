@@ -702,6 +702,135 @@ def test_m4_union_typedef():
     print("    别名解析到 UnionType；v 为 UnionValue ✓")
 
 
+# ==================== 9. M5 集成增强 ====================
+
+def test_m5_sizeof_no_side_effect():
+    print("  [M5] sizeof(x++) 不求值（修 BUG-1）")
+    exe_mod.setup_global_scope()
+    exe_mod.execute(_decl('x', ['int'], c_ast.Constant(type='int', value='5')))
+    sz = exe_mod.execute(c_ast.UnaryOp(op='sizeof',
+                                       expr=c_ast.UnaryOp(op='p++', expr=c_ast.ID(name='x'))))
+    assert sz == 4
+    assert exe_mod.g_scope.get('x') == 5    # operand 未被求值，x 不变
+    print(f"    sizeof(x++) = {sz}；x 仍为 5（无副作用）✓")
+
+
+def test_m5_sizeof_types():
+    print("  [M5] sizeof(类型) / sizeof(表达式) / sizeof(*ptr)")
+    exe_mod.setup_global_scope()
+    def tn(node):
+        return c_ast.Typename(name=None, quals=[], align=None, type=node)
+    # sizeof(int)
+    assert exe_mod.execute(c_ast.UnaryOp(op='sizeof', expr=tn(
+        c_ast.TypeDecl(declname=None, quals=[], align=None, type=c_ast.IdentifierType(names=['int']))))) == 4
+    # sizeof(struct Point) == 8
+    exe_mod.execute(_struct_def('Point', [('x', ['int']), ('y', ['int'])]))
+    assert exe_mod.execute(c_ast.UnaryOp(op='sizeof', expr=tn(
+        c_ast.TypeDecl(declname=None, quals=[], align=None,
+                       type=c_ast.Struct(name='Point', decls=None))))) == 8
+    # sizeof(int*) == 8
+    assert exe_mod.execute(c_ast.UnaryOp(op='sizeof', expr=tn(
+        c_ast.PtrDecl(quals=[], type=c_ast.IdentifierType(names=['int']))))) == 8
+    # sizeof(表达式) / sizeof(*ptr)（只推导类型，不崩溃不求值）
+    exe_mod.execute(_decl('p', ['int']))
+    assert exe_mod.execute(c_ast.UnaryOp(op='sizeof', expr=c_ast.ID(name='p'))) == 4
+    exe_mod.execute(_decl('pp', ['int']))
+    exe_mod.g_scope.set_type('pp', PtrType(g_types.resolve(['int'])))
+    assert exe_mod.execute(c_ast.UnaryOp(op='sizeof',
+                                         expr=c_ast.UnaryOp(op='*', expr=c_ast.ID(name='pp')))) == 4
+    print("    sizeof(int)=4；sizeof(struct Point)=8；sizeof(int*)=8；sizeof(*pp)=4（不求值）✓")
+
+
+def test_m5_alignof():
+    print("  [M5] __alignof__ / _Alignof（修 BUG-2）")
+    exe_mod.setup_global_scope()
+    a1 = exe_mod.execute(c_ast.UnaryOp(op='__alignof__',
+                                       expr=c_ast.Constant(type='int', value='42')))
+    assert a1 == 4
+    a2 = exe_mod.execute(c_ast.UnaryOp(op='_Alignof', expr=c_ast.Typename(
+        name=None, quals=[], align=None,
+        type=c_ast.TypeDecl(declname=None, quals=[], align=None,
+                            type=c_ast.IdentifierType(names=['double'])))))
+    assert a2 == 8
+    print(f"    __alignof__(int)=4；_Alignof(double)=8 ✓")
+
+
+def test_m5_struct_value_pass():
+    print("  [M5] struct 值传递：形参修改不影响实参")
+    exe_mod.setup_global_scope()
+    exe_mod.execute(_struct_def('S', [('x', ['int'])]))
+    # int bump(struct S s) { s.x = 99; return s.x; }
+    func_decl = c_ast.Decl(name='bump', quals=[], align=None, storage=[], funcspec=[],
+                           type=c_ast.FuncDecl(
+                               args=c_ast.ParamList(params=[
+                                   c_ast.Decl(name='s', quals=[], align=None, storage=[], funcspec=[],
+                                              type=c_ast.TypeDecl(declname='s', quals=[], align=None,
+                                                                  type=c_ast.Struct(name='S', decls=None)),
+                                              init=None, bitsize=None),
+                               ]),
+                               type=c_ast.TypeDecl(declname='bump', quals=[], align=None,
+                                                   type=c_ast.IdentifierType(names=['int']))),
+                           init=None, bitsize=None)
+    body = c_ast.Compound(block_items=[
+        c_ast.Assignment(op='=', lvalue=c_ast.StructRef(name=c_ast.ID(name='s'), type='.',
+                                                        field=c_ast.ID(name='x')),
+                         rvalue=c_ast.Constant(type='int', value='99')),
+        c_ast.Return(expr=c_ast.StructRef(name=c_ast.ID(name='s'), type='.', field=c_ast.ID(name='x'))),
+    ])
+    exe_mod.execute(c_ast.FuncDef(decl=func_decl, param_decls=None, body=body))
+    exe_mod.execute(_decl_ref('a', c_ast.Struct(name='S', decls=None),
+                              init=c_ast.InitList(exprs=[c_ast.Constant(type='int', value='7')])))
+    ret = exe_mod.execute(c_ast.FuncCall(name=c_ast.ID(name='bump'),
+                                         args=c_ast.ExprList(exprs=[c_ast.ID(name='a')])))
+    assert ret == 99
+    a = exe_mod.g_scope.get('a')
+    assert a.get('x') == 7                       # 实参未被形参修改
+    print(f"    bump(a)=99；实参 a.x 仍为 7 ✓")
+
+
+def test_m5_cast_enum():
+    print("  [M5] enum↔int 转换与类型化 Cast")
+    exe_mod.setup_global_scope()
+    exe_mod.execute(_enum_def('Color', [('RED', None), ('GREEN', None)]))
+    cast = exe_mod.execute(c_ast.Cast(
+        to_type=c_ast.Typename(name=None, quals=[], align=None,
+                               type=c_ast.TypeDecl(declname=None, quals=[], align=None,
+                                                   type=c_ast.Enum(name='Color', values=None))),
+        expr=c_ast.Constant(type='int', value='1')))
+    assert cast == 1
+    cast2 = exe_mod.execute(c_ast.Cast(
+        to_type=c_ast.Typename(name=None, quals=[], align=None,
+                               type=c_ast.TypeDecl(declname=None, quals=[], align=None,
+                                                   type=c_ast.IdentifierType(names=['int']))),
+        expr=c_ast.Constant(type='float', value='3.7')))
+    assert cast2 == 3                            # 标量路径保持
+    print(f"    (enum Color)1 = {cast}；(int)3.7 = {cast2} ✓")
+
+
+def test_m5_designated_init():
+    print("  [M5] 指定初始化器 .y = 5 与 [1] = 7")
+    exe_mod.setup_global_scope()
+    exe_mod.execute(_struct_def('DS', [('x', ['int']), ('y', ['int'])]))
+    exe_mod.execute(_decl_ref('s', c_ast.Struct(name='DS', decls=None),
+                              init=c_ast.InitList(exprs=[
+                                  c_ast.NamedInitializer(name=[c_ast.ID(name='y')],
+                                                         expr=c_ast.Constant(type='int', value='5'))])))
+    s = exe_mod.g_scope.get('s')
+    assert s.get('x') == 0 and s.get('y') == 5
+    arr_decl = c_ast.Decl(name='arr', quals=[], align=None, storage=[], funcspec=[],
+                          type=c_ast.ArrayDecl(
+                              type=c_ast.TypeDecl(declname='arr', quals=[], align=None,
+                                                  type=c_ast.IdentifierType(names=['int'])),
+                              dim=c_ast.Constant(type='int', value='3'), dim_quals=[]),
+                          init=c_ast.InitList(exprs=[
+                              c_ast.NamedInitializer(name=[c_ast.Constant(type='int', value='1')],
+                                                     expr=c_ast.Constant(type='int', value='7'))]),
+                          bitsize=None)
+    exe_mod.execute(arr_decl)
+    assert exe_mod.g_scope.get('arr') == [0, 7, 0]
+    print("    s = {x:0, y:5}；arr = [0, 7, 0] ✓")
+
+
 # ==================== Main ====================
 
 def main():
@@ -752,8 +881,15 @@ def main():
     test_m4_union_size_max()
     test_m4_union_value_copy()
     test_m4_union_typedef()
+    print("\n--- 9. M5 集成增强 ---")
+    test_m5_sizeof_no_side_effect()
+    test_m5_sizeof_types()
+    test_m5_alignof()
+    test_m5_struct_value_pass()
+    test_m5_cast_enum()
+    test_m5_designated_init()
     print("\n" + "=" * 60)
-    print("  M0 - M4 全部测试通过! ✅")
+    print("  M0 - M5 全部测试通过! ✅")
     print("=" * 60)
 
 

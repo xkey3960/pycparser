@@ -15,7 +15,7 @@
 阶段一：紧急修复（短期，1-2 天）
 ================================================================================
 
-[BUG-1] sizeof 语义错误 — operand 不应求值
+[BUG-1] sizeof 语义错误 — operand 不应求值 ✅ 已修复（M5）
 --------------------------------------------------
 问题描述：
   sizeof 是编译期运算符，不会对 operand 求值。
@@ -31,25 +31,21 @@
     sizeof(*NULL)    // 在 C 中合法返回 4，因为不求值就不会解引用
     sizeof(*p)       // p 是空指针时也不崩溃
 
-实施步骤：
-  1. 在 ExeUnaryOp 中，为 'sizeof' 创建独立的分支
-  2. 从 self.node.expr 中提取类型信息，而不是调用 execute()
-  3. 实现 _sizeof_from_type(type_node) 函数，递归计算类型大小
-     - IdentifierType(['int'])          → 4
-     - IdentifierType(['char'])         → 1
-     - IdentifierType(['long'])         → 8
-     - IdentifierType(['double'])       → 8
-     - PtrDecl(...)                     → 8 (指针大小)
-     - ArrayDecl(type=..., dim=...)     → 元素大小 × 维度
-     - TypeDecl(...)                    → 递归 inner type
-     - Struct 含 decls                 → 各成员大小之和 + padding
-     - FuncDecl                         → 1 (C 标准：函数类型的 sizeof 非法)
-  4. 更新测试，验证 sizeof 不求值 operand
+实施步骤（M5 已完成）：
+  1. ExeUnaryOp 中 sizeof 走独立分支 _sizeof_type()
+  2. 类型路径：Typename → type_of_decl；表达式 → infer_type() 静态推导
+  3. infer_type 覆盖 Constant/ID/BinaryOp/UnaryOp(&/*)/Cast/StructRef/ArrayRef/FuncCall
+  4. 测试：sizeof(x++) 无副作用、sizeof(*pp) 不崩溃
 
-[BUG-2] __alignof__ 应为编译期操作（与 sizeof 同理）
+[BUG-2] __alignof__ 应为编译期操作（与 sizeof 同理） ✅ 已修复（M5）
 --------------------------------------------------
 问题描述：
   与 sizeof 一样，__alignof__ 不应求值 operand，而应从类型推导。
+
+实施步骤（M5 已完成）：
+  1. ExeUnaryOp 中 '__alignof__'/'__alignof'/'_Alignof' 走 _alignof_type()
+  2. 类型路径：Typename → type_of_decl；表达式 → infer_type()
+  3. 测试：__alignof__(int)=4、_Alignof(double)=8
 
 实施步骤：
   1. 同上，在 ExeUnaryOp 中为 '__alignof__' 创建独立分支
@@ -137,14 +133,15 @@
   3. ReturnException 携带返回值 + 恢复到调用帧
   4. 支持尾递归优化（可选）
 
-[MEM-3] struct 内存布局与成员访问
+[MEM-3] struct 内存布局与成员访问 ✅ 已完成（M3/M4，详见设计文档）
 --------------------------------------------------
 当前缺失：
-  - struct 成员对齐与 padding
-  - struct 的 sizeof 计算
-  - struct 赋值（值语义）
-  - 嵌套 struct
-  - struct 指针成员访问（-> vs .）
+  - struct 成员对齐与 padding          ✅ compute_struct_layout（M0）
+  - struct 的 sizeof 计算              ✅ type_of_decl + StructType.sizeof（M1）
+  - struct 赋值（值语义）              ✅ StructValue.copy 深拷贝（M3）
+  - 嵌套 struct                       ✅ coerce_to_type 递归（M3）
+  - struct 指针成员访问（-> vs .）      ✅ '.' 完整支持；'->' 宽松退化（M3，正式支持依赖 MEM-1）
+  - union 共享存储                     ✅ UnionValue + compute_union_layout（M4）
 
 设计思路：
   引入 StructLayout 表示 struct 的类型布局：
@@ -185,12 +182,14 @@
 阶段三：类型系统（中期，2-3 周）
 ================================================================================
 
-[TYPE-1] 完整的类型表示
+[TYPE-1] 完整的类型表示 ✅ 主体已完成（M0-M5，详见设计文档）
 --------------------------------------------------
-当前缺失：
-  - 类型信息存储（当前只有 Python 类型推断）
-  - 类型兼容性判断
-  - typedef 解析链
+当前缺失（M0-M5 后）：
+  - 类型信息存储                     ✅ CType 层次 + Scope Symbol.type
+  - typedef 解析链                   ✅ TypeRegistry.resolve_typedef（链式+环检测）
+  - 类型兼容性判断                   ⏳ 部分（infer_type/coerce_to_type 已就位，严格检查留 TYPE-2）
+  - 表达式静态类型推导               ✅ infer_type（M5）
+  - struct/union/enum 类型注册       ✅ _register_compound / _process_enum_node
 
 设计思路：
   引入 CType 类层次：
