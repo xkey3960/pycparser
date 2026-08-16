@@ -57,9 +57,52 @@ def test_t5_entry_detection():
     print(f"    多 main 警告 + 取第一个: main() = {result} ✓")
 
 
+def test_t3_typedef_chain_cross_file():
+    print("  [T3] 跨文件 typedef 链（相同链静默去重）")
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        result = _run([f'{MULTI}/tdlib.c', f'{MULTI}/tdmain.c'])
+    assert result == 10, f"期望 10，实际 {result}"
+    assert '冲突' not in buf.getvalue(), f"相同 typedef 链不应告警: {buf.getvalue()}"
+    print(f"    main() = {result}（Base→Mid 链跨文件一致，静默去重）✓")
+
+
+def test_t6_typedef_conflict():
+    print("  [T6] typedef 冲突：非 strict 告警 / strict 报错")
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        result = _run([f'{MULTI}/cfl_a.c', f'{MULTI}/cfl_b.c'])
+    assert result == 0
+    assert 'typedef \'X\' 冲突' in buf.getvalue(), f"应告警 typedef 冲突: {buf.getvalue()}"
+    print(f"    非 strict: main() = {result}，告警 'typedef X 冲突' ✓")
+    # strict 模式 → 报错
+    exe_mod.setup_global_scope()
+    prog = CProgram([f'{MULTI}/cfl_a.c', f'{MULTI}/cfl_b.c'], strict=True)
+    prog.load()
+    try:
+        prog.link()
+        raise AssertionError("strict 模式应抛错")
+    except AssertionError as e:
+        assert 'X' in str(e) and '冲突' in str(e)
+        print(f"    strict: {e} ✓")
+
+
+def test_t6_func_conflict():
+    print("  [T6] 函数重名（非 static 非入口）→ 报错")
+    exe_mod.setup_global_scope()
+    prog = CProgram([f'{MULTI}/dup_a.c', f'{MULTI}/dup_b.c'])
+    prog.load()
+    try:
+        prog.link()
+        raise AssertionError("重复函数应报错")
+    except AssertionError as e:
+        assert 'dupf' in str(e) and '重复定义' in str(e)
+        print(f"    重复函数报错: {e} ✓")
+
+
 def main():
     print("=" * 60)
-    print("  program.py — 多文件支持测试（S1）")
+    print("  program.py — 多文件支持测试（S1+S2）")
     print("=" * 60)
     print("\n--- 1. 双文件基础 ---")
     test_t1_two_files()
@@ -67,8 +110,13 @@ def main():
     test_t2_forward_ref()
     print("\n--- 3. main 定位 ---")
     test_t5_entry_detection()
+    print("\n--- 4. 跨文件 typedef 链（T3）---")
+    test_t3_typedef_chain_cross_file()
+    print("\n--- 5. 冲突检测（T6）---")
+    test_t6_typedef_conflict()
+    test_t6_func_conflict()
     print("\n" + "=" * 60)
-    print("  S1 全部测试通过! ✅")
+    print("  S1 + S2 全部测试通过! ✅")
     print("=" * 60)
 
 

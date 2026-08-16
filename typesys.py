@@ -593,3 +593,37 @@ def coerce_to_type(value, ctype):
             return elems
         return [default_value_for(ctype.elem_type)] * (ctype.count or 0)
     return value
+
+
+# ==================== 结构等价判定（S2 冲突检测） ====================
+
+
+def types_equivalent(t1, t2):
+    """结构等价判定（设计文档-多文件支持.md §3.3）。
+
+    同对象 → True；不同实例按同构比对：BasicType 比 name+size、指针/数组/函数
+    递归、enum 比常量表、struct/union 比成员（名 + 递归类型）。
+    """
+    if t1 is t2:
+        return True
+    if isinstance(t1, BasicType) and isinstance(t2, BasicType):
+        return t1.name == t2.name and t1.size == t2.size
+    if isinstance(t1, PtrType) and isinstance(t2, PtrType):
+        return types_equivalent(t1.points_to, t2.points_to)
+    if isinstance(t1, ArrayType) and isinstance(t2, ArrayType):
+        return t1.count == t2.count and types_equivalent(t1.elem_type, t2.elem_type)
+    if isinstance(t1, FuncType) and isinstance(t2, FuncType):
+        return (types_equivalent(t1.ret_type, t2.ret_type)
+                and len(t1.param_types) == len(t2.param_types)
+                and all(types_equivalent(a, b)
+                        for a, b in zip(t1.param_types, t2.param_types)))
+    if isinstance(t1, EnumType) and isinstance(t2, EnumType):
+        return t1.constants == t2.constants
+    if isinstance(t1, (StructType, UnionType)) and isinstance(t2, (StructType, UnionType)):
+        if type(t1) is not type(t2):
+            return False
+        if len(t1.members) != len(t2.members):
+            return False
+        return all(a.name == b.name and types_equivalent(a.type, b.type)
+                   for a, b in zip(t1.members, t2.members))
+    return False
