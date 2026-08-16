@@ -804,6 +804,8 @@ class ExeDecl(Execute):
         if name is None:
             return
         ctype = type_of_decl(self.node.type)
+        if isinstance(ctype, FuncType):
+            return  # 函数声明/原型：不是变量（定义由 FuncDef 注册，多文件支持）
         if self.node.init is not None:
             init_val = coerce_to_type(execute(self.node.init), ctype)
         else:

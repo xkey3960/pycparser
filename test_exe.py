@@ -1,34 +1,10 @@
-from typing import (
-    List,
-    Optional,
-)
-from pycparserext import ext_c_parser
-from pycparser import c_ast, parse_file
+"""端到端：用 CProgram 装载 test/main.c 并运行（多文件支持 S1）"""
+from program import CProgram
+from execute import g_scope
 
-from pycparserext.ext_c_parser import TypeDeclExt
-
-old_init = TypeDeclExt.__init__
-def fixed_init(self, declname, quals, align, type, coord=None):
-    old_init(self, declname, quals, align, type, coord)
-    self.asm = None
-TypeDeclExt.__init__ = fixed_init
-
-args = [
-    '-E'
-]
-
-parser = ext_c_parser.GnuCParser()
-ast = parse_file(
-    "test/main.c",
-    use_cpp = True,
-    cpp_path = "gcc",
-    cpp_args = args,
-    parser = parser,
-)
-
-from execute import execute, g_scope 
-
-ast.ext.append(c_ast.FuncCall(name=c_ast.ID(name='main'),args=None))
-result = execute(ast)
+prog = CProgram(['test/main.c'])
+prog.load()
+prog.link()
+result = prog.run()
 print(f"main() = {result}")
 print(g_scope)

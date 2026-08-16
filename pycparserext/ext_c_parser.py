@@ -210,6 +210,13 @@ class RangeExpression(c_ast.Node):
 class TypeDeclExt(c_ast.TypeDecl):
     __slots__ = ("asm", "attributes", "init")
 
+    def __init__(self, declname, quals, align, type, coord=None,
+                 asm=None, attributes=None, init=None):
+        super().__init__(declname, quals, align, type, coord)
+        self.asm = asm
+        self.attributes = attributes
+        self.init = init
+
     @staticmethod
     def from_pycparser(td):
         assert isinstance(td, c_ast.TypeDecl)
@@ -224,6 +231,13 @@ class TypeDeclExt(c_ast.TypeDecl):
 
 class ArrayDeclExt(c_ast.ArrayDecl):
     __slots__ = ("asm", "attributes", "init")
+
+    def __init__(self, type, dim, dim_quals, coord=None,
+                 asm=None, attributes=None, init=None):
+        super().__init__(type, dim, dim_quals, coord)
+        self.asm = asm
+        self.attributes = attributes
+        self.init = init
 
     @staticmethod
     def from_pycparser(ad):
