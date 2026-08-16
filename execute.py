@@ -1045,10 +1045,14 @@ class ExeTypedef(Execute):
         name = self.node.name
         if not name:
             return
-        # typedef enum {...} E; —— 枚举定义：常量注入 + 类型注册（C 语义），
-        # 先处理再取类型，确保别名指向带常量表的同一 EnumType
-        if isinstance(self.node.type, c_ast.Enum) and self.node.type.values is not None:
-            et = _process_enum_node(self.node.type)
+        # typedef enum {...} E; —— 枚举定义：常量注入 + 类型注册（C 语义）。
+        # 注意：真实解析的 typedef 类型可能被 TypeDecl 包装（enum/struct 均如此，
+        # 如 typedef enum Color {...} Color; 的 type 是 TypeDecl(Enum)），需先解包。
+        inner = self.node.type
+        while isinstance(inner, (TypeDecl, TypeDeclExt)):
+            inner = inner.type
+        if isinstance(inner, c_ast.Enum) and inner.values is not None:
+            et = _process_enum_node(inner)
             g_types.register_typedef(name, et)
             return
         ctype = type_of_decl(self.node.type)

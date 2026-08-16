@@ -17,12 +17,12 @@ from program import CProgram
 MULTI = 'test/multi'
 
 
-def _run(files, entry='main'):
+def _run(files, entry='main', args=(), **kw):
     exe_mod.setup_global_scope()          # 重置 g_scope/g_functions（类型注册表全局保留）
-    prog = CProgram(files, entry=entry)
+    prog = CProgram(files, entry=entry, **kw)
     prog.load()
     prog.link()
-    return prog.run()
+    return prog.run(*args)
 
 
 def test_t1_two_files():
@@ -100,9 +100,30 @@ def test_t6_func_conflict():
         print(f"    重复函数报错: {e} ✓")
 
 
+def test_t4_global_var_func_init():
+    print("  [T4] 全局变量 init 调另一文件的函数: int g = helper_gv();")
+    result = _run([f'{MULTI}/gv_lib.c', f'{MULTI}/gv_main.c'])
+    assert result == 42, f"期望 42，实际 {result}"
+    print(f"    main() = {result}（函数表先齐，全局变量 init 可调函数）✓")
+
+
+def test_t7_end_to_end_three_files():
+    print("  [T7] 端到端三文件：e2e_lib + e2e_util + e2e_main")
+    result = _run([f'{MULTI}/e2e_lib.c', f'{MULTI}/e2e_util.c', f'{MULTI}/e2e_main.c'])
+    assert result == 116, f"期望 116，实际 {result}"
+    print(f"    main() = {result}（跨文件 enum + struct 返回 + 值拷贝）✓")
+
+
+def test_t8_entry_args():
+    print("  [T8] 入口参数：run(3, 4)")
+    result = _run([f'{MULTI}/args_main.c'], args=(3, 4))
+    assert result == 7, f"期望 7，实际 {result}"
+    print(f"    main(3, 4) = {result} ✓")
+
+
 def main():
     print("=" * 60)
-    print("  program.py — 多文件支持测试（S1+S2）")
+    print("  program.py — 多文件支持测试（S1+S2+S3）")
     print("=" * 60)
     print("\n--- 1. 双文件基础 ---")
     test_t1_two_files()
@@ -115,8 +136,14 @@ def main():
     print("\n--- 5. 冲突检测（T6）---")
     test_t6_typedef_conflict()
     test_t6_func_conflict()
+    print("\n--- 6. 全局变量函数初始化（T4）---")
+    test_t4_global_var_func_init()
+    print("\n--- 7. 端到端三文件（T7）---")
+    test_t7_end_to_end_three_files()
+    print("\n--- 8. 入口参数（T8）---")
+    test_t8_entry_args()
     print("\n" + "=" * 60)
-    print("  S1 + S2 全部测试通过! ✅")
+    print("  S1 + S2 + S3 全部测试通过! ✅")
     print("=" * 60)
 
 
