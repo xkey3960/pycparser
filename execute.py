@@ -802,6 +802,8 @@ class ExeDecl(Execute):
     def execute(self):
         name = self.node.name
         if name is None:
+            # 裸类型定义（struct S {...}; 被解析器包成 Decl(name=None)）：注册类型
+            type_of_decl(self.node.type)
             return
         ctype = type_of_decl(self.node.type)
         if isinstance(ctype, FuncType):

@@ -831,6 +831,51 @@ def test_m5_designated_init():
     print("    s = {x:0, y:5}；arr = [0, 7, 0] ✓")
 
 
+# ==================== 10. 修复回归：类型顺序 / 数组维度表达式 ====================
+
+def test_fix_type_specifier_order():
+    print("  [Fix] 类型说明符任意顺序（long long unsigned int）")
+    t1 = g_types.resolve(['long', 'long', 'unsigned', 'int'])
+    t2 = g_types.resolve(['unsigned', 'long', 'long', 'int'])
+    assert t1 is t2 and t1.sizeof() == 8
+    # 省略/拆分形式语义等价（名字可能是注册表的别名单例，按 size 断言）
+    assert g_types.resolve(['unsigned']).sizeof() == 4
+    assert g_types.resolve(['long', 'long']).sizeof() == 8
+    assert g_types.resolve(['long', 'unsigned']).sizeof() == 8
+    assert g_types.resolve(['long', 'unsigned']).sizeof() == g_types.resolve(['unsigned', 'long']).sizeof()
+    # typedef 名（非关键字）不被误归一为 int
+    r = build_default_registry()
+    r.register_typedef('MyT', r.resolve(['int']))
+    assert r.resolve(['MyT']) is r.resolve(['int'])
+    print("    任意顺序归一；typedef 名不误判 ✓")
+
+
+def test_fix_array_dim_expression():
+    print("  [Fix] 数组维度表达式（10+5、sizeof(int)*2）")
+    exe_mod.setup_global_scope()
+    from typesys import type_of_decl
+    def int_tn(name=None):
+        return c_ast.TypeDecl(declname=name, quals=[], align=None,
+                              type=c_ast.IdentifierType(names=['int']))
+    # int arr[10 + 5]
+    at = type_of_decl(c_ast.ArrayDecl(
+        type=int_tn('arr'),
+        dim=c_ast.BinaryOp(op='+', left=c_ast.Constant(type='int', value='10'),
+                           right=c_ast.Constant(type='int', value='5')),
+        dim_quals=[]))
+    assert at.count == 15 and at.sizeof() == 60
+    # int buf[sizeof(int) * 2]
+    bt = type_of_decl(c_ast.ArrayDecl(
+        type=int_tn('buf'),
+        dim=c_ast.BinaryOp(op='*',
+                           left=c_ast.UnaryOp(op='sizeof', expr=c_ast.Typename(
+                               name=None, quals=[], align=None, type=int_tn())),
+                           right=c_ast.Constant(type='int', value='2')),
+        dim_quals=[]))
+    assert bt.count == 8
+    print(f"    arr[10+5] → {at.count}；buf[sizeof(int)*2] → {bt.count} ✓")
+
+
 # ==================== Main ====================
 
 def main():
@@ -888,8 +933,11 @@ def main():
     test_m5_struct_value_pass()
     test_m5_cast_enum()
     test_m5_designated_init()
+    print("\n--- 10. 修复回归 ---")
+    test_fix_type_specifier_order()
+    test_fix_array_dim_expression()
     print("\n" + "=" * 60)
-    print("  M0 - M5 全部测试通过! ✅")
+    print("  M0 - M5 + 修复回归 全部测试通过! ✅")
     print("=" * 60)
 
 

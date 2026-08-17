@@ -62,13 +62,15 @@ class CProgram:
 
     def link(self):
         """链接三阶段：1a 类型 → 1b 函数 → 2 全局变量（+冲突检测 + 入口定位）。"""
-        # 1a 类型收集：跨文件类型可见（typedef/struct/union/enum 全量注册 + 冲突检测）
+        # 1a 类型收集：跨文件类型可见（typedef/struct/union/enum/裸类型定义 全量注册 + 冲突检测）
         for ast in self.asts:
             for ext in ast.ext or []:
-                if isinstance(ext, (c_ast.Typedef, c_ast.Struct, c_ast.Union, c_ast.Enum)):
+                if isinstance(ext, (c_ast.Typedef, c_ast.Struct, c_ast.Union, c_ast.Enum)) \
+                        or (isinstance(ext, c_ast.Decl) and ext.name is None):
+                    # 裸类型定义（struct S {...}; 解析为 Decl(name=None)）由 ExeDecl 注册
                     if isinstance(ext, c_ast.Typedef) and ext.name:
                         self._check_typedef_conflict(ext)
-                    elif ext.name:
+                    elif getattr(ext, 'name', None):
                         self._check_tag_conflict(ext)
                     execute(ext)
         # 1b 函数收集：FuncDef 全部注册（只注册不执行体 → 前向引用可用；重名检测）

@@ -121,9 +121,18 @@ def test_t8_entry_args():
     print(f"    main(3, 4) = {result} ✓")
 
 
+def test_fix_repro():
+    print("  [Fix] 复现用例：任意顺序类型 + 数组表达式维度 + 裸定义")
+    result = _run([f'{MULTI}/repro.c'])
+    assert result == 0
+    result3 = _run([f'{MULTI}/repro3.c'])
+    assert result3 == 5
+    print(f"    repro main()={result}（u64 成员 + arr[15]）；裸定义 main()={result3} ✓")
+
+
 def main():
     print("=" * 60)
-    print("  program.py — 多文件支持测试（S1+S2+S3）")
+    print("  program.py — 多文件支持测试（S1+S2+S3+修复）")
     print("=" * 60)
     print("\n--- 1. 双文件基础 ---")
     test_t1_two_files()
@@ -142,8 +151,10 @@ def main():
     test_t7_end_to_end_three_files()
     print("\n--- 8. 入口参数（T8）---")
     test_t8_entry_args()
+    print("\n--- 9. 修复回归 ---")
+    test_fix_repro()
     print("\n" + "=" * 60)
-    print("  S1 + S2 + S3 全部测试通过! ✅")
+    print("  S1 + S2 + S3 + 修复 全部测试通过! ✅")
     print("=" * 60)
 
 

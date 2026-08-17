@@ -300,11 +300,60 @@ class TypeRegistry:
         joined = " ".join(lowered)
         if joined in self.builtins:
             return self.builtins[joined]
+        # 任意顺序的类型说明符（long long unsigned int 等）——仅当含类型关键字时才规范化，
+        # 避免把 typedef 名（如 'S'）误归一为 'int'
+        canonical = canonical_type_name(names)
+        if canonical is not None and canonical in self.builtins:
+            return self.builtins[canonical]
         if len(names) == 1:
             t = self.resolve_typedef(names[0])
             if t is not None:
                 return t
         raise AssertionError(f"未定义类型: '{joined}'")
+
+
+_SPEC_KEYWORDS = frozenset({
+    'signed', 'unsigned', 'short', 'long',
+    'char', 'int', 'float', 'double', 'void', '_bool', 'bool',
+})
+
+
+def canonical_type_name(names):
+    """把任意顺序/省略形式的类型说明符归一化为规范名（C 语义）。
+
+    类型说明符 = [signed|unsigned] + [short|long(long)] + [基础类型(可省略, int 隐含)]，
+    顺序任意。例如：
+      'long long unsigned int' → 'unsigned long long int'
+      'unsigned'              → 'unsigned int'
+      'long long'             → 'long long int'
+      'long unsigned'         → 'unsigned long int'
+
+    若 names 中不含任何类型关键字（如 typedef 名 'S'），返回 None（不应规范化）。
+    """
+    lowered = [n.lower() for n in names]
+    if not any(n in _SPEC_KEYWORDS for n in lowered):
+        return None
+    counts = {}
+    for n in lowered:
+        counts[n] = counts.get(n, 0) + 1
+    sign = 'unsigned' if counts.get('unsigned') else ('signed' if counts.get('signed') else '')
+    short_n = 1 if counts.get('short') else 0
+    long_n = min(counts.get('long', 0), 2)       # C 最多 long long
+    base = None
+    for b in ('char', 'float', 'double', 'void', '_bool', 'bool', 'int'):
+        if counts.get(b):
+            base = b
+            break
+    if base is None:
+        base = 'int'
+    parts = []
+    if sign:
+        parts.append(sign)
+    if short_n:
+        parts.append('short')
+    parts.extend(['long'] * long_n)
+    parts.append(base)
+    return ' '.join(parts)
 
 
 # ==================== 默认注册表（内建类型） ====================
@@ -342,6 +391,30 @@ from pycparser import c_ast
 from pycparserext.ext_c_parser import FuncDeclExt
 
 
+def _eval_constant(node):
+    """常量表达式求值（数组维度等编译期上下文）。
+
+    直接 Constant → int；否则延迟导入 execute() 求值（可处理 sizeof、算术等
+    编译期常量表达式）。求值失败/非常量返回 None（按不完整数组处理）。
+    延迟导入避免 typesys ↔ execute 循环依赖。
+    """
+    if node is None:
+        return None
+    if isinstance(node, c_ast.Constant):
+        try:
+            return int(node.value)
+        except ValueError:
+            return None
+    try:
+        from execute import execute
+        val = execute(node)
+        if isinstance(val, int):
+            return val
+    except AssertionError:
+        pass
+    return None
+
+
 def type_of_decl(t):
     """把声明类型 AST 节点解析为 CType（设计文档 §2.9.1）。
 
@@ -359,10 +432,7 @@ def type_of_decl(t):
     if isinstance(t, c_ast.PtrDecl):
         return PtrType(type_of_decl(t.type))
     if isinstance(t, c_ast.ArrayDecl):           # 含 ArrayDeclExt
-        dim = None
-        if t.dim is not None and isinstance(t.dim, c_ast.Constant):
-            dim = int(t.dim.value)
-        # 非常量维度：常量折叠（TYPE-3）落地前按不完整数组处理
+        dim = _eval_constant(t.dim)              # 常量/编译期表达式维度（10+5、sizeof(int)*2 等）
         return ArrayType(type_of_decl(t.type), dim)
     if isinstance(t, (c_ast.FuncDecl, FuncDeclExt)):
         param_types, variadic = [], False
