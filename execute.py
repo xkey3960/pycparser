@@ -67,6 +67,10 @@ from typesys import (
     coerce_to_type,
 )
 
+# 内置函数注册表（cbuiltins 模块导入即注册；@builtin 装饰器易扩展）
+import cbuiltins  # noqa: F401  （注册副作用）
+from cbuiltins import call_builtin
+
 
 # ==================== Runtime Support ====================
 
@@ -220,6 +224,75 @@ def execute(node):
 
 # ==================== Expression Executors ====================
 
+_CHAR_ESCAPES = {
+    'n': 10, 't': 9, 'r': 13, '0': 0, 'a': 7, 'b': 8, 'f': 12, 'v': 11,
+    '\\': 92, "'": 39, '"': 34,
+}
+
+
+def _char_literal_code(v):
+    """字符字面量 → int 码。pycparser 的 value 自带引号（"'A'"），需剥引号并处理转义。"""
+    if isinstance(v, str) and len(v) >= 3 and v[0] == "'" and v[-1] == "'":
+        inner = v[1:-1]
+        if len(inner) == 2 and inner[0] == '\\':
+            return _CHAR_ESCAPES.get(inner[1], ord(inner[1]))
+        return ord(inner[0])
+    if isinstance(v, str) and len(v) == 1:
+        return ord(v)
+    try:
+        return int(v)
+    except (TypeError, ValueError):
+        return 0
+
+
+_STRING_ESCAPES = {
+    'n': '\n', 't': '\t', 'r': '\r', '0': '\0', 'a': '\a', 'b': '\b',
+    'f': '\f', 'v': '\v', '\\': '\\', '"': '"', "'": "'", '?': '?',
+}
+
+
+def _unescape_c_string(s):
+    r"""解 C 字符串转义（\n \t \xHH \0 等）。预处理不做转义，字面量中保留原始反斜杠序列。"""
+    out = []
+    i = 0
+    while i < len(s):
+        c = s[i]
+        if c == '\\' and i + 1 < len(s):
+            e = s[i + 1]
+            if e in _STRING_ESCAPES:
+                out.append(_STRING_ESCAPES[e])
+                i += 2
+            elif e == 'x':                       # \xHH（1-2 位十六进制）
+                j, digits = i + 2, ''
+                while j < len(s) and len(digits) < 2 and s[j] in '0123456789abcdefABCDEF':
+                    digits += s[j]
+                    j += 1
+                out.append(chr(int(digits, 16)) if digits else '\\x')
+                i = j
+            elif e.isdigit():                    # \0 / \123（1-3 位八进制）
+                j, digits = i + 1, ''
+                while j < len(s) and len(digits) < 3 and s[j] in '01234567':
+                    digits += s[j]
+                    j += 1
+                out.append(chr(int(digits, 8)))
+                i = j
+            else:
+                out.append(e)                    # 未知转义：保留字符
+                i += 2
+        else:
+            out.append(c)
+            i += 1
+    return ''.join(out)
+
+
+def _string_literal_value(v):
+    """字符串字面量 → Python str。pycparser 的 value 自带双引号（'"hello"'），
+    剥引号并解 C 转义（"len=%d\\n" → 'len=%d\\n' 真实换行）。"""
+    if isinstance(v, str) and len(v) >= 2 and v[0] == '"' and v[-1] == '"':
+        return _unescape_c_string(v[1:-1])
+    return v
+
+
 class ExeConstant(Execute):
     """Constant literal."""
 
@@ -229,8 +302,8 @@ class ExeConstant(Execute):
             'int': int,
             'float': float,
             'double': float,
-            'char': lambda v: ord(v[0]) if isinstance(v, str) and len(v) > 0 else int(v) if v else 0,
-            'string': str,
+            'char': _char_literal_code,
+            'string': _string_literal_value,
             'long': int,
             'short': int,
             'unsigned': int,
@@ -554,24 +627,8 @@ class ExeFuncCall(Execute):
         return [execute(args_node)]
 
     def _call_builtin(self, name, args):
-        if name == 'printf':
-            fmt = str(args[0]) if args else ''
-            print(fmt % tuple(args[1:]) if len(args) > 1 else fmt, end='')
-            return len(fmt)
-        if name == 'putchar':
-            char_code = args[0] if args else 0
-            print(chr(char_code) if isinstance(char_code, int) else str(char_code), end='')
-            return char_code
-        if name == 'getchar':
-            return 0
-        if name in ('exit', '_exit'):
-            raise SystemExit(args[0] if args else 0)
-        if name == 'abs':
-            return abs(args[0]) if args else 0
-        if name == '__builtin_types_compatible_p':
-            # type1 and type2 are always compatible in this simple interpreter
-            return 1
-        raise AssertionError(f"Undefined function: '{name}'")
+        """内置函数分发：经 cbuiltins 注册表（@builtin 装饰器注册，易扩展）。"""
+        return call_builtin(name, args)
 
     def execute(self):
         name_node = self.node.name
