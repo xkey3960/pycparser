@@ -71,6 +71,9 @@ from typesys import (
 import cbuiltins  # noqa: F401  （注册副作用）
 from cbuiltins import call_builtin
 
+# 惰性装载符号索引（L1：函数调用未注册时按需激活定义文件）
+from sources import g_source_index
+
 
 # ==================== Runtime Support ====================
 
@@ -639,8 +642,13 @@ class ExeFuncCall(Execute):
 
         args = self._eval_args(self.node.args)
 
-        if func_name in g_functions:
-            func = g_functions[func_name]
+        func = g_functions.get(func_name)
+        if func is None:
+            # L1 惰性：未注册且非内置 → 尝试激活定义文件（幂等；非源符号 no-op）
+            g_source_index.activate_for(func_name)
+            func = g_functions.get(func_name)
+
+        if func is not None:
             global g_scope
             outer_scope = g_scope
             g_scope = Scope(func.closure_scope)

@@ -25,15 +25,22 @@ from pycparserext import ext_c_parser
 
 from typesys import g_types, type_of_decl, types_equivalent
 
+from sources import g_source_index
+
 import execute as exe_mod
 from execute import execute
 
 
 class CProgram:
-    """一组 C 源文件组成的程序（共享解释器全局状态）。"""
+    """一组 C 源文件组成的程序（共享解释器全局状态）。
+
+    lazy=False（默认）：需显式 link() 全量注册（现行行为，含冲突检测）。
+    lazy=True：跳过 link，load() 建零检查符号索引，run() 时按需激活
+    （Python import 语义，见 设计文档-惰性解析.md 方案 B）。
+    """
 
     def __init__(self, files, entry='main', cpp_path='gcc', cpp_args=None,
-                 parser=None, encoding=None, strict=False):
+                 parser=None, encoding=None, strict=False, lazy=False):
         self.files = list(files)
         self.entry = entry
         self.cpp_path = cpp_path
@@ -42,6 +49,7 @@ class CProgram:
         self.parser = parser if parser is not None else ext_c_parser.GnuCParser()
         self.encoding = encoding
         self.strict = strict
+        self.lazy = lazy
         self.asts = []                 # list[FileAST]
         self.entry_file = None         # 入口函数所在文件
         self._entry_candidates = []    # 入口 FuncDef 节点列表
@@ -50,12 +58,17 @@ class CProgram:
     # ==================== 阶段 1：解析 ====================
 
     def load(self):
-        """解析全部文件 → FileAST[]（逐文件 cpp 预处理 + parser）。"""
+        """解析全部文件 → FileAST[]（逐文件 cpp 预处理 + parser）。
+
+        lazy 模式下同时建立零检查符号索引（只扫名字，不解析类型）。
+        """
         for f in self.files:
             ast = parse_file(f, use_cpp=True, cpp_path=self.cpp_path,
                              cpp_args=self.cpp_args, parser=self.parser,
                              encoding=self.encoding)
             self.asts.append(ast)
+        if self.lazy:
+            g_source_index.build(self.asts, self.files)
         return self.asts
 
     # ==================== 阶段 2：链接 ====================
@@ -191,9 +204,16 @@ class CProgram:
     def run(self, *args):
         """调用入口函数；args 为整型参数列表。
 
+        lazy 模式：自动定位并激活入口文件（其全局已初始化），其余文件在
+        运行中首次被引用时按需激活——无需 link。
+        非 lazy 模式：要求已 link（现行行为）。
+
         注意：用 exe_mod.g_functions 取模块级全局（setup_global_scope 会重赋值，
         import 绑定的旧引用会过期）。
         """
+        if self.lazy:
+            self._resolve_entry()                       # 名字扫描（零解析）
+            g_source_index.activate(self.entry_file)    # import 入口文件
         if self.entry not in exe_mod.g_functions:
             raise AssertionError(f"入口函数 '{self.entry}' 未注册（是否已 link？）")
         args_node = None

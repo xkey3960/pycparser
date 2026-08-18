@@ -130,6 +130,51 @@ def test_fix_repro():
     print(f"    repro main()={result}（u64 成员 + arr[15]）；裸定义 main()={result3} ✓")
 
 
+# ==================== L1 惰性解析 ====================
+
+import sources
+
+
+def test_l1_lazy_run_no_link():
+    print("  [L1] 惰性运行：跨文件函数无需 link，坏文件不影响")
+    exe_mod.setup_global_scope()
+    prog = CProgram([f'{MULTI}/lazy_a.c', f'{MULTI}/lazy_b.c', f'{MULTI}/lazy_bad.c'],
+                    lazy=True)
+    prog.load()
+    result = prog.run()                        # 不调用 link
+    assert result == 42, f"期望 42，实际 {result}"
+    st = sources.g_source_index.state
+    assert st[f'{MULTI}/lazy_a.c'] == 'loaded'      # 被 main 调用 → 已激活
+    assert st[f'{MULTI}/lazy_b.c'] == 'loaded'      # 入口文件 → 已激活
+    assert st[f'{MULTI}/lazy_bad.c'] == 'unloaded'  # 未被引用 → 不激活（坏文件不检查）
+    print(f"    main() = {result}；bad 文件保持 unloaded（类型错误未触发）✓")
+
+
+def test_l1_lazy_forward_ref_order_free():
+    print("  [L1] 惰性下前向引用与文件顺序无关")
+    # main 文件在前、helper 文件在后（文件顺序无关）
+    exe_mod.setup_global_scope()
+    prog = CProgram([f'{MULTI}/lazy_b.c', f'{MULTI}/lazy_a.c'], lazy=True)
+    prog.load()
+    result = prog.run()
+    assert result == 42
+    print(f"    main() = {result}（调用点即时激活，无需 link 的两遍注册）✓")
+
+
+def test_l1_lazy_global_init_on_activation():
+    print("  [L1] 全局变量在所属文件激活时初始化")
+    exe_mod.setup_global_scope()
+    prog = CProgram([f'{MULTI}/gv_lib.c', f'{MULTI}/gv_main.c'], lazy=True)
+    prog.load()
+    # link 前 g 未初始化（未激活）
+    assert 'g' not in exe_mod.g_scope._symbols
+    result = prog.run()
+    assert result == 42, f"期望 42，实际 {result}"
+    # main 文件激活时全局 g = helper_gv() 已初始化
+    assert exe_mod.g_scope.get('g') == 42
+    print(f"    main() = {result}；激活 gv_main 时 g=helper_gv()=42 ✓")
+
+
 def main():
     print("=" * 60)
     print("  program.py — 多文件支持测试（S1+S2+S3+修复）")
@@ -153,8 +198,12 @@ def main():
     test_t8_entry_args()
     print("\n--- 9. 修复回归 ---")
     test_fix_repro()
+    print("\n--- 10. L1 惰性解析 ---")
+    test_l1_lazy_run_no_link()
+    test_l1_lazy_forward_ref_order_free()
+    test_l1_lazy_global_init_on_activation()
     print("\n" + "=" * 60)
-    print("  S1 + S2 + S3 + 修复 全部测试通过! ✅")
+    print("  S1-S3 + 修复 + L1 惰性 全部测试通过! ✅")
     print("=" * 60)
 
 
