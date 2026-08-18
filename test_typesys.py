@@ -26,6 +26,7 @@ from typesys import (
     TypeRegistry,
     UnionType,
     UnionValue,
+    ensure_complete,
     g_types,
 )
 from execute import Scope
@@ -365,6 +366,7 @@ def test_m1_struct_self_reference():
     ])
     exe_mod.execute(_typedef('Node', struct_node))
     st = g_types.resolve(['Node'])
+    ensure_complete(st)              # L4：注册不布局，显式补全（或 sizeof 触发）
     assert st.is_complete()
     # int@0(4) + ptr@8(8) -> 16, align 8
     assert st.sizeof() == 16 and st.alignof() == 8

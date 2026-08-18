@@ -35,11 +35,13 @@ class CType:
         self.align = align
 
     def sizeof(self):
+        ensure_complete(self)   # L4：struct/union 首次需要尺寸时补全布局
         if self.size is None:
             raise AssertionError(f"类型 '{self.name}' 的 sizeof 未定义（不完整类型或函数类型）")
         return self.size
 
     def alignof(self):
+        ensure_complete(self)   # L4：同上，首次需要对齐时补全布局
         if self.align is None:
             raise AssertionError(f"类型 '{self.name}' 的 align 未定义")
         return self.align
@@ -116,13 +118,18 @@ class StructType(CType):
     """结构体类型。members 为 Member(name, type, offset, bitsize) 列表。
 
     前置声明（struct S;）时 incomplete=True，之后用 finalize() 补全布局。
+    L4 惰性（可选字段）：
+      _deferred — 定义 AST 节点（注册时不布局，首次使用时才补全布局）
+      _dupes    — 同标签的后续定义 AST 列表（重定义冲突候选，补全时检测）
     """
 
-    __slots__ = ("members",)
+    __slots__ = ("members", "_deferred", "_dupes")
 
     def __init__(self, name, members=None, size=None, align=None, incomplete=False):
         super().__init__(name, size, align)
         self.members = members or []
+        self._deferred = None
+        self._dupes = []
         if incomplete:
             self.size = None
             self.align = None
@@ -134,12 +141,14 @@ class StructType(CType):
         self.align = align
 
     def member_offset(self, name):
+        ensure_complete(self)   # L4：成员访问前补全布局（可能激活定义文件）
         for m in self.members:
             if m.name == name:
                 return m.offset
         raise AssertionError(f"struct {self.name} 无成员 '{name}'")
 
     def member_type(self, name):
+        ensure_complete(self)
         for m in self.members:
             if m.name == name:
                 return m.type
@@ -147,13 +156,18 @@ class StructType(CType):
 
 
 class UnionType(CType):
-    """联合体类型：所有成员 offset=0（共享存储），size=max 成员。"""
+    """联合体类型：所有成员 offset=0（共享存储），size=max 成员。
 
-    __slots__ = ("members",)
+    L4 惰性字段同 StructType（_deferred/_dupes，见上）。
+    """
+
+    __slots__ = ("members", "_deferred", "_dupes")
 
     def __init__(self, name, members=None, size=None, align=None, incomplete=False):
         super().__init__(name, size, align)
         self.members = members or []
+        self._deferred = None
+        self._dupes = []
         if incomplete:
             self.size = None
             self.align = None
@@ -164,6 +178,7 @@ class UnionType(CType):
         self.align = align
 
     def member_type(self, name):
+        ensure_complete(self)   # L4：成员访问前补全布局（可能激活定义文件）
         for m in self.members:
             if m.name == name:
                 return m.type
@@ -471,44 +486,110 @@ def _resolve_type_lazy(names):
 
 
 def _register_compound(node):
-    """处理内联 Struct/Union/Enum 定义/引用（命名则注册标签，定义则计算布局）。
+    """处理内联 Struct/Union/Enum 定义/引用（L4：注册与布局分离）。
 
-    三种形态：
-      - 定义（decls 非空）：注册标签（若命名）+ 计算成员布局（M1 提前启用）
-      - 引用 / 前置声明（decls 为 None）：注册不完整类型
-      - 匿名定义（name 为 None）：仅作为类型返回，不注册
-    自引用（struct Node { struct Node *next; }）通过"先注册不完整类型再算成员"解决。
+    - 定义（decls 非空）：只注册不完整类型标签 + 挂 _deferred AST；
+      布局延后到 ensure_complete（首次需要完整类型时）——文件激活不再
+      检查成员类型/维度表达式（惰性类型检查，设计文档-惰性解析.md L4）。
+    - 引用 / 前置声明（decls 为 None）：注册不完整类型。
+    - 匿名定义（name 为 None）：注册即布局（无法按名引用，必须当场完整）。
+    - 重定义（同标签多个定义）：首个为 _deferred，其余进 _dupes，补全时检测。
+    自引用（struct Node { struct Node *next; }）通过"先注册不完整再补全"解决。
     """
     if isinstance(node, c_ast.Enum):
         return _enum_from_node(node)
     if isinstance(node, c_ast.Union):
-        kind, compute, ctor = "union", compute_union_layout, UnionType
+        kind, ctor, compute = "union", UnionType, compute_union_layout
     else:                                        # Struct / StructExt
-        kind, compute, ctor = "struct", compute_struct_layout, StructType
+        kind, ctor, compute = "struct", StructType, compute_struct_layout
 
     name = node.name
     # L2 惰性：引用（decls 为 None）未注册标签 → 装载定义文件后再查
     if name and node.decls is None and not g_types.has_tag(kind, name):
         g_source_index.activate_for_type(kind, name)
-    if name and g_types.has_tag(kind, name):
-        st = g_types.lookup_tag(kind, name)
-        if st.is_complete():
-            return st                           # 已定义（重定义宽松返回）
-    else:
-        st = ctor(name, incomplete=True)
-        if name:
-            g_types.register_tag(kind, name, st)
+
+    # 匿名定义：无法按名引用，注册即布局（当场必须完整）
+    if name is None:
+        members = [(d.name, type_of_decl(d.type), d.bitsize)
+                   for d in node.decls or [] if isinstance(d, c_ast.Decl) and d.name]
+        layout, size, align = compute(members)
+        return ctor(None, members=layout, size=size, align=align)
 
     if node.decls is None:
-        return st                               # 引用 / 前置声明
+        # 引用 / 前置声明：不完整类型
+        if not g_types.has_tag(kind, name):
+            st = ctor(name, incomplete=True)
+            g_types.register_tag(kind, name, st)
+        return g_types.lookup_tag(kind, name)
 
+    # 定义：注册不完整 + 挂 deferred（首个定义）/ _dupes（后续定义）
+    if g_types.has_tag(kind, name):
+        st = g_types.lookup_tag(kind, name)
+        if st.is_complete():
+            return st                           # 已被补全（重定义宽松返回）
+        if st._deferred is None:
+            st._deferred = node                 # 首个定义
+        else:
+            st._dupes.append(node)              # 重定义候选（补全时检测冲突）
+        return st
+    st = ctor(name, incomplete=True)
+    st._deferred = node
+    g_types.register_tag(kind, name, st)
+    return st
+
+
+def _member_names_of_def(node):
+    """定义 AST 的成员名列表（重定义冲突比对用）。"""
+    if isinstance(node, (c_ast.Struct, c_ast.Union)) and node.decls:
+        return [d.name for d in node.decls if isinstance(d, c_ast.Decl) and d.name]
+    if isinstance(node, c_ast.Enum) and node.values:
+        return [e.name for e in node.values.enumerators or []]
+    return []
+
+
+def _check_tag_redef_conflict(ctype, first, dupe):
+    """重定义冲突检测（L4 延后到补全时）：首个定义与后续定义成员签名不同 → 冲突。"""
+    from sources import _warn_or_raise
+    a, b = _member_names_of_def(first), _member_names_of_def(dupe)
+    if a != b:
+        kind = 'union' if isinstance(ctype, UnionType) else 'struct'
+        _warn_or_raise(f"{kind} '{ctype.name}' 重定义冲突: 成员 {a} vs {b}",
+                       g_source_index.strict)
+
+
+def ensure_complete(ctype):
+    """确保类型完整（L4 惰性布局）：struct/union 按需补全布局。
+
+    注册时只存 AST（_deferred）；需要完整类型的位置（sizeof/成员访问/
+    声明变量/递归成员）调用本函数才触发布局与重定义冲突检测。
+    成员类型解析可能触发其他文件激活（_resolve_type_lazy）或递归补全。
+    纯前置声明（无定义）保持不完整（C 语义：sizeof 才报错）。
+    """
+    if ctype is None or ctype.is_complete():
+        return ctype
+    if not isinstance(ctype, (StructType, UnionType)):
+        return ctype
+    node = ctype._deferred
+    if node is None:
+        return ctype                        # 纯前置声明：无法补全
+    # 重定义冲突检测（首次使用时才检）
+    for dupe in ctype._dupes:
+        _check_tag_redef_conflict(ctype, node, dupe)
+    # 布局：成员类型解析（可触发其他文件激活）+ 递归补全
     members = []
     for d in node.decls or []:
         if isinstance(d, c_ast.Decl) and d.name:
-            members.append((d.name, type_of_decl(d.type), d.bitsize))
-    layout, size, align = compute(members)
-    st.finalize(layout, size, align)
-    return st
+            mt = type_of_decl(d.type)
+            ensure_complete(mt)
+            members.append((d.name, mt, d.bitsize))
+    if isinstance(ctype, UnionType):
+        layout, size, align = compute_union_layout(members)
+    else:
+        layout, size, align = compute_struct_layout(members)
+    ctype.finalize(layout, size, align)
+    ctype._deferred = None
+    ctype._dupes = []
+    return ctype
 
 
 def _enum_from_node(node):
@@ -537,8 +618,10 @@ def default_value_for(ctype):
         n = ctype.count or 0
         return [default_value_for(ctype.elem_type) for _ in range(n)]
     if isinstance(ctype, StructType):
+        ensure_complete(ctype)   # L4：声明变量需构造默认值 → 补全布局
         return StructValue(ctype)
     if isinstance(ctype, UnionType):
+        ensure_complete(ctype)
         return UnionValue(ctype)
     if isinstance(ctype, BasicType):
         name = ctype.name
@@ -645,6 +728,7 @@ def coerce_to_type(value, ctype):
     - 标量/枚举/指针：原样返回（隐式类型转换在 M5 / TYPE-2）
     """
     if isinstance(ctype, StructType):
+        ensure_complete(ctype)   # L4：构造实例前补全布局（可能激活定义文件）
         if isinstance(value, StructValue):
             return value.copy()
         sv = StructValue(ctype)
@@ -658,6 +742,7 @@ def coerce_to_type(value, ctype):
                     sv.set(k, coerce_to_type(v, ctype.member_type(k)))
         return sv
     if isinstance(ctype, UnionType):
+        ensure_complete(ctype)
         if isinstance(value, UnionValue):
             return value.copy()
         uv = UnionValue(ctype)
@@ -698,6 +783,10 @@ def types_equivalent(t1, t2):
 
     同对象 → True；不同实例按同构比对：BasicType 比 name+size、指针/数组/函数
     递归、enum 比常量表、struct/union 比成员（名 + 递归类型）。
+
+    L4 惰性补充：任一侧是不完整 struct/union（未补全布局，members 空）时，
+    无法比成员 → 按标签名判定（同标签名视为同一类型；跨文件同名标签本身
+    由补全时的重定义冲突检测负责）。
     """
     if t1 is t2:
         return True
@@ -717,6 +806,8 @@ def types_equivalent(t1, t2):
     if isinstance(t1, (StructType, UnionType)) and isinstance(t2, (StructType, UnionType)):
         if type(t1) is not type(t2):
             return False
+        if not (t1.is_complete() and t2.is_complete()):
+            return t1.name == t2.name   # L4：不完整时按标签名判定
         if len(t1.members) != len(t2.members):
             return False
         return all(a.name == b.name and types_equivalent(a.type, b.type)

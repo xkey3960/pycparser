@@ -136,7 +136,7 @@ import sources
 
 
 def test_l1_lazy_run_no_link():
-    print("  [L1] 惰性运行：跨文件函数无需 link，坏文件不影响")
+    print("  [L1] 惰性运行：跨文件函数无需 link，坏文件不报错")
     exe_mod.setup_global_scope()
     prog = CProgram([f'{MULTI}/lazy_a.c', f'{MULTI}/lazy_b.c', f'{MULTI}/lazy_bad.c'],
                     lazy=True)
@@ -146,8 +146,9 @@ def test_l1_lazy_run_no_link():
     st = sources.g_source_index.state
     assert st[f'{MULTI}/lazy_a.c'] == 'loaded'      # 被 main 调用 → 已激活
     assert st[f'{MULTI}/lazy_b.c'] == 'loaded'      # 入口文件 → 已激活
-    assert st[f'{MULTI}/lazy_bad.c'] == 'unloaded'  # 未被引用 → 不激活（坏文件不检查）
-    print(f"    main() = {result}；bad 文件保持 unloaded（类型错误未触发）✓")
+    # L4 起所有文件启动装载（全局 eager）；bad 文件激活但类型惰性检查 → 不报错
+    assert st[f'{MULTI}/lazy_bad.c'] == 'loaded'
+    print(f"    main() = {result}；bad 文件已激活但类型错误不触发（惰性检查）✓")
 
 
 def test_l1_lazy_forward_ref_order_free():
@@ -279,6 +280,121 @@ def test_l3_eager_link_still_works():
     print(f"    link+run 正常，全量冲突检测生效 ✓")
 
 
+# ==================== L4 全局 eager + 类型 lazy（惰性类型检查） ====================
+
+def test_l4_bad_struct_in_active_file_ok():
+    """坏 struct（维度引用未定义符号）所在文件被激活，但只要不使用 → 不报错。
+
+    L4 语义：启动装载全部文件（全局 eager），struct/union 只注册不布局；
+    类型错误延迟到首次真正使用（ensure_complete）。
+    """
+    print("  [L4] 坏 struct 文件激活但不使用 → 不报错")
+    exe_mod.setup_global_scope()
+    prog = CProgram([f'{MULTI}/lazy4_bad.c', f'{MULTI}/lazy4_main.c'], lazy=True)
+    prog.load()
+    result = prog.run()                        # activate_all：全部文件装载
+    assert result == 42, f"期望 42，实际 {result}"
+    st = sources.g_source_index.state
+    assert st[f'{MULTI}/lazy4_bad.c'] == 'loaded'   # 已激活（全局 eager）
+    # 坏 struct L4Bad 注册为不完整，未布局（未使用）
+    t = exe_mod.g_types.lookup_tag('struct', 'L4Bad')
+    assert not t.is_complete()
+    print(f"    main() = {result}；L4Bad 已注册但不完整（类型错误未触发）✓")
+
+
+def test_l4_bad_struct_error_on_use():
+    """坏 struct 真正被使用（sizeof）→ 用时才检（报错）。"""
+    print("  [L4] 坏 struct 被 sizeof 使用 → 用时才检")
+    exe_mod.setup_global_scope()
+    prog = CProgram([f'{MULTI}/lazy4_use.c'], lazy=True)
+    prog.load()
+    try:
+        prog.run()
+        raise AssertionError("应报错（使用坏 struct）")
+    except AssertionError as e:
+        assert 'no_such_thing_l4use' in str(e) or '维度' in str(e) \
+            or '无法解析' in str(e) or '未定义' in str(e) \
+            or '不完整类型' in str(e) or "'arr'" in str(e)
+        print(f"    sizeof 使用时报错: {e} ✓")
+
+
+def test_l4_tag_redef_conflict_on_use():
+    """struct 重定义冲突（成员不同）：不使用不报；使用时才报（非 strict 告警 / strict 报错）。"""
+    print("  [L4] struct 重定义冲突：用时才检")
+    # 非 strict：只用 l4_dup_a（不碰 L4Dup）→ 不报
+    exe_mod.setup_global_scope()
+    prog = CProgram([f'{MULTI}/lazy4_dup_a.c', f'{MULTI}/lazy4_dup_b.c'],
+                    lazy=True, entry='l4_dup_a')
+    prog.load()
+    result = prog.run()
+    assert result == 1
+    t = exe_mod.g_types.lookup_tag('struct', 'L4Dup')
+    assert not t.is_complete()          # 从未使用 → 从未补全 → 无冲突
+    print(f"    main(l4_dup_a) = {result}；L4Dup 未补全（重定义未触发）✓")
+    # 使用时：非 strict 告警并继续
+    exe_mod.setup_global_scope()
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        prog2 = CProgram([f'{MULTI}/lazy4_dup_a.c', f'{MULTI}/lazy4_dup_b.c'],
+                         lazy=True, entry='l4_dup_a')
+        prog2.load()
+        prog2._resolve_entry()
+        # 手动触发补全（模拟真正使用 L4Dup：声明变量）
+        from typesys import ensure_complete
+        ensure_complete(exe_mod.g_types.lookup_tag('struct', 'L4Dup'))
+    assert '重定义冲突' in buf.getvalue()
+    print(f"    使用 L4Dup 时告警 'struct L4Dup 重定义冲突' ✓")
+    # strict：使用时直接报错（清掉跨测试残留的 L4Dup，模拟全新程序）
+    exe_mod.setup_global_scope()
+    if ('struct', 'L4Dup') in exe_mod.g_types.tags:
+        del exe_mod.g_types.tags[('struct', 'L4Dup')]
+    prog3 = CProgram([f'{MULTI}/lazy4_dup_a.c', f'{MULTI}/lazy4_dup_b.c'],
+                     lazy=True, entry='l4_dup_a', strict=True)
+    prog3.load()
+    prog3.run()          # 启动装载（activate_all）：注册全部类型（不布局）
+    try:
+        from typesys import ensure_complete
+        ensure_complete(exe_mod.g_types.lookup_tag('struct', 'L4Dup'))
+        raise AssertionError("strict 应报错")
+    except AssertionError as e:
+        assert '重定义冲突' in str(e)
+        print(f"    strict: {e} ✓")
+
+
+def test_l4_global_init_at_startup():
+    """全局变量启动时初始化（activate_all 装载全部文件，不再按需）。"""
+    print("  [L4] 全局变量启动时全部初始化（activate_all）")
+    exe_mod.setup_global_scope()
+    prog = CProgram([f'{MULTI}/gv_lib.c', f'{MULTI}/gv_main.c'], lazy=True)
+    prog.load()
+    # 启动装载前未初始化
+    assert 'g' not in exe_mod.g_scope._symbols
+    result = prog.run()
+    assert result == 42
+    assert exe_mod.g_scope.get('g') == 42
+    # 两个文件都装载（全局 eager，不只入口文件）
+    st = sources.g_source_index.state
+    assert st[f'{MULTI}/gv_lib.c'] == 'loaded'
+    assert st[f'{MULTI}/gv_main.c'] == 'loaded'
+    print(f"    main() = {result}；gv_lib/gv_main 均已装载，g=42 ✓")
+
+
+def test_l4_link_still_full_check():
+    """lazy=False 全量 link 仍全量检查：坏 struct 在 link 时报错（eager）。"""
+    print("  [L4] link（eager 全量检查）仍对坏 struct 报错")
+    exe_mod.setup_global_scope()
+    prog = CProgram([f'{MULTI}/lazy4_use.c'], lazy=False)
+    prog.load()
+    try:
+        prog.link()
+        raise AssertionError("link 全量检查应报错（坏 struct）")
+    except AssertionError as e:
+        assert 'no_such_thing_l4use' in str(e) or '维度' in str(e) \
+            or '无法解析' in str(e) or '未定义' in str(e) \
+            or '不完整类型' in str(e) or "'arr'" in str(e)
+        print(f"    link 时报错: {e} ✓")
+
+
 def main():
     print("=" * 60)
     print("  program.py — 多文件支持测试（S1+S2+S3+修复）")
@@ -315,8 +431,14 @@ def main():
     test_l3_lazy_conflict_on_activation()
     test_l3_lazy_func_conflict()
     test_l3_eager_link_still_works()
+    print("\n--- 13. L4 全局 eager + 类型 lazy ---")
+    test_l4_bad_struct_in_active_file_ok()
+    test_l4_bad_struct_error_on_use()
+    test_l4_tag_redef_conflict_on_use()
+    test_l4_global_init_at_startup()
+    test_l4_link_still_full_check()
     print("\n" + "=" * 60)
-    print("  S1-S3 + 修复 + L1/L2/L3 惰性 全部测试通过! ✅")
+    print("  S1-S3 + 修复 + L1/L2/L3/L4 惰性 全部测试通过! ✅")
     print("=" * 60)
 
 

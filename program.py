@@ -23,7 +23,7 @@ from pycparser import parse_file
 
 from pycparserext import ext_c_parser
 
-from typesys import g_types, type_of_decl, types_equivalent
+from typesys import g_types, type_of_decl, types_equivalent, ensure_complete
 
 from sources import (
     g_source_index,
@@ -84,8 +84,14 @@ class CProgram:
     # ==================== 阶段 2：链接 ====================
 
     def link(self):
-        """链接三阶段：1a 类型 → 1b 函数 → 2 全局变量（+冲突检测 + 入口定位）。"""
+        """链接三阶段：1a 类型 → 1b 函数 → 2 全局变量（+冲突检测 + 入口定位）。
+
+        L4 类型惰性：1a 注册类型（struct/union 只注册不布局）；1a 后全量补全
+        （ensure_complete）——link 是显式全量检查（eager），类型布局/重定义
+        冲突在此暴露；惰性模式（run 自动 activate_all）才延迟到首次使用。
+        """
         # 1a 类型收集：跨文件类型可见（typedef/struct/union/enum/裸类型定义 全量注册 + 冲突检测）
+        self._link_tags = set()      # 本次 1a 定义过的 struct/union 标签名（补全范围）
         for ast in self.asts:
             for ext in ast.ext or []:
                 if isinstance(ext, (c_ast.Typedef, c_ast.Struct, c_ast.Union, c_ast.Enum)) \
@@ -95,7 +101,11 @@ class CProgram:
                         self._check_typedef_conflict(ext)
                     elif getattr(ext, 'name', None):
                         self._check_tag_conflict(ext)
+                    self._link_tags |= _collect_tag_names(ext)
                     execute(ext)
+        # 1a 后：L4 全量补全（eager link = 全量检查：布局本次定义的 struct/union，
+        # 暴露类型错误/重定义冲突；跨测试残留标签不碰）
+        self._complete_all_tags()
         # 1b 函数收集：FuncDef 全部注册（只注册不执行体 → 前向引用可用；重名检测）
         for ast in self.asts:
             for ext in ast.ext or []:
@@ -117,6 +127,18 @@ class CProgram:
             print(f"[warn] 多个文件定义入口 '{self.entry}'，取第一个: {self.entry_file}")
             execute(self._entry_candidates[0])
         return self
+
+    def _complete_all_tags(self):
+        """全量补全（L4 link 专用）：布局本次 link 定义过的 struct/union 标签。
+
+        类型错误（成员/维度未定义符号）与重定义冲突在此暴露——
+        link = eager 全量检查（与惰性模式的"用时才检"对照）。
+        只补全 _link_tags 记录的名字，避免补到跨测试残留标签。
+        """
+        for kind in ('struct', 'union'):
+            for name in list(self._link_tags):
+                if g_types.has_tag(kind, name):
+                    ensure_complete(g_types.lookup_tag(kind, name))
 
     # ---------- 冲突检测（S2） ----------
 
@@ -171,8 +193,10 @@ class CProgram:
     def run(self, *args):
         """调用入口函数；args 为整型参数列表。
 
-        lazy 模式：自动定位并激活入口文件（其全局已初始化），其余文件在
-        运行中首次被引用时按需激活——无需 link。
+        lazy 模式（L4 全局 eager + 类型 lazy）：启动装载**全部**文件
+        （activate_all：每个文件 1a 类型注册 → 1b 函数 → 2 全局 init）——
+        全局变量在启动时全部初始化（C 语义）；但 struct/union 只注册不布局，
+        类型检查延迟到首次真正使用（ensure_complete）——无需 link。
         非 lazy 模式：要求已 link（现行行为）。
 
         注意：用 exe_mod.g_functions 取模块级全局（setup_global_scope 会重赋值，
@@ -181,8 +205,8 @@ class CProgram:
         if self.lazy:
             self._resolve_entry()                       # 名字扫描（零解析）
             if self.entry not in exe_mod.g_functions:
-                # 未 link：激活入口文件（若已 link 则跳过，避免重复装载）
-                g_source_index.activate(self.entry_file)
+                # 未 link：启动装载全部文件（全局 eager；类型检查惰性）
+                g_source_index.activate_all()
         if self.entry not in exe_mod.g_functions:
             raise AssertionError(f"入口函数 '{self.entry}' 未注册（是否已 link？）")
         args_node = None
@@ -209,3 +233,24 @@ def _iter_decls(node):
     if isinstance(node, c_ast.DeclList):
         return [d for d in (node.decls or []) if isinstance(d, c_ast.Decl)]
     return []
+
+
+def _collect_tag_names(node):
+    """递归收集声明节点中出现的 struct/union 标签名（L4 link 全量补全范围）。
+
+    覆盖：顶层 Struct/Union、typedef struct {...} 的内嵌标签、Decl(name=None)
+    裸定义、以及成员中内联定义的复合类型。enum 不收集（enum 注册即完整）。
+    """
+    found = set()
+    if isinstance(node, (c_ast.Struct, c_ast.Union)) and node.name:
+        found.add(node.name)
+    for attr in ('type', 'decls', 'ext'):
+        child = getattr(node, attr, None)
+        if child is None:
+            continue
+        if isinstance(child, list):
+            for c in child:
+                found |= _collect_tag_names(c)
+        else:
+            found |= _collect_tag_names(child)
+    return found

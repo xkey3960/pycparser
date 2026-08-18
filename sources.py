@@ -93,6 +93,10 @@ class SourceIndex:
     def activate(self, path):
         """装载（import）一个文件：1a 类型 → 1b 函数 → 2 全局。幂等 + 环守卫。
 
+        L4 惰性类型检查：1a 只**注册**类型标签（struct/union 注册为不完整，
+        挂 _deferred AST），不布局、不求值成员/维度——类型错误延后到
+        ensure_complete（首次真正使用该类型时）才暴露。
+
         文件顶层在**全局作用域**执行（激活可能发生在函数调用中途，但文件级
         的全局变量/枚举常量必须落在全局作用域，语义如"程序启动时装载"）。
 
@@ -110,19 +114,22 @@ class SourceIndex:
         saved_scope = exe_mod.g_scope
         exe_mod.g_scope = exe_mod.g_global_scope   # 文件顶层 → 全局作用域
         try:
-            # 1a 类型（含裸类型定义 Decl(name=None)）：注册 + 冲突检测（L3）
+            # 1a 类型（含裸类型定义 Decl(name=None)）：注册（L4 不布局）。
+            # enum 保持 eager（注册即注入常量）→ 冲突即时检；struct/union
+            # 惰性注册，重定义冲突延后到 ensure_complete（_dupes 机制）。
             for ext in ast.ext or []:
                 if isinstance(ext, c_ast.Typedef) and ext.name:
                     check_typedef_conflict(ext, self.strict)
                     execute(ext)
                 elif isinstance(ext, (c_ast.Struct, c_ast.Union, c_ast.Enum)) and ext.name:
-                    check_tag_conflict(ext, self.strict)
+                    if isinstance(ext, c_ast.Enum):
+                        check_tag_conflict(ext, self.strict)
                     execute(ext)
                 elif isinstance(ext, c_ast.Decl) and ext.name is None:
                     inner = ext.type
                     while inner is not None and type(inner).__name__ in ('TypeDecl', 'TypeDeclExt'):
                         inner = getattr(inner, 'type', None)
-                    if isinstance(inner, (c_ast.Struct, c_ast.Union, c_ast.Enum)) and inner.name:
+                    if isinstance(inner, c_ast.Enum) and inner.name:
                         check_tag_conflict(inner, self.strict)
                     execute(ext)
             # 1b 函数：注册 + 重名检测（L3）
@@ -140,6 +147,15 @@ class SourceIndex:
         finally:
             exe_mod.g_scope = saved_scope
         self._state[path] = 'loaded'
+
+    def activate_all(self):
+        """启动装载全部文件（L4 全局 eager）：每个文件 1a 类型注册 → 1b 函数 → 2 全局。
+
+        保证所有全局变量在程序启动时初始化（C 语义）；类型检查仍惰性
+        （注册不布局，用时才补全）。幂等（已 loaded 直接返回）。
+        """
+        for path in list(self._state):
+            self.activate(path)
 
     # ---------- 查询 ----------
 
