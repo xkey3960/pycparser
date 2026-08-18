@@ -46,13 +46,31 @@ class SourceIndex:
                     self._funcs.setdefault(ext.decl.name, (path, ext))
                 elif isinstance(ext, c_ast.Typedef) and ext.name:
                     self._typedefs.setdefault(ext.name, (path, ext))
+                    self._index_inner_tag(ext.type, path, ext)
                 elif isinstance(ext, (c_ast.Struct, c_ast.Union, c_ast.Enum)) and ext.name:
-                    kind = ('struct' if isinstance(ext, c_ast.Struct)
-                            else 'union' if isinstance(ext, c_ast.Union) else 'enum')
-                    self._tags.setdefault((kind, ext.name), (path, ext))
-                elif isinstance(ext, c_ast.Decl) and ext.name:
-                    self._globals.setdefault(ext.name, (path, ext))
+                    self._index_tag(ext, path, ext)
+                elif isinstance(ext, c_ast.Decl):
+                    if ext.name:
+                        self._globals.setdefault(ext.name, (path, ext))
+                    else:
+                        self._index_inner_tag(ext.type, path, ext)  # 裸类型定义
         return self
+
+    def _index_tag(self, node, path, ext):
+        """索引复合类型标签（struct/union/enum）。"""
+        if node.name:
+            kind = ('struct' if isinstance(node, c_ast.Struct)
+                    else 'union' if isinstance(node, c_ast.Union) else 'enum')
+            self._tags.setdefault((kind, node.name), (path, ext))
+
+    def _index_inner_tag(self, type_node, path, ext):
+        """索引被 TypeDecl 包装的复合类型标签（typedef struct {...} S; 的标签、
+        裸 enum E {...}; 的标签）。"""
+        inner = type_node
+        while inner is not None and type(inner).__name__ in ('TypeDecl', 'TypeDeclExt'):
+            inner = getattr(inner, 'type', None)
+        if isinstance(inner, (c_ast.Struct, c_ast.Union, c_ast.Enum)):
+            self._index_tag(inner, path, ext)
 
     # ---------- 惰性装载 ----------
 
@@ -71,6 +89,9 @@ class SourceIndex:
     def activate(self, path):
         """装载（import）一个文件：1a 类型 → 1b 函数 → 2 全局。幂等 + 环守卫。
 
+        文件顶层在**全局作用域**执行（激活可能发生在函数调用中途，但文件级
+        的全局变量/枚举常量必须落在全局作用域，语义如"程序启动时装载"）。
+
         环：'loading' 期间再被引用 → 直接返回（该文件函数已在 1b 注册、
         类型可经"不完整→补全"兜底，因此部分装载可安全引用）。
         """
@@ -80,22 +101,28 @@ class SourceIndex:
         self._state[path] = 'loading'
         ast = self._asts[path]
         from execute import execute   # 延迟导入避免循环依赖
+        import execute as exe_mod
 
-        # 1a 类型（含裸类型定义 Decl(name=None)）
-        for ext in ast.ext or []:
-            if isinstance(ext, (c_ast.Typedef, c_ast.Struct, c_ast.Union, c_ast.Enum)) \
-                    or (isinstance(ext, c_ast.Decl) and ext.name is None):
-                execute(ext)
-        # 1b 函数
-        for ext in ast.ext or []:
-            if isinstance(ext, c_ast.FuncDef):
-                execute(ext)
-        # 2 全局变量 / 编译期断言（init 可触发其他文件激活）
-        for ext in ast.ext or []:
-            if isinstance(ext, (c_ast.Decl, c_ast.DeclList)):
-                execute(ext)
-            elif isinstance(ext, c_ast.StaticAssert):
-                execute(ext)
+        saved_scope = exe_mod.g_scope
+        exe_mod.g_scope = exe_mod.g_global_scope   # 文件顶层 → 全局作用域
+        try:
+            # 1a 类型（含裸类型定义 Decl(name=None)）
+            for ext in ast.ext or []:
+                if isinstance(ext, (c_ast.Typedef, c_ast.Struct, c_ast.Union, c_ast.Enum)) \
+                        or (isinstance(ext, c_ast.Decl) and ext.name is None):
+                    execute(ext)
+            # 1b 函数
+            for ext in ast.ext or []:
+                if isinstance(ext, c_ast.FuncDef):
+                    execute(ext)
+            # 2 全局变量 / 编译期断言（init 可触发其他文件激活）
+            for ext in ast.ext or []:
+                if isinstance(ext, (c_ast.Decl, c_ast.DeclList)):
+                    execute(ext)
+                elif isinstance(ext, c_ast.StaticAssert):
+                    execute(ext)
+        finally:
+            exe_mod.g_scope = saved_scope
         self._state[path] = 'loaded'
 
     # ---------- 查询 ----------

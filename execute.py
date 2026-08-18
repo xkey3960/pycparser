@@ -166,6 +166,7 @@ class Function:
 # ==================== Global State ====================
 
 g_scope = Scope()
+g_global_scope = g_scope   # 全局（根）作用域：惰性文件激活时在其上执行文件顶层
 g_functions = {}
 
 
@@ -867,7 +868,13 @@ class ExeDecl(Execute):
     def execute(self):
         name = self.node.name
         if name is None:
-            # 裸类型定义（struct S {...}; 被解析器包成 Decl(name=None)）：注册类型
+            # 裸类型定义（struct S {...}; / enum E {...}; 被解析器包成 Decl(name=None)）
+            inner = self.node.type
+            while isinstance(inner, (TypeDecl, TypeDeclExt)):
+                inner = inner.type
+            if isinstance(inner, c_ast.Enum) and inner.values is not None:
+                _process_enum_node(inner)      # 注册 + 注入枚举常量（M2 路径）
+                return
             type_of_decl(self.node.type)
             return
         ctype = type_of_decl(self.node.type)
@@ -1348,8 +1355,9 @@ g_exe_class = {
 
 def setup_global_scope():
     """Reset the global scope and function table for testing."""
-    global g_scope, g_functions
+    global g_scope, g_functions, g_global_scope
     g_scope = Scope()
+    g_global_scope = g_scope
     g_scope.declare('i', 0)
     g_scope.declare('j', 0)
     g_functions = {}

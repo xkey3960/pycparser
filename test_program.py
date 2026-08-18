@@ -175,6 +175,47 @@ def test_l1_lazy_global_init_on_activation():
     print(f"    main() = {result}；激活 gv_main 时 g=helper_gv()=42 ✓")
 
 
+def test_l2_cross_file_struct():
+    print("  [L2] 跨文件 struct 惰性解析：main 用 struct Pt，定义在 lazy_t.c")
+    exe_mod.setup_global_scope()
+    prog = CProgram([f'{MULTI}/lazy_t_main.c', f'{MULTI}/lazy_t.c'], lazy=True)
+    prog.load()
+    result = prog.run()
+    assert result == 7, f"期望 7，实际 {result}"
+    assert sources.g_source_index.state[f'{MULTI}/lazy_t.c'] == 'loaded'
+    st = exe_mod.g_types.lookup_tag('struct', 'Pt')
+    assert st.is_complete() and st.sizeof() == 8
+    print(f"    main() = {result}（struct Pt 引用时惰性装载定义文件）✓")
+
+
+def test_l2_cross_file_enum():
+    print("  [L2] 跨文件 enum 惰性解析：main 用 enum EColor，定义在 lazy_e.c")
+    exe_mod.setup_global_scope()
+    prog = CProgram([f'{MULTI}/lazy_e_main.c', f'{MULTI}/lazy_e.c'], lazy=True)
+    prog.load()
+    result = prog.run()
+    assert result == 2, f"期望 2，实际 {result}"
+    assert sources.g_source_index.state[f'{MULTI}/lazy_e.c'] == 'loaded'
+    # 枚举常量随文件激活注入
+    assert exe_mod.g_scope.get('EGREEN') == 1
+    print(f"    main() = {result}（enum EColor 引用时惰性装载，EGREEN 随激活注入）✓")
+
+
+def test_l2_genuinely_undefined_type():
+    print("  [L2] 真正未定义的类型仍报错（激活后仍找不到）")
+    exe_mod.setup_global_scope()
+    # struct ZZMissing 无任何定义（唯一命名，避免 g_types 跨测试污染）
+    prog = CProgram([f'{MULTI}/lazy_u_main.c'], lazy=True)
+    prog.load()
+    try:
+        prog.run()
+        raise AssertionError("应报错")
+    except AssertionError as e:
+        # 无定义 → 不完整类型 → 成员访问报"无成员"（不会静默通过）
+        assert '未定义' in str(e) or '无成员' in str(e) or 'struct' in str(e)
+        print(f"    {e} ✓")
+
+
 def main():
     print("=" * 60)
     print("  program.py — 多文件支持测试（S1+S2+S3+修复）")
@@ -202,8 +243,12 @@ def main():
     test_l1_lazy_run_no_link()
     test_l1_lazy_forward_ref_order_free()
     test_l1_lazy_global_init_on_activation()
+    print("\n--- 11. L2 类型引用钩子 ---")
+    test_l2_cross_file_struct()
+    test_l2_cross_file_enum()
+    test_l2_genuinely_undefined_type()
     print("\n" + "=" * 60)
-    print("  S1-S3 + 修复 + L1 惰性 全部测试通过! ✅")
+    print("  S1-S3 + 修复 + L1/L2 惰性 全部测试通过! ✅")
     print("=" * 60)
 
 

@@ -390,6 +390,9 @@ g_types = build_default_registry()
 from pycparser import c_ast
 from pycparserext.ext_c_parser import FuncDeclExt
 
+# L2 惰性类型解析：引用未注册类型时按需装载定义文件
+from sources import g_source_index
+
 
 def _eval_constant(node):
     """常量表达式求值（数组维度等编译期上下文）。
@@ -445,10 +448,26 @@ def type_of_decl(t):
                     variadic = True
         return FuncType(type_of_decl(t.type), param_types, variadic)
     if isinstance(t, c_ast.IdentifierType):
-        return g_types.resolve(t.names)
+        return _resolve_type_lazy(t.names)
     if isinstance(t, (c_ast.Struct, c_ast.Union, c_ast.Enum)):  # 含 StructExt
         return _register_compound(t)
     raise AssertionError(f"无法解析类型节点: {type(t).__name__}")
+
+
+def _resolve_type_lazy(names):
+    """解析 IdentifierType；未定义 → 触发文件惰性装载后重试（L2）。
+
+    覆盖：typedef 名（Mid）、'enum X'/'struct X'/'union X' 标签引用。
+    """
+    try:
+        return g_types.resolve(names)
+    except AssertionError:
+        lowered = [n.lower() for n in names]
+        if lowered[0] in ('struct', 'union', 'enum') and len(names) >= 2:
+            g_source_index.activate_for_type(lowered[0], names[1])
+        elif len(names) == 1:
+            g_source_index.activate_for_type('id', names[0])   # typedef 名
+        return g_types.resolve(names)   # 重试；仍失败则抛原错误
 
 
 def _register_compound(node):
@@ -468,6 +487,9 @@ def _register_compound(node):
         kind, compute, ctor = "struct", compute_struct_layout, StructType
 
     name = node.name
+    # L2 惰性：引用（decls 为 None）未注册标签 → 装载定义文件后再查
+    if name and node.decls is None and not g_types.has_tag(kind, name):
+        g_source_index.activate_for_type(kind, name)
     if name and g_types.has_tag(kind, name):
         st = g_types.lookup_tag(kind, name)
         if st.is_complete():
@@ -491,6 +513,9 @@ def _register_compound(node):
 
 def _enum_from_node(node):
     """内联枚举：注册标签 + 返回 EnumType（枚举常量值由 ExeEnum 在 M2 注入）。"""
+    # L2 惰性：引用（values 为 None）未注册枚举标签 → 装载定义文件
+    if node.name and not g_types.has_tag("enum", node.name) and node.values is None:
+        g_source_index.activate_for_type("enum", node.name)
     if node.name and g_types.has_tag("enum", node.name):
         return g_types.lookup_tag("enum", node.name)
     e = EnumType(node.name)
