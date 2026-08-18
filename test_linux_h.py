@@ -1,3 +1,5 @@
+# headers' address : https://github.com/sgallagher/glibc/tree/master/include
+
 args = [
   '-E',
   '-D__BIG_ENDIAN_BITFIELD',
