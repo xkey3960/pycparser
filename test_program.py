@@ -216,6 +216,69 @@ def test_l2_genuinely_undefined_type():
         print(f"    {e} ✓")
 
 
+# ==================== L3 默认惰性 + 冲突检测适配 ====================
+
+def test_l3_lazy_is_default():
+    print("  [L3] lazy 默认开启：不传 lazy 参数，跳过 link 直接 run")
+    exe_mod.setup_global_scope()
+    prog = CProgram([f'{MULTI}/lib.c', f'{MULTI}/main.c'])   # 无 lazy=True（默认）
+    prog.load()
+    result = prog.run()                                      # 不调用 link
+    assert result == 57, f"期望 57，实际 {result}"
+    print(f"    main() = {result}（默认 lazy，无需 link）✓")
+
+
+def test_l3_lazy_conflict_on_activation():
+    print("  [L3] 惰性冲突检测（用到才检）：typedef 冲突在激活时报")
+    # 非 strict：main 调 b_func → 激活 lazy_cfl_b.c → typedef X 冲突告警
+    exe_mod.setup_global_scope()
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        prog = CProgram([f'{MULTI}/lazy_cfl_a.c', f'{MULTI}/lazy_cfl_b.c'], lazy=True)
+        prog.load()
+        result = prog.run()
+    assert result == 1, f"期望 1，实际 {result}"
+    assert 'typedef \'X\' 冲突' in buf.getvalue(), f"应告警 typedef 冲突: {buf.getvalue()}"
+    print(f"    main() = {result}；激活 b 文件时告警 'typedef X 冲突' ✓")
+    # strict：激活时报错
+    exe_mod.setup_global_scope()
+    prog2 = CProgram([f'{MULTI}/lazy_cfl_a.c', f'{MULTI}/lazy_cfl_b.c'], lazy=True, strict=True)
+    prog2.load()
+    try:
+        prog2.run()
+        raise AssertionError("strict 惰性应报错")
+    except AssertionError as e:
+        assert 'X' in str(e) and '冲突' in str(e)
+        print(f"    strict: {e} ✓")
+
+
+def test_l3_lazy_func_conflict():
+    print("  [L3] 惰性函数重名检测（激活时）")
+    exe_mod.setup_global_scope()
+    prog = CProgram([f'{MULTI}/lazy_dup_a.c', f'{MULTI}/lazy_dup_b.c'], lazy=True)
+    prog.load()
+    try:
+        prog.run()      # main 调 b_func → 激活 dup_b → dupf 重复定义报错
+        raise AssertionError("应报错")
+    except AssertionError as e:
+        assert 'dupf' in str(e) and '重复定义' in str(e)
+        print(f"    函数重名报错: {e} ✓")
+
+
+def test_l3_eager_link_still_works():
+    print("  [L3] lazy=False 全量 link 仍可用（含全量冲突检测）")
+    exe_mod.setup_global_scope()
+    prog = CProgram([f'{MULTI}/cfl_a.c', f'{MULTI}/cfl_b.c'], lazy=False)
+    prog.load()
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        prog.link()
+        result = prog.run()
+    assert result == 0
+    assert 'typedef \'X\' 冲突' in buf.getvalue()
+    print(f"    link+run 正常，全量冲突检测生效 ✓")
+
+
 def main():
     print("=" * 60)
     print("  program.py — 多文件支持测试（S1+S2+S3+修复）")
@@ -247,8 +310,13 @@ def main():
     test_l2_cross_file_struct()
     test_l2_cross_file_enum()
     test_l2_genuinely_undefined_type()
+    print("\n--- 12. L3 默认惰性 + 冲突检测适配 ---")
+    test_l3_lazy_is_default()
+    test_l3_lazy_conflict_on_activation()
+    test_l3_lazy_func_conflict()
+    test_l3_eager_link_still_works()
     print("\n" + "=" * 60)
-    print("  S1-S3 + 修复 + L1/L2 惰性 全部测试通过! ✅")
+    print("  S1-S3 + 修复 + L1/L2/L3 惰性 全部测试通过! ✅")
     print("=" * 60)
 
 

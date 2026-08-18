@@ -24,6 +24,9 @@ class SourceIndex:
         self._typedefs = {}    # typedef 名 -> (路径, Typedef)    （L2 类型钩子用）
         self._globals = {}     # 全局变量名 -> (路径, Decl)
         self._state = {}       # 路径 -> 'unloaded' | 'loading' | 'loaded'
+        self.strict = False    # 冲突检测：strict 时报错而非告警（L3）
+        self.entry = 'main'    # 入口函数名（函数重名豁免，L3）
+        self._func_names = {}  # 函数名 → is_static（跨文件重名检测）
 
     # ---------- 建立索引（零检查：只扫 ext 名字，不解析类型） ----------
 
@@ -33,6 +36,7 @@ class SourceIndex:
         self._tags.clear()
         self._typedefs.clear()
         self._globals.clear()
+        self._func_names.clear()
         self._state.clear()
 
     def build(self, asts, paths):
@@ -106,14 +110,26 @@ class SourceIndex:
         saved_scope = exe_mod.g_scope
         exe_mod.g_scope = exe_mod.g_global_scope   # 文件顶层 → 全局作用域
         try:
-            # 1a 类型（含裸类型定义 Decl(name=None)）
+            # 1a 类型（含裸类型定义 Decl(name=None)）：注册 + 冲突检测（L3）
             for ext in ast.ext or []:
-                if isinstance(ext, (c_ast.Typedef, c_ast.Struct, c_ast.Union, c_ast.Enum)) \
-                        or (isinstance(ext, c_ast.Decl) and ext.name is None):
+                if isinstance(ext, c_ast.Typedef) and ext.name:
+                    check_typedef_conflict(ext, self.strict)
                     execute(ext)
-            # 1b 函数
+                elif isinstance(ext, (c_ast.Struct, c_ast.Union, c_ast.Enum)) and ext.name:
+                    check_tag_conflict(ext, self.strict)
+                    execute(ext)
+                elif isinstance(ext, c_ast.Decl) and ext.name is None:
+                    inner = ext.type
+                    while inner is not None and type(inner).__name__ in ('TypeDecl', 'TypeDeclExt'):
+                        inner = getattr(inner, 'type', None)
+                    if isinstance(inner, (c_ast.Struct, c_ast.Union, c_ast.Enum)) and inner.name:
+                        check_tag_conflict(inner, self.strict)
+                    execute(ext)
+            # 1b 函数：注册 + 重名检测（L3）
             for ext in ast.ext or []:
                 if isinstance(ext, c_ast.FuncDef):
+                    check_func_conflict(ext.decl.name, ext.decl.storage,
+                                        self.entry, self._func_names, self.strict)
                     execute(ext)
             # 2 全局变量 / 编译期断言（init 可触发其他文件激活）
             for ext in ast.ext or []:
@@ -135,6 +151,71 @@ class SourceIndex:
         """入口函数所在文件（按名字，零解析）；无则 None。"""
         loc = self._funcs.get(entry)
         return loc[0] if loc else None
+
+
+# ==================== 共享冲突检测（L3） ====================
+# 供 SourceIndex.activate（惰性"用到才检"）与 CProgram.link（全量检查）共用。
+# 延迟导入 typesys 避免循环依赖（typesys 顶层 import 本模块）。
+
+def _warn_or_raise(msg, strict, force_raise=False):
+    """冲突处理：strict 或强制时抛错，否则打印 [warn]。"""
+    if force_raise or strict:
+        raise AssertionError(msg)
+    print(f"[warn] {msg}")
+
+
+def check_typedef_conflict(ext, strict):
+    """typedef 重名：相同（等价）静默；冲突 warn/strict 报错。"""
+    from typesys import g_types, type_of_decl, types_equivalent
+    existing = g_types.aliases.get(ext.name)
+    if existing is None:
+        return
+    new_t = type_of_decl(ext.type)
+    if not types_equivalent(existing, new_t):
+        _warn_or_raise(f"typedef '{ext.name}' 冲突: {existing.name} vs {new_t.name}", strict)
+
+
+def check_tag_conflict(ext, strict):
+    """struct/union/enum 标签重名：成员签名不同 → 冲突 warn/strict 报错。"""
+    from typesys import g_types
+    if isinstance(ext, c_ast.Struct):
+        kind = 'struct'
+    elif isinstance(ext, c_ast.Union):
+        kind = 'union'
+    else:
+        kind = 'enum'
+    if not g_types.has_tag(kind, ext.name):
+        return
+    existing = g_types.lookup_tag(kind, ext.name)
+    if kind in ('struct', 'union'):
+        if ext.decls is None or not existing.is_complete():
+            return
+        ast_names = [d.name for d in ext.decls
+                     if isinstance(d, c_ast.Decl) and d.name]
+        cur_names = [m.name for m in existing.members]
+    else:  # enum
+        if ext.values is None:
+            return
+        ast_names = [e.name for e in ext.values.enumerators or []]
+        cur_names = list(existing.constants.keys())
+    if ast_names != cur_names:
+        _warn_or_raise(f"{kind} '{ext.name}' 冲突: 成员 {cur_names} vs {ast_names}", strict)
+
+
+def check_func_conflict(name, storage, entry, func_names, strict):
+    """函数重名：登记 func_names；非 static 非入口重复 → 报错；static 重复 → warn；
+    入口重复豁免（由入口定位处理：警告 + 取第一）。"""
+    is_static = 'static' in (storage or [])
+    if name not in func_names:
+        func_names[name] = is_static
+        return
+    prev_static = func_names[name]
+    if is_static or prev_static:
+        _warn_or_raise(f"static 函数 '{name}' 跨文件重名，后者覆盖（v1）", strict)
+    elif name == entry:
+        pass  # 入口函数重名：入口定位警告 + 取第一个
+    else:
+        _warn_or_raise(f"函数 '{name}' 重复定义（C 语义: 重复定义）", strict, force_raise=True)
 
 
 # 全局单例（execute.py 的调用钩子与 CProgram.load 共用）

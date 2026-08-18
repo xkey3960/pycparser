@@ -25,7 +25,13 @@ from pycparserext import ext_c_parser
 
 from typesys import g_types, type_of_decl, types_equivalent
 
-from sources import g_source_index
+from sources import (
+    g_source_index,
+    _warn_or_raise,
+    check_typedef_conflict,
+    check_tag_conflict,
+    check_func_conflict,
+)
 
 import execute as exe_mod
 from execute import execute
@@ -34,13 +40,14 @@ from execute import execute
 class CProgram:
     """一组 C 源文件组成的程序（共享解释器全局状态）。
 
-    lazy=False（默认）：需显式 link() 全量注册（现行行为，含冲突检测）。
-    lazy=True：跳过 link，load() 建零检查符号索引，run() 时按需激活
-    （Python import 语义，见 设计文档-惰性解析.md 方案 B）。
+    lazy=True（默认，L3）：跳过 link，load() 建零检查符号索引，run() 时按需激活
+    （Python import 语义，见 设计文档-惰性解析.md 方案 B）；冲突检测在文件激活时
+    "用到才检"。
+    lazy=False：需显式 link() 全量注册（含全量冲突检测，strict 模式）。
     """
 
     def __init__(self, files, entry='main', cpp_path='gcc', cpp_args=None,
-                 parser=None, encoding=None, strict=False, lazy=False):
+                 parser=None, encoding=None, strict=False, lazy=True):
         self.files = list(files)
         self.entry = entry
         self.cpp_path = cpp_path
@@ -60,7 +67,8 @@ class CProgram:
     def load(self):
         """解析全部文件 → FileAST[]（逐文件 cpp 预处理 + parser）。
 
-        lazy 模式下同时建立零检查符号索引（只扫名字，不解析类型）。
+        lazy 模式下同时建立零检查符号索引（只扫名字，不解析类型），
+        并把 strict/entry 配置传给索引（激活时的冲突检测用）。
         """
         for f in self.files:
             ast = parse_file(f, use_cpp=True, cpp_path=self.cpp_path,
@@ -69,6 +77,8 @@ class CProgram:
             self.asts.append(ast)
         if self.lazy:
             g_source_index.build(self.asts, self.files)
+            g_source_index.strict = self.strict
+            g_source_index.entry = self.entry
         return self.asts
 
     # ==================== 阶段 2：链接 ====================
@@ -111,65 +121,22 @@ class CProgram:
     # ---------- 冲突检测（S2） ----------
 
     def _warn_or_raise(self, msg, force_raise=False):
-        """冲突处理：strict 或强制时抛错，否则打印 [warn]。"""
-        if force_raise or self.strict:
-            raise AssertionError(msg)
-        print(f"[warn] {msg}")
+        """冲突处理：strict 或强制时抛错，否则打印 [warn]（委托共享实现）。"""
+        _warn_or_raise(msg, self.strict, force_raise)
 
     def _check_typedef_conflict(self, ext):
         """typedef 重名：相同（types_equivalent）静默；冲突警告/strict 报错。"""
-        existing = g_types.aliases.get(ext.name)
-        if existing is None:
-            return
-        new_t = type_of_decl(ext.type)
-        if not types_equivalent(existing, new_t):
-            self._warn_or_raise(
-                f"typedef '{ext.name}' 冲突: {existing.name} vs {new_t.name}")
+        check_typedef_conflict(ext, self.strict)
 
     def _check_tag_conflict(self, ext):
         """struct/union/enum 标签重名：成员签名不同 → 冲突警告/strict 报错。"""
-        if isinstance(ext, c_ast.Struct):
-            kind = 'struct'
-        elif isinstance(ext, c_ast.Union):
-            kind = 'union'
-        else:
-            kind = 'enum'
-        if not g_types.has_tag(kind, ext.name):
-            return
-        existing = g_types.lookup_tag(kind, ext.name)
-        if kind in ('struct', 'union'):
-            if ext.decls is None or not existing.is_complete():
-                return
-            ast_names = [d.name for d in ext.decls
-                         if isinstance(d, c_ast.Decl) and d.name]
-            cur_names = [m.name for m in existing.members]
-        else:  # enum
-            if ext.values is None:
-                return
-            ast_names = [e.name for e in ext.values.enumerators or []]
-            cur_names = list(existing.constants.keys())
-        if ast_names != cur_names:
-            self._warn_or_raise(
-                f"{kind} '{ext.name}' 冲突: 成员 {cur_names} vs {ast_names}")
+        check_tag_conflict(ext, self.strict)
 
     def _check_func_conflict(self, ext):
         """函数重名：非 static 非入口重复 → 报错；static 重复 → 警告（后者覆盖）；
         入口重复由 _resolve_entry 处理（警告 + 取第一）。"""
-        name = ext.decl.name
-        storage = ext.decl.storage or []
-        is_static = 'static' in storage
-        if name not in self._func_names:
-            self._func_names[name] = is_static
-            return
-        prev_static = self._func_names[name]
-        if is_static or prev_static:
-            self._warn_or_raise(
-                f"static 函数 '{name}' 跨文件重名，后者覆盖（v1）")
-        elif name == self.entry:
-            pass  # 入口函数重名：_resolve_entry 警告 + 取第一个
-        else:
-            self._warn_or_raise(
-                f"函数 '{name}' 重复定义（C 语义: 重复定义）", force_raise=True)
+        check_func_conflict(ext.decl.name, ext.decl.storage,
+                            self.entry, self._func_names, self.strict)
 
     def _should_declare_global(self, decl):
         """全局变量声明判定：重复裸声明（tentative）跳过保留首个；
@@ -213,7 +180,9 @@ class CProgram:
         """
         if self.lazy:
             self._resolve_entry()                       # 名字扫描（零解析）
-            g_source_index.activate(self.entry_file)    # import 入口文件
+            if self.entry not in exe_mod.g_functions:
+                # 未 link：激活入口文件（若已 link 则跳过，避免重复装载）
+                g_source_index.activate(self.entry_file)
         if self.entry not in exe_mod.g_functions:
             raise AssertionError(f"入口函数 '{self.entry}' 未注册（是否已 link？）")
         args_node = None
