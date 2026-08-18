@@ -21,3 +21,4 @@ ast.pickle
 .venv/*
 .vscode/*
 **/a.out
+gnu_linux_headers/**
