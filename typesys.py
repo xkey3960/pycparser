@@ -403,6 +403,8 @@ def build_default_registry():
         ("float", 4, 4), ("double", 8, 8), ("long double", 16, 16),
         # 布尔 / void
         ("_Bool", 1, 1), ("bool", 1, 1), ("void", 1, 1),
+        # GNU 内建（不依赖 fake_libc_include 也能解析）
+        ("__builtin_va_list", 8, 8), ("__gnuc_va_list", 8, 8),   # 可变参数列表句柄
     ]:
         reg.register_builtin(BasicType(name, size, align))
     return reg

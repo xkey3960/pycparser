@@ -69,7 +69,8 @@ from typesys import (
 
 # 内置函数注册表（cbuiltins 模块导入即注册；@builtin 装饰器易扩展）
 import cbuiltins  # noqa: F401  （注册副作用）
-from cbuiltins import call_builtin
+from cbuiltins import (call_builtin, push_va_frame, pop_va_frame,
+                       va_start_slot, va_arg_pop, va_end_slot, va_copy_slot)
 
 # 惰性装载符号索引（L1：函数调用未注册时按需激活定义文件）
 from sources import g_source_index
@@ -659,12 +660,68 @@ class ExeFuncCall(Execute):
         """内置函数分发：经 cbuiltins 注册表（@builtin 装饰器注册，易扩展）。"""
         return call_builtin(name, args)
 
+    def _handle_va_builtin(self, func_name):
+        """可变参数内建：从 AST 实参取 ID 名，按名管理 va_list 槽。
+
+        宏展开形态：va_start(ap, n) → __builtin_va_start((ap), n)；
+        va_arg(ap, T) → __builtin_va_arg((ap))（fake_libc 丢弃类型实参）；
+        va_end(ap) → __builtin_va_end(ap)；va_copy(dst, src) 同理。
+        首实参是 ID 节点（括号包裹仍是 ID），取其名字。
+        """
+        def _arg_id(idx):
+            args_node = self.node.args
+            items = None
+            if args_node is None:
+                return None
+            if isinstance(args_node, ExprList):
+                items = args_node.exprs
+            elif isinstance(args_node, ParamList):
+                items = args_node.params
+            elif isinstance(args_node, TypeList):
+                items = args_node.types
+            else:
+                items = [args_node]
+            if idx >= len(items):
+                return None
+            a = items[idx]
+            if isinstance(a, ID):
+                return a.name
+            return None
+
+        if func_name == '__builtin_va_start':
+            ap = _arg_id(0)
+            if ap is None:
+                raise AssertionError("__builtin_va_start: 无法确定 ap 变量名")
+            va_start_slot(ap)
+            return None
+        if func_name == '__builtin_va_arg':
+            ap = _arg_id(0)
+            if ap is None:
+                raise AssertionError("__builtin_va_arg: 无法确定 ap 变量名")
+            return va_arg_pop(ap)
+        if func_name == '__builtin_va_end':
+            ap = _arg_id(0)
+            if ap is not None:
+                va_end_slot(ap)
+            return None
+        if func_name == '__builtin_va_copy':
+            dst, src = _arg_id(0), _arg_id(1)
+            if dst is not None:
+                va_copy_slot(dst, src or dst)
+            return None
+        raise AssertionError(f"未知可变参数内建: {func_name}")
+
     def execute(self):
         name_node = self.node.name
         if isinstance(name_node, ID):
             func_name = name_node.name
         else:
             func_name = str(execute(name_node))
+
+        # 可变参数内建：按 ap 变量名管理槽（宏展开后实参是值，无法写回变量）
+        if func_name in ('__builtin_va_start', '__builtin_va_arg',
+                         '__builtin_va_end', '__builtin_va_copy'):
+            return self._handle_va_builtin(func_name)
 
         args = self._eval_args(self.node.args)
 
@@ -693,6 +750,11 @@ class ExeFuncCall(Execute):
                 ptype = func.param_types[i] if i < len(func.param_types) else None
                 g_scope.declare(pname, aval, ptype)
 
+            # 可变参数：形参之后的实参作为 va_start 源（__builtin_va_list 支持）
+            n_params = len(func.param_names)
+            variadic_args = args[n_params:] if len(args) > n_params else []
+            push_va_frame(variadic_args)
+
             try:
                 result = execute(func.body)
                 return result
@@ -700,6 +762,7 @@ class ExeFuncCall(Execute):
                 return e.value
             finally:
                 g_scope = outer_scope
+                pop_va_frame()
 
         return self._call_builtin(func_name, args)
 

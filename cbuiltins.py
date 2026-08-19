@@ -447,3 +447,65 @@ def _rand(args):
 def _builtin_types_compatible_p(args):
     # 简化：解释器内类型视为兼容
     return 1
+
+
+# ---- 可变参数（__builtin_va_list / va_start / va_arg / va_end / va_copy）----
+# 按**调用帧栈**管理：每次 FuncDef 调用压入一帧（帧内 name -> 剩余实参快照），
+# 返回弹帧 —— 内外层同名 ap 互不干扰。宏展开后实参是值无法写回变量，
+# 故 execute.py 拦截内建调用、从 AST 取首实参 ID 名，按名操作当前帧。
+# va_list 类型本身由 typesys 内建注册（__builtin_va_list，8B 句柄）。
+
+_VA_FRAMES = []          # 调用帧栈：[{name: slot}, ...]；栈顶 = 当前活动帧
+
+
+def push_va_frame(variadic_args):
+    """FuncDef 调用处压帧：记录本帧可变参数源。"""
+    _VA_FRAMES.append({
+        '__source__': list(variadic_args) if variadic_args else [],
+    })
+
+
+def pop_va_frame():
+    """FuncDef 返回处弹帧。"""
+    if _VA_FRAMES:
+        _VA_FRAMES.pop()
+
+
+def _cur_frame():
+    return _VA_FRAMES[-1] if _VA_FRAMES else None
+
+
+def va_start_slot(ap_name):
+    """按 ap 变量名初始化槽（快照本帧可变参数源）。"""
+    f = _cur_frame()
+    if f is None:
+        f = {'__source__': []}
+        _VA_FRAMES.append(f)
+    f[ap_name] = list(f.get('__source__', []))
+
+
+def va_arg_pop(ap_name):
+    """按 ap 变量名弹出下一个可变参数。"""
+    f = _cur_frame()
+    slot = f.get(ap_name) if f else None
+    if slot is None:
+        raise AssertionError("__builtin_va_arg: va_list 未初始化或已消耗")
+    if not slot:
+        raise AssertionError("__builtin_va_arg: 可变参数耗尽")
+    return slot.pop(0)
+
+
+def va_end_slot(ap_name):
+    """按 ap 变量名清理槽（当前帧）。"""
+    f = _cur_frame()
+    if f:
+        f.pop(ap_name, None)
+
+
+def va_copy_slot(dst_name, src_name):
+    """复制 src 槽到 dst 槽（快照，当前帧）。"""
+    f = _cur_frame()
+    if f is None:
+        return
+    src = f.get(src_name)
+    f[dst_name] = list(src) if src is not None else []

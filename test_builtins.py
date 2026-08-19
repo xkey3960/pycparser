@@ -133,6 +133,55 @@ int main()
     print(f"    main() = {result}，printf 输出 {buf.getvalue()!r} ✓")
 
 
+def test_va_list():
+    """__builtin_va_list 可变参数：va_start/va_arg/va_end + 嵌套调用隔离。"""
+    print("  [va_list] 可变参数（__builtin_va_list / va_start / va_arg / va_end）")
+    src = '''
+#include <stdarg.h>
+
+int sum(int n, ...)
+{
+    va_list ap;
+    va_start(ap, n);
+    int total = 0;
+    for (int i = 0; i < n; i++)
+        total += va_arg(ap, int);
+    va_end(ap);
+    return total;
+}
+
+int inner(int a, ...)
+{
+    va_list ap;
+    va_start(ap, a);
+    int v = va_arg(ap, int);
+    va_end(ap);
+    return v;
+}
+
+int outer(int n, ...)
+{
+    va_list ap;
+    va_start(ap, n);
+    int a = va_arg(ap, int);
+    int b = inner(1, 100);        /* 嵌套调用：不应破坏外层 va */
+    int c = va_arg(ap, int);
+    va_end(ap);
+    return a + b + c;
+}
+
+int main(void)
+{
+    return sum(3, 10, 20, 12) + outer(2, 11, 22) - 133;   /* 42 + 133 - 133 = 42 */
+}
+'''
+    with open('test/multi/va_main.c', 'w') as f:
+        f.write(src)
+    result = _run(['test/multi/va_main.c'])
+    assert result == 42, f"期望 42，实际 {result}"
+    print(f"    main() = {result}（sum=42 + outer=133，嵌套隔离）✓")
+
+
 def main():
     print("=" * 60)
     print("  cbuiltins.py — 内置函数测试")
@@ -147,6 +196,8 @@ def main():
     test_ctype_math_rand()
     print("\n--- 5. 端到端 ---")
     test_end_to_end()
+    print("\n--- 6. va_list 可变参数 ---")
+    test_va_list()
     print("\n" + "=" * 60)
     print("  内置函数全部测试通过! ✅")
     print("=" * 60)
