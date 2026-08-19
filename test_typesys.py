@@ -984,7 +984,23 @@ def test_fix_array_dim_expression():
                            right=c_ast.Constant(type='int', value='2')),
         dim_quals=[]))
     assert bt.count == 8
-    print(f"    arr[10+5] → {at.count}；buf[sizeof(int)*2] → {bt.count} ✓")
+    # 后缀/进制字面量维度（8UL、0x10u、010、4ULL+4L）
+    ct = type_of_decl(c_ast.ArrayDecl(
+        type=int_tn('c'),
+        dim=c_ast.Constant(type='unsigned long int', value='8UL'),
+        dim_quals=[]))
+    assert ct.count == 8 and ct.sizeof() == 32
+    dt = type_of_decl(c_ast.ArrayDecl(
+        type=int_tn('d'),
+        dim=c_ast.Constant(type='unsigned int', value='0x10u'),
+        dim_quals=[]))
+    assert dt.count == 16
+    et = type_of_decl(c_ast.ArrayDecl(
+        type=int_tn('e'),
+        dim=c_ast.Constant(type='int', value='010'),
+        dim_quals=[]))
+    assert et.count == 8
+    print(f"    arr[10+5] → {at.count}；buf[sizeof(int)*2] → {bt.count}；8UL/0x10u/010 → 8/16/8 ✓")
 
 
 # ==================== Main ====================

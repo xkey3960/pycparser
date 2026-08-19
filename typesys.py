@@ -425,17 +425,17 @@ from sources import g_source_index
 def _eval_constant(node):
     """常量表达式求值（数组维度等编译期上下文）。
 
-    直接 Constant → int；否则延迟导入 execute() 求值（可处理 sizeof、算术等
+    直接 Constant → int（经 C 字面量解析：支持 16/8/2 进制与 U/L 后缀，
+    如 8UL、0x10、0755）；否则延迟导入 execute() 求值（可处理 sizeof、算术等
     编译期常量表达式）。求值失败/非常量返回 None（按不完整数组处理）。
     延迟导入避免 typesys ↔ execute 循环依赖。
     """
     if node is None:
         return None
     if isinstance(node, c_ast.Constant):
-        try:
-            return int(node.value)
-        except ValueError:
-            return None
+        from execute import _c_int_literal   # 延迟导入（C 字面量：进制 + U/L 后缀）
+        v = _c_int_literal(node.value)
+        return v if isinstance(v, int) else None
     try:
         from execute import execute
         val = execute(node)
