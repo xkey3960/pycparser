@@ -203,12 +203,22 @@ def compute_struct_layout(members, align_override=None):
       - layout: [Member(name, type, offset, bitsize)]，offset 按成员对齐逐项推进
       - size:   末尾对齐到 max_align
       - align:  max(成员 align)，可被 align_override（__attribute__((aligned))）覆盖
+
+    C99 灵活数组成员（flexible array member）：最后一个成员、类型为
+    不完整数组（int b[]，count=None）→ 不占空间（offset 停在原处），
+    sizeof(struct) 不含它；仅限最后一个成员（C 标准）。
     """
     offset, max_align = 0, 1
     layout = []
-    for name, ctype, bitsize in members:
+    for i, (name, ctype, bitsize) in enumerate(members):
         if ctype.size is None:
-            raise AssertionError(f"struct 成员 '{name}' 是不完整类型，无法布局")
+            # C99 灵活数组成员：不完整数组且是最后一个成员 → 不占空间
+            is_flex = (isinstance(ctype, ArrayType) and ctype.count is None
+                       and i == len(members) - 1)
+            if not is_flex:
+                raise AssertionError(f"struct 成员 '{name}' 是不完整类型，无法布局")
+            layout.append(Member(name, ctype, offset, bitsize))
+            continue
         # 位域（M3 简化）：先按类型对齐占位，真实打包在 M5
         align = ctype.align or 1
         offset = align_up(offset, align)
@@ -451,7 +461,12 @@ def type_of_decl(t):
     if isinstance(t, c_ast.PtrDecl):
         return PtrType(type_of_decl(t.type))
     if isinstance(t, c_ast.ArrayDecl):           # 含 ArrayDeclExt
+        if t.dim is None:
+            return ArrayType(type_of_decl(t.type), None)   # 不完整/灵活数组成员 int a[]
         dim = _eval_constant(t.dim)              # 常量/编译期表达式维度（10+5、sizeof(int)*2 等）
+        if dim is None:
+            raise AssertionError(
+                f"数组维度不是常量表达式: {type(t.dim).__name__}")
         return ArrayType(type_of_decl(t.type), dim)
     if isinstance(t, (c_ast.FuncDecl, FuncDeclExt)):
         param_types, variadic = [], False

@@ -634,6 +634,62 @@ def test_m3_struct_arrow_fallback():
     print("    p->x = 9（与 p.x 一致）✓")
 
 
+def test_m3_struct_flexible_array_member():
+    """C99 灵活数组成员：struct FlexAAA { int a; int b[]; }。
+
+    复现文件 test/complex_decl.c（补分号后）：b[] 是最后一个成员、不占空间，
+    sizeof(struct) 不含它；offset 停在前面成员末尾。
+    """
+    print("  [M3] struct FlexAAA { int a; int b[]; }（灵活数组成员）")
+    exe_mod.setup_global_scope()
+    # int b[] —— ArrayDecl(dim=None) 语法形态
+    flex = c_ast.Decl(name='b', quals=[], align=None, storage=[], funcspec=[],
+                      type=c_ast.ArrayDecl(
+                          type=c_ast.TypeDecl(declname='b', quals=[], align=None,
+                                              type=c_ast.IdentifierType(names=['int'])),
+                          dim=None, dim_quals=[]),
+                      init=None, bitsize=None)
+    node = c_ast.Struct(name='FlexAAA', decls=[
+        c_ast.Decl(name='a', quals=[], align=None, storage=[], funcspec=[],
+                   type=c_ast.TypeDecl(declname='a', quals=[], align=None,
+                                       type=c_ast.IdentifierType(names=['int'])),
+                   init=None, bitsize=None),
+        flex,
+    ])
+    exe_mod.execute(node)
+    t = g_types.lookup_tag('struct', 'FlexAAA')
+    ensure_complete(t)
+    assert t.is_complete() and t.sizeof() == 4        # int a 占 4；b[] 不占空间
+    assert len(t.members) == 2
+    assert t.members[0].name == 'a' and t.members[0].offset == 0
+    assert t.members[1].name == 'b' and t.members[1].offset == 4
+    print(f"    sizeof = {t.sizeof()}（b[] 不占空间，offset 停在 4）✓")
+
+
+def test_m3_struct_bad_array_dim_raises():
+    """坏数组维度（int arr[no_such + 1]）在补全时报错，不再静默当灵活数组。"""
+    print("  [M3] 坏数组维度 → 补全时报错（不是灵活数组成员）")
+    exe_mod.setup_global_scope()
+    bad = c_ast.Decl(name='arr', quals=[], align=None, storage=[], funcspec=[],
+                     type=c_ast.ArrayDecl(
+                         type=c_ast.TypeDecl(declname='arr', quals=[], align=None,
+                                             type=c_ast.IdentifierType(names=['int'])),
+                         dim=c_ast.BinaryOp(op='+',
+                                            left=c_ast.ID(name='no_such_thing'),
+                                            right=c_ast.Constant(type='int', value='1')),
+                         dim_quals=[]),
+                     init=None, bitsize=None)
+    node = c_ast.Struct(name='BadDim', decls=[bad])
+    exe_mod.execute(node)
+    t = g_types.lookup_tag('struct', 'BadDim')
+    try:
+        ensure_complete(t)
+        raise AssertionError("应报错（维度非常量）")
+    except AssertionError as e:
+        assert '数组维度' in str(e) or '不完整' in str(e) or 'arr' in str(e)
+        print(f"    {e} ✓")
+
+
 # ==================== 8. M4 union 值语义 ====================
 
 def _union_def(name, fields):
@@ -977,6 +1033,8 @@ def main():
     test_m3_struct_array()
     test_m3_struct_default_and_compound()
     test_m3_struct_arrow_fallback()
+    test_m3_struct_flexible_array_member()
+    test_m3_struct_bad_array_dim_raises()
     print("\n--- 8. M4 union 值语义 ---")
     test_m4_union_basic()
     test_m4_union_size_max()
