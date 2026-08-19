@@ -352,10 +352,21 @@ class ExeConstant(Execute):
 
 
 class ExeID(Execute):
-    """Identifier / variable reference."""
+    """Identifier / variable reference.
+
+    函数名作为值（函数指针）：g_scope 无该变量但 g_functions 有 → 返回
+    函数名（字符串引用），供函数指针赋值/传参；调用点再解析。
+    """
 
     def execute(self):
-        return g_scope.get(self.node.name)
+        name = self.node.name
+        try:
+            return g_scope.get(name)
+        except AssertionError:
+            pass
+        if name in g_functions:
+            return name          # 函数名 → 函数指针值（字符串引用）
+        raise AssertionError(f"未定义变量 '{name}'")
 
 
 class ExeBinaryOp(Execute):
@@ -441,10 +452,17 @@ def _address_of(node, val):
     - 对可变对象（StructValue/UnionValue/list/dict）：返回**对象本身**（Python
       引用）——`pa = &a; pa->x = 1` 经引用写回 a；
     - 对标量（int/float 等不可变）：返回值的拷贝（受 Python 不可变性限制，
-      写路径无效，读路径可用）——完整指针模型见 MEM-1 待办。
+      写路径无效，读路径可用）——完整指针模型见 MEM-1 待办；
+    - 对函数名（&func）：返回函数名字符串（函数指针值）。
     """
     if isinstance(node, ID):
-        return g_scope.get(node.name)
+        name = node.name
+        try:
+            return g_scope.get(name)
+        except AssertionError:
+            if name in g_functions:
+                return name          # &func → 函数指针值（名字引用）
+            raise AssertionError(f"未定义变量 '{name}'")
     if isinstance(node, c_ast.ArrayRef):
         arr = execute(node.name)
         idx = execute(node.subscript)
@@ -753,9 +771,17 @@ class ExeFuncCall(Execute):
         raise AssertionError(f"未知可变参数内建: {func_name}")
 
     def execute(self):
+        global g_scope
         name_node = self.node.name
         if isinstance(name_node, ID):
             func_name = name_node.name
+            # 函数指针变量：g_scope 中该变量存着函数名字符串（fp = &func / fp = func）
+            try:
+                v = g_scope.get(func_name)
+                if isinstance(v, str) and v in g_functions:
+                    func_name = v
+            except AssertionError:
+                pass
         else:
             func_name = str(execute(name_node))
 
@@ -784,7 +810,6 @@ class ExeFuncCall(Execute):
                     raise AssertionError(f"函数 '{func_name}' 只有声明无定义（链接错误）")
 
         if func is not None:
-            global g_scope
             outer_scope = g_scope
             g_scope = Scope(func.closure_scope)
 

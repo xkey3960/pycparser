@@ -461,6 +461,31 @@ int main(void) {
     print(f"    main() = {result}（pa->x 写回 a；经指针读写）✓")
 
 
+def test_func_ptr():
+    """函数名作为函数指针传入参数 / 赋值 / 经变量调用。"""
+    print("  [FnPtr] 函数名作函数指针：传参 / 赋值 / 经变量调用")
+    src = '''
+int inc(int x) { return x + 1; }
+int dbl(int x) { return x * 2; }
+int apply(int (*fp)(int), int x) { return fp(x); }
+int main(void) {
+    int (*fp)(int);
+    fp = inc;
+    int a = fp(41);              /* 42（经变量调用） */
+    fp = dbl;
+    int b = fp(21);              /* 42 */
+    fp = &inc;
+    int c = fp(9);               /* 10 */
+    return a + b + c + apply(inc, 41);   /* 94 + 42 = 136 */
+}
+'''
+    with open('test/multi/fnptr_main.c', 'w') as f:
+        f.write(src)
+    result = _run(['test/multi/fnptr_main.c'])
+    assert result == 136, f"期望 136，实际 {result}"
+    print(f"    main() = {result}（apply(inc,41)=42；fp=inc/dbl/&inc 经变量调用）✓")
+
+
 def main():
     print("=" * 60)
     print("  program.py — 多文件支持测试（S1+S2+S3+修复）")
@@ -506,8 +531,10 @@ def main():
     test_l4_link_still_full_check()
     print("\n--- 14. 指针（& / * / -> 最小支持）---")
     test_ptr_address_of()
+    print("\n--- 15. 函数指针 ---")
+    test_func_ptr()
     print("\n" + "=" * 60)
-    print("  S1-S3 + 修复 + L1/L2/L3/L4 + 指针 全部测试通过! ✅")
+    print("  S1-S3 + 修复 + L1/L2/L3/L4 + 指针 + 函数指针 全部测试通过! ✅")
     print("=" * 60)
 
 
