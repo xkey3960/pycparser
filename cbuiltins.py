@@ -52,6 +52,11 @@ def call_builtin(name, args):
     return h(args)
 
 
+def is_builtin(name):
+    """名字是否已注册的内置函数（原型占位判断用：内建实现优先）。"""
+    return name in _BUILTINS
+
+
 def list_builtins():
     return sorted(_BUILTINS)
 

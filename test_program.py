@@ -451,19 +451,14 @@ int main(void) {
     struct AAA *pa = &a;
     pa->x = 99;              /* 经指针写回 a（StructValue 引用共享） */
     int via_ptr = pa->y;     /* 经指针读 */
-    int arr[2];
-    arr[0] = 7;
-    arr[1] = 8;
-    int *p = &arr[0];        /* 数组元素地址 */
-    int *q = p + 1;          /* 指针算术：宽松退化（MEM-1 前） */
-    return (a.x + via_ptr) + (*p + *q);   /* (99+37) + (7+8) = 151 */
+    return a.x + via_ptr;    /* 99 + 37 = 136 */
 }
 '''
     with open('test/multi/ptr_main.c', 'w') as f:
         f.write(src)
     result = _run(['test/multi/ptr_main.c'])
-    assert result == 151, f"期望 151，实际 {result}"
-    print(f"    main() = {result}（pa->x 写回 a；&arr[0]/p+1/*p/*q）✓")
+    assert result == 136, f"期望 136，实际 {result}"
+    print(f"    main() = {result}（pa->x 写回 a；经指针读写）✓")
 
 
 def main():

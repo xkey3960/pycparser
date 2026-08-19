@@ -133,6 +133,28 @@ int main()
     print(f"    main() = {result}，printf 输出 {buf.getvalue()!r} ✓")
 
 
+def test_prototype_not_shadow_builtin():
+    """头文件里的函数原型（如 memset）不应遮蔽内置函数实现。"""
+    print("  [E2E] 头文件原型不遮蔽内置函数（memset 声明 + 调用）")
+    # 自定义头文件声明 memset/memcpy/strlen（真实 libc 头形态），无定义
+    open('test/multi/proto_builtin.h', 'w').write(
+        'void *memset(void *s, int c, unsigned int n);\n'
+        'void *memcpy(void *dst, const void *src, unsigned int n);\n'
+        'unsigned int strlen(const char *s);\n')
+    open('test/multi/proto_builtin.c', 'w').write(
+        '#include "proto_builtin.h"\n'
+        'char *p;\n'
+        'int main(void)\n'
+        '{\n'
+        '    p = (char*)malloc(8);\n'
+        '    memset(p, 65, 3);          /* 原型遮蔽内置？ */\n'
+        '    return (int)*(p + 1);       /* 65（堆字节读取） */\n'
+        '}\n')
+    result = _run(['test/multi/proto_builtin.c'])
+    assert result == 65, f"期望 65，实际 {result}"
+    print(f"    main() = {result}（memset 原型存在时仍走内置实现，堆字节 65）✓")
+
+
 def test_va_list():
     """__builtin_va_list 可变参数：va_start/va_arg/va_end + 嵌套调用隔离。"""
     print("  [va_list] 可变参数（__builtin_va_list / va_start / va_arg / va_end）")
@@ -198,6 +220,8 @@ def main():
     test_end_to_end()
     print("\n--- 6. va_list 可变参数 ---")
     test_va_list()
+    print("\n--- 7. 原型不遮蔽内置 ---")
+    test_prototype_not_shadow_builtin()
     print("\n" + "=" * 60)
     print("  内置函数全部测试通过! ✅")
     print("=" * 60)

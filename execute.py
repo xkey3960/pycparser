@@ -69,7 +69,7 @@ from typesys import (
 
 # 内置函数注册表（cbuiltins 模块导入即注册；@builtin 装饰器易扩展）
 import cbuiltins  # noqa: F401  （注册副作用）
-from cbuiltins import (call_builtin, push_va_frame, pop_va_frame,
+from cbuiltins import (call_builtin, is_builtin, push_va_frame, pop_va_frame,
                        va_start_slot, va_arg_pop, va_end_slot, va_copy_slot)
 
 # 惰性装载符号索引（L1：函数调用未注册时按需激活定义文件）
@@ -418,8 +418,21 @@ class ExeUnaryOp(Execute):
         if op == '&':
             return _address_of(self.node.expr, val)
         if op == '*':
-            return val   # 解引用宽松返回对象自身（MEM-1 指针模型前的引用语义）
+            return _deref(val)   # int=堆地址→读字节；可变对象→引用自身
         raise AssertionError(f"Unknown unary operator: '{op}'")
+
+
+def _deref(val):
+    """* 解引用（MEM-1 前最小支持）。
+
+    - int（堆地址）：读取 1 字节（cbuiltins 堆模型）；
+    - 可变对象（StructValue/UnionValue/list/dict）：返回对象自身（引用）；
+    - 其他（float/str 等）：返回自身（宽松）。
+    """
+    if isinstance(val, int):
+        from cbuiltins import _read_bytes
+        return _read_bytes(val, 1)[0]
+    return val
 
 
 def _address_of(node, val):
@@ -760,11 +773,15 @@ class ExeFuncCall(Execute):
             func = g_functions.get(func_name)
 
         if func is not None and func.body is None:
-            # 只有声明（原型占位）无定义：再试激活定义文件；仍无 → 链接错误
-            g_source_index.activate_for(func_name)
-            func = g_functions.get(func_name)
-            if func is None or func.body is None:
-                raise AssertionError(f"函数 '{func_name}' 只有声明无定义（链接错误）")
+            # 原型占位无定义：若是内置函数名 → 声明引用的实现由内建提供（不报错）
+            if is_builtin(func_name):
+                func = None
+            else:
+                # 再试激活定义文件；仍无 → 链接错误
+                g_source_index.activate_for(func_name)
+                func = g_functions.get(func_name)
+                if func is None or func.body is None:
+                    raise AssertionError(f"函数 '{func_name}' 只有声明无定义（链接错误）")
 
         if func is not None:
             global g_scope
