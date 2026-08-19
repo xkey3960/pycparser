@@ -439,6 +439,33 @@ def test_l4_link_still_full_check():
         print(f"    link 时报错: {e} ✓")
 
 
+def test_ptr_address_of():
+    """& 取地址（引用语义）与 * 解引用（MEM-1 前最小支持）。"""
+    print("  [Ptr] & 取地址 / * 解引用 / -> 经指针访问（引用语义）")
+    src = '''
+struct AAA { int x; int y; };
+int main(void) {
+    struct AAA a;
+    a.x = 5;
+    a.y = 37;
+    struct AAA *pa = &a;
+    pa->x = 99;              /* 经指针写回 a（StructValue 引用共享） */
+    int via_ptr = pa->y;     /* 经指针读 */
+    int arr[2];
+    arr[0] = 7;
+    arr[1] = 8;
+    int *p = &arr[0];        /* 数组元素地址 */
+    int *q = p + 1;          /* 指针算术：宽松退化（MEM-1 前） */
+    return (a.x + via_ptr) + (*p + *q);   /* (99+37) + (7+8) = 151 */
+}
+'''
+    with open('test/multi/ptr_main.c', 'w') as f:
+        f.write(src)
+    result = _run(['test/multi/ptr_main.c'])
+    assert result == 151, f"期望 151，实际 {result}"
+    print(f"    main() = {result}（pa->x 写回 a；&arr[0]/p+1/*p/*q）✓")
+
+
 def main():
     print("=" * 60)
     print("  program.py — 多文件支持测试（S1+S2+S3+修复）")
@@ -482,8 +509,10 @@ def main():
     test_l4_tag_redef_conflict_on_use()
     test_l4_global_init_at_startup()
     test_l4_link_still_full_check()
+    print("\n--- 14. 指针（& / * / -> 最小支持）---")
+    test_ptr_address_of()
     print("\n" + "=" * 60)
-    print("  S1-S3 + 修复 + L1/L2/L3/L4 惰性 全部测试通过! ✅")
+    print("  S1-S3 + 修复 + L1/L2/L3/L4 + 指针 全部测试通过! ✅")
     print("=" * 60)
 
 

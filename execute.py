@@ -413,10 +413,38 @@ class ExeUnaryOp(Execute):
             '__real__': lambda: val,
             '__imag__': lambda: 0,
         }
-
         if op in handlers:
             return handlers[op]()
+        if op == '&':
+            return _address_of(self.node.expr, val)
+        if op == '*':
+            return val   # 解引用宽松返回对象自身（MEM-1 指针模型前的引用语义）
         raise AssertionError(f"Unknown unary operator: '{op}'")
+
+
+def _address_of(node, val):
+    """& 取地址（MEM-1 前的最小支持，引用语义）。
+
+    - 对可变对象（StructValue/UnionValue/list/dict）：返回**对象本身**（Python
+      引用）——`pa = &a; pa->x = 1` 经引用写回 a；
+    - 对标量（int/float 等不可变）：返回值的拷贝（受 Python 不可变性限制，
+      写路径无效，读路径可用）——完整指针模型见 MEM-1 待办。
+    """
+    if isinstance(node, ID):
+        return g_scope.get(node.name)
+    if isinstance(node, c_ast.ArrayRef):
+        arr = execute(node.name)
+        idx = execute(node.subscript)
+        if isinstance(arr, list) and isinstance(idx, int):
+            return arr[idx]      # 元素引用（list 可变 → 写回生效）
+    if isinstance(node, c_ast.StructRef):
+        obj = execute(node.name)
+        field = node.field.name if isinstance(node.field, ID) else str(node.field)
+        if isinstance(obj, (StructValue, UnionValue)):
+            return obj.get(field)
+        if isinstance(obj, dict):
+            return obj.get(field, 0)
+    raise AssertionError(f"无法取地址: {type(node).__name__}")
 
 def _p_plus_plus(node, val):
     if isinstance(node, ID):
