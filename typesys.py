@@ -380,13 +380,14 @@ def build_default_registry():
     for name, size, align in [
         # 整型
         ("char", 1, 1), ("signed char", 1, 1), ("unsigned char", 1, 1),
-        ("short", 2, 2), ("short int", 2, 2), ("unsigned short", 2, 2),
+        ("short", 2, 2), ("signed short int", 2, 2), ("short int", 2, 2), ("unsigned short", 2, 2),
         ("unsigned short int", 2, 2),
         ("int", 4, 4), ("signed", 4, 4), ("signed int", 4, 4),
         ("unsigned", 4, 4), ("unsigned int", 4, 4),
-        ("long", 8, 8), ("long int", 8, 8), ("unsigned long", 8, 8),
+        ("long", 8, 8), ("signed long int", 8, 8), ("long int", 8, 8), ("unsigned long", 8, 8),
         ("unsigned long int", 8, 8),
         ("long long", 8, 8), ("long long int", 8, 8),
+        ("signed long long", 8, 8), ("signed long long int", 8, 8),
         ("unsigned long long", 8, 8), ("unsigned long long int", 8, 8),
         # 浮点
         ("float", 4, 4), ("double", 8, 8), ("long double", 16, 16),

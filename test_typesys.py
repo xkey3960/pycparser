@@ -865,7 +865,7 @@ def test_m5_designated_init():
 # ==================== 10. 修复回归：类型顺序 / 数组维度表达式 ====================
 
 def test_fix_type_specifier_order():
-    print("  [Fix] 类型说明符任意顺序（long long unsigned int）")
+    print("  [Fix] 类型说明符任意顺序（long long unsigned int / signed）")
     t1 = g_types.resolve(['long', 'long', 'unsigned', 'int'])
     t2 = g_types.resolve(['unsigned', 'long', 'long', 'int'])
     assert t1 is t2 and t1.sizeof() == 8
@@ -874,11 +874,17 @@ def test_fix_type_specifier_order():
     assert g_types.resolve(['long', 'long']).sizeof() == 8
     assert g_types.resolve(['long', 'unsigned']).sizeof() == 8
     assert g_types.resolve(['long', 'unsigned']).sizeof() == g_types.resolve(['unsigned', 'long']).sizeof()
+    # signed 前缀形态（canonical 归一化会生成，注册表需有键）
+    assert g_types.resolve(['signed', 'short']).sizeof() == 2
+    assert g_types.resolve(['signed', 'long']).sizeof() == 8
+    assert g_types.resolve(['signed', 'long', 'long']).sizeof() == 8
+    assert g_types.resolve(['long', 'signed']).sizeof() == 8      # 任意顺序
+    assert g_types.resolve(['signed', 'long', 'long', 'int']).sizeof() == 8
     # typedef 名（非关键字）不被误归一为 int
     r = build_default_registry()
     r.register_typedef('MyT', r.resolve(['int']))
     assert r.resolve(['MyT']) is r.resolve(['int'])
-    print("    任意顺序归一；typedef 名不误判 ✓")
+    print("    任意顺序归一；signed 形态齐全；typedef 名不误判 ✓")
 
 
 def test_fix_array_dim_expression():
