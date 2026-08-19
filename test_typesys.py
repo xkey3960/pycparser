@@ -704,6 +704,35 @@ def test_m4_union_typedef():
     print("    别名解析到 UnionType；v 为 UnionValue ✓")
 
 
+def test_m4_union_with_inline_named_struct_member():
+    """修复回归：匿名 union 的成员是内联命名 struct（struct AAA {...} __data）。
+
+    复现文件 test/anonymous_struct_union.c —— L4 惰性注册下，内联命名类型
+    只注册不布局，匿名 union 布局前需 ensure_complete 成员（否则"成员不完整"）。
+    """
+    print("  [M4] typedef union { struct AAA {int a;} __data; } BBB;")
+    exe_mod.setup_global_scope()
+    inner = c_ast.Struct(name='AAA', decls=[
+        c_ast.Decl(name='a', quals=[], align=None, storage=[], funcspec=[],
+                   type=c_ast.TypeDecl(declname='a', quals=[], align=None,
+                                       type=c_ast.IdentifierType(names=['int'])),
+                   init=None, bitsize=None)])
+    # 成员 __data 的类型是内联 struct 定义节点（非 IdentifierType）
+    member = c_ast.Decl(name='__data', quals=[], align=None, storage=[], funcspec=[],
+                        type=c_ast.TypeDecl(declname='__data', quals=[], align=None,
+                                            type=inner),
+                        init=None, bitsize=None)
+    union_node = c_ast.Union(name=None, decls=[member])
+    exe_mod.execute(c_ast.Typedef(name='BBB', quals=[], storage=[], type=union_node))
+    t = g_types.lookup_tag('struct', 'AAA')
+    ensure_complete(t)                       # 内联命名 struct 已注册（不完整 → 补全）
+    assert t.is_complete() and t.sizeof() == 4 and [m.name for m in t.members] == ['a']
+    b = g_types.resolve(['BBB'])             # 匿名 union：注册即布局（成员已补全）
+    assert isinstance(b, UnionType) and b.sizeof() == 4
+    assert [m.name for m in b.members] == ['__data']
+    print("    AAA 补全 size 4；BBB 布局成功（成员 __data）✓")
+
+
 # ==================== 9. M5 集成增强 ====================
 
 def test_m5_sizeof_no_side_effect():
@@ -928,6 +957,7 @@ def main():
     test_m4_union_size_max()
     test_m4_union_value_copy()
     test_m4_union_typedef()
+    test_m4_union_with_inline_named_struct_member()
     print("\n--- 9. M5 集成增强 ---")
     test_m5_sizeof_no_side_effect()
     test_m5_sizeof_types()

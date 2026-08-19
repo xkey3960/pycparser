@@ -510,8 +510,12 @@ def _register_compound(node):
 
     # 匿名定义：无法按名引用，注册即布局（当场必须完整）
     if name is None:
-        members = [(d.name, type_of_decl(d.type), d.bitsize)
-                   for d in node.decls or [] if isinstance(d, c_ast.Decl) and d.name]
+        members = []
+        for d in node.decls or []:
+            if isinstance(d, c_ast.Decl) and d.name:
+                mt = type_of_decl(d.type)
+                ensure_complete(mt)          # L4 修复：成员可能是内联命名类型（只注册未布局）
+                members.append((d.name, mt, d.bitsize))
         layout, size, align = compute(members)
         return ctor(None, members=layout, size=size, align=align)
 
