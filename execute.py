@@ -674,6 +674,13 @@ class ExeFuncCall(Execute):
             g_source_index.activate_for(func_name)
             func = g_functions.get(func_name)
 
+        if func is not None and func.body is None:
+            # 只有声明（原型占位）无定义：再试激活定义文件；仍无 → 链接错误
+            g_source_index.activate_for(func_name)
+            func = g_functions.get(func_name)
+            if func is None or func.body is None:
+                raise AssertionError(f"函数 '{func_name}' 只有声明无定义（链接错误）")
+
         if func is not None:
             global g_scope
             outer_scope = g_scope
@@ -904,7 +911,21 @@ class ExeDecl(Execute):
             return
         ctype = type_of_decl(self.node.type)
         if isinstance(ctype, FuncType):
-            return  # 函数声明/原型：不是变量（定义由 FuncDef 注册，多文件支持）
+            # 函数声明/原型（非定义）：注册签名占位（C 前向声明语义）。
+            # - 参数类型可能引用**不完整**类型（`int func(struct a a1);` 且
+            #   struct a 定义在后）——只记录签名，不补全（调用点/定义时才需要完整）
+            # - 后续 FuncDef 定义时用 Function(body=...) 覆盖占位
+            if name not in g_functions:
+                param_names = [
+                    p.name for p in (self.node.type.args.params
+                                     if self.node.type.args is not None
+                                     and isinstance(self.node.type.args, ParamList) else [])
+                    if isinstance(p, Decl)]
+                g_functions[name] = Function(
+                    name=name, param_names=param_names, body=None,
+                    closure_scope=g_scope, param_types=ctype.param_types,
+                    ret_type=ctype.ret_type)
+            return
         if self.node.init is not None:
             init_val = coerce_to_type(execute(self.node.init), ctype)
         else:

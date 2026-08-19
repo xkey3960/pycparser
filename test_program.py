@@ -135,6 +135,50 @@ def test_fix_repro():
 import sources
 
 
+def test_proto_decl_and_link_error():
+    """函数原型声明（含按值传不完整类型）：注册签名占位、定义覆盖、无定义报链接错误。"""
+    print("  [Proto] 原型声明：注册签名占位；无定义调用报链接错误")
+    # 1) 纯原型声明文件（无 main）：能装载，func 注册为占位（body=None）
+    exe_mod.setup_global_scope()
+    prog = CProgram([f'{MULTI}/proto_decl.c'], lazy=False)
+    prog.load()
+    # link 需要 main；直接跑 run 会报未找到入口 —— 改用 load 后检查 1a/1b 之外的原型注册
+    exe_mod.setup_global_scope()
+    from pycparser import parse_file
+    from pycparserext import ext_c_parser
+    from execute import execute
+    from typesys import ensure_complete
+    parser = ext_c_parser.GnuCParser()
+    ast = parse_file(f'{MULTI}/proto_decl.c', use_cpp=True, cpp_path='gcc',
+                     cpp_args=['-E', '-Iutils/fake_libc_include'], parser=parser, encoding=None)
+    for ext in ast.ext:
+        execute(ext)
+    f = exe_mod.g_functions.get('func')
+    assert f is not None and f.body is None          # 原型 → 签名占位
+    assert f.param_names == ['a1']                   # 参数名记录
+    t = exe_mod.g_types.lookup_tag('struct', 'a')
+    ensure_complete(t)                               # 后置定义补全
+    assert t.is_complete() and [m.name for m in t.members] == ['aaa']
+    print("    原型注册占位（param a1）；struct a 后置定义补全 ✓")
+    # 2) 原型（main 文件） + 跨文件定义 → 正常调用（定义覆盖占位）
+    exe_mod.setup_global_scope()
+    prog2 = CProgram([f'{MULTI}/proto_main.c', f'{MULTI}/proto_impl.c'], lazy=True)
+    prog2.load()
+    result = prog2.run()
+    assert result == 42, f"期望 42，实际 {result}"
+    print(f"    原型+跨文件定义: main() = {result} ✓")
+    # 3) 只有原型无定义 → 链接错误
+    exe_mod.setup_global_scope()
+    prog3 = CProgram([f'{MULTI}/proto_main.c'], lazy=True)
+    prog3.load()
+    try:
+        prog3.run()
+        raise AssertionError("应报链接错误")
+    except AssertionError as e:
+        assert 'func' in str(e) and '链接错误' in str(e)
+        print(f"    无定义调用: {e} ✓")
+
+
 def test_l1_lazy_run_no_link():
     print("  [L1] 惰性运行：跨文件函数无需 link，坏文件不报错")
     exe_mod.setup_global_scope()
@@ -419,6 +463,7 @@ def main():
     print("\n--- 9. 修复回归 ---")
     test_fix_repro()
     print("\n--- 10. L1 惰性解析 ---")
+    test_proto_decl_and_link_error()
     test_l1_lazy_run_no_link()
     test_l1_lazy_forward_ref_order_free()
     test_l1_lazy_global_init_on_activation()
