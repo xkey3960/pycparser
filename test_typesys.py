@@ -405,6 +405,24 @@ def test_m2_enum_standalone():
     print("    RED=0 GREEN=1 BLUE=10 YELLOW=11；常量带 IntType；标签注册 ✓")
 
 
+def test_m2_enum_hex_and_bases():
+    print("  [M2] enum 成员十六进制/八进制/二进制/后缀字面量")
+    exe_mod.setup_global_scope()
+    node = _enum_def('HexColor', [
+        ('A', c_ast.Constant(type='int', value='0x100')),
+        ('B', None),                                   # 0x100 + 1
+        ('C', c_ast.Constant(type='int', value='0755')),   # 八进制
+        ('D', c_ast.Constant(type='int', value='0b101')),  # 二进制
+        ('E', c_ast.Constant(type='unsigned int', value='0xFFu')),  # 后缀 + 完整说明符 type
+        ('F', c_ast.Constant(type='long', value='42L')),
+    ])
+    exe_mod.execute(node)
+    et = g_types.lookup_tag('enum', 'HexColor')
+    assert et.constants == {'A': 256, 'B': 257, 'C': 493, 'D': 5, 'E': 255, 'F': 42}
+    assert exe_mod.g_scope.get('B') == 257
+    print("    0x100=256 B=257 0755=493 0b101=5 0xFFu=255 42L=42 ✓")
+
+
 def test_m2_enum_reference_previous():
     print("  [M2] enum {A, B = A + 5, C};（引用前一常量）")
     exe_mod.setup_global_scope()
@@ -947,6 +965,7 @@ def main():
     test_m1_struct_self_reference()
     print("\n--- 6. M2 enum 类型注册 ---")
     test_m2_enum_standalone()
+    test_m2_enum_hex_and_bases()
     test_m2_enum_reference_previous()
     test_m2_enum_variable()
     test_m2_typedef_enum_anon()

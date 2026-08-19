@@ -234,6 +234,29 @@ _CHAR_ESCAPES = {
 }
 
 
+def _c_int_literal(v):
+    """C 整型字面量 → int。支持 10/16/8/2 进制与 U/L/LL 后缀（含小写），
+    如 '0x100'、'0xFFu'、'0755'、'0b1010'、'123L'。失败时返回原值（宽松）。"""
+    if isinstance(v, str):
+        s = v.strip()
+        # 去后缀（U/u/L/l 任意组合，如 0x100ULL、42l）
+        i = len(s)
+        while i > 0 and s[i - 1] in 'uUlL':
+            i -= 1
+        body = s[:i]
+        try:
+            if body.lower().startswith('0x'):
+                return int(body, 16)
+            if body.lower().startswith('0b'):
+                return int(body, 2)
+            if len(body) > 1 and body.startswith('0') and body.isdigit():
+                return int(body, 8)      # 八进制（0755）；'0' 单独是 0
+            return int(body, 10)
+        except ValueError:
+            return v
+    return v
+
+
 def _char_literal_code(v):
     """字符字面量 → int 码。pycparser 的 value 自带引号（"'A'"），需剥引号并处理转义。"""
     if isinstance(v, str) and len(v) >= 3 and v[0] == "'" and v[-1] == "'":
@@ -302,23 +325,25 @@ class ExeConstant(Execute):
 
     def __init__(self, node):
         super().__init__(node)
+        # pycparser 的字面量 type 可能带完整说明符（'unsigned int'/'long long' 等），
+        # 用"是否整型字面量"判断而非精确键匹配（int 型进制解析见 _c_int_literal）。
         self._type_force = {
-            'int': int,
+            'int': _c_int_literal,
             'float': float,
             'double': float,
             'char': _char_literal_code,
             'string': _string_literal_value,
-            'long': int,
-            'short': int,
-            'unsigned': int,
-            'signed': int,
-            '_Bool': lambda v: bool(int(v)),
+            '_Bool': lambda v: bool(_c_int_literal(v)),
         }
+        self._int_keywords = ('int', 'long', 'short', 'unsigned', 'signed', 'bool')
 
     def execute(self):
         t = self.node.type
         if t in self._type_force:
             return self._type_force[t](self.node.value)
+        # 整型字面量：'unsigned int'/'long long'/'unsigned long' 等 → 进制解析
+        if isinstance(t, str) and any(k in t for k in self._int_keywords):
+            return _c_int_literal(self.node.value)
         try:
             return int(self.node.value)
         except (ValueError, TypeError):
