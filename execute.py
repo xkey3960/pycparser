@@ -180,6 +180,76 @@ class StackFrame:
         self.ret_type = ret_type
 
 
+class Address:
+    """内存地址（MEM-1 指针模型）：定位存储槽 + 字节偏移 + 元素类型。
+
+    loc 定位：
+      ('var', scope, name)     — 变量槽（&x；解引用经 scope.get/set，标量可写回）
+      ('list', list, base_idx) — 数组元素（&arr[i]；解引用经 list[idx]）
+      ('member', obj, field)   — struct/union 成员（&a.f；解引用经 obj.get/set）
+    offset：指针算术产生的字节偏移（p+n）；解引用时折算为槽内位置。
+    elem_type：指向元素类型（&x 时取变量类型），算术步长 = sizeof。
+    """
+
+    __slots__ = ("loc", "offset", "elem_type")
+
+    def __init__(self, loc, offset=0, elem_type=None):
+        self.loc = loc
+        self.offset = offset
+        self.elem_type = elem_type
+
+    def __repr__(self):
+        return f"<Address {self.loc} offset={self.offset} {self.elem_type}>"
+
+
+def address_read(addr):
+    """*addr 读值：按 loc 定位容器，结合 offset 取元素。"""
+    if not isinstance(addr, Address):
+        return addr                      # 非地址：原样返回（宽松）
+    kind = addr.loc[0]
+    if kind == 'var':
+        _, scope, name = addr.loc
+        return scope.get(name)           # offset=0 取本体；字节级偏移留 MEM-1 后续
+    if kind == 'list':
+        _, arr, base = addr.loc
+        step = addr.elem_type.sizeof() if addr.elem_type is not None else 1
+        return arr[base + addr.offset // step]
+    if kind == 'member':
+        _, obj, field = addr.loc
+        return obj.get(field)
+    raise AssertionError(f"无法解引用地址: {addr}")
+
+
+def address_write(addr, value):
+    """*addr = value：写回 loc 定位的容器（标量/数组元素/struct 成员）。"""
+    if not isinstance(addr, Address):
+        raise AssertionError(f"赋值目标不是地址: {addr!r}")
+    kind = addr.loc[0]
+    if kind == 'var':
+        _, scope, name = addr.loc
+        scope.set(name, value)           # 标量写回！
+    elif kind == 'list':
+        _, arr, base = addr.loc
+        step = addr.elem_type.sizeof() if addr.elem_type is not None else 1
+        arr[base + addr.offset // step] = value
+    elif kind == 'member':
+        _, obj, field = addr.loc
+        obj.set(field, value)
+    else:
+        raise AssertionError(f"无法写入地址: {addr}")
+
+
+def address_eq(a, b):
+    """指针相等：同 loc 且同 offset（NULL=0/None 特殊）。"""
+    if a is None or a == 0:
+        return b is None or b == 0
+    if b is None or b == 0:
+        return False
+    if isinstance(a, Address) and isinstance(b, Address):
+        return a.loc == b.loc and a.offset == b.offset
+    return a == b
+
+
 # ==================== Global State ====================
 
 g_scope = Scope()
@@ -394,6 +464,24 @@ class ExeBinaryOp(Execute):
         left = execute(self.node.left)
         right = execute(self.node.right)
 
+        # MEM-1 指针语义
+        if isinstance(left, Address) or isinstance(right, Address):
+            ptr = left if isinstance(left, Address) else right
+            n = right if isinstance(left, Address) else left
+            step = ptr.elem_type.sizeof() if ptr.elem_type is not None else 1
+            if op in ('+', '-'):
+                if not isinstance(n, int):
+                    raise AssertionError("指针算术需要整数操作数")
+                if op == '+':
+                    return Address(ptr.loc, ptr.offset + n * step, ptr.elem_type)
+                if isinstance(left, Address) and isinstance(right, Address):
+                    raise AssertionError("指针相减（差值为元素数）暂不支持")
+                return Address(ptr.loc, ptr.offset - n * step, ptr.elem_type)
+            if op in ('==', '!='):
+                eq = address_eq(left, right)
+                return eq if op == '==' else not eq
+            raise AssertionError(f"指针不支持运算符 '{op}'")
+
         handlers = {
             '+': lambda: left + right,
             '-': lambda: left - right,
@@ -451,59 +539,90 @@ class ExeUnaryOp(Execute):
 
 
 def _deref(val):
-    """* 解引用（MEM-1 前最小支持）。
+    """* 解引用（MEM-1）。
 
+    - Address：按 loc 定位读值（标量/数组元素/struct 成员）；
     - int（堆地址）：读取 1 字节（cbuiltins 堆模型）；
-    - 可变对象（StructValue/UnionValue/list/dict）：返回对象自身（引用）；
-    - 其他（float/str 等）：返回自身（宽松）。
+    - 其他（StructValue/list/float/str 等）：返回自身（宽松引用）。
     """
+    if isinstance(val, Address):
+        return address_read(val)
     if isinstance(val, int):
         from cbuiltins import _read_bytes
         return _read_bytes(val, 1)[0]
     return val
 
 
-def _address_of(node, val):
-    """& 取地址（MEM-1 前的最小支持，引用语义）。
+def _var_type(name):
+    """取变量的 CType（&x 的 elem_type，指针算术步长用）；非变量返回 None。"""
+    try:
+        return g_scope.get_type(name)
+    except AssertionError:
+        return None
 
-    - 对可变对象（StructValue/UnionValue/list/dict）：返回**对象本身**（Python
-      引用）——`pa = &a; pa->x = 1` 经引用写回 a；
-    - 对标量（int/float 等不可变）：返回值的拷贝（受 Python 不可变性限制，
-      写路径无效，读路径可用）——完整指针模型见 MEM-1 待办；
-    - 对函数名（&func）：返回函数名字符串（函数指针值）。
+
+def _is_var(name):
+    """名字是否是当前作用域的变量（区别于函数名）。"""
+    try:
+        g_scope.get_symbol(name)
+        return True
+    except AssertionError:
+        return False
+
+
+def _address_of(node, val):
+    """& 取地址（MEM-1）：返回 Address（loc 定位 + 元素类型）。
+
+    - &x        → Address(('var', scope, name), 0, x_type)  标量可写回
+    - &arr[i]   → Address(('list', arr, base), 0, elem_type)
+    - &a.field  → Address(('member', obj, field), 0, field_type)
+    - &func     → 函数名字符串（函数指针值，保持现状）
     """
     if isinstance(node, ID):
         name = node.name
-        try:
-            return g_scope.get(name)
-        except AssertionError:
-            if name in g_functions:
-                return name          # &func → 函数指针值（名字引用）
-            raise AssertionError(f"未定义变量 '{name}'")
+        if _is_var(name):
+            return Address(('var', g_scope, name), 0, _var_type(name))
+        if name in g_functions:
+            return name          # &func → 函数指针值（名字引用）
+        raise AssertionError(f"未定义变量 '{name}'")
     if isinstance(node, c_ast.ArrayRef):
         arr = execute(node.name)
         idx = execute(node.subscript)
         if isinstance(arr, list) and isinstance(idx, int):
-            return arr[idx]      # 元素引用（list 可变 → 写回生效）
+            return Address(('list', arr, idx), 0, None)
+        if isinstance(arr, Address):
+            return Address(arr.loc, arr.offset, arr.elem_type)
     if isinstance(node, c_ast.StructRef):
         obj = execute(node.name)
         field = node.field.name if isinstance(node.field, ID) else str(node.field)
         if isinstance(obj, (StructValue, UnionValue)):
-            return obj.get(field)
+            return Address(('member', obj, field), 0, None)
+        if isinstance(obj, Address):
+            return Address(obj.loc, obj.offset, obj.elem_type)
         if isinstance(obj, dict):
-            return obj.get(field, 0)
+            return Address(('member', obj, field), 0, None)
     raise AssertionError(f"无法取地址: {type(node).__name__}")
 
 def _p_plus_plus(node, val):
     if isinstance(node, ID):
-        g_scope.set(node.name, val+1)
+        if isinstance(val, Address):          # 指针 p++：按元素步长
+            step = val.elem_type.sizeof() if val.elem_type is not None else 1
+            new_val = Address(val.loc, val.offset + step, val.elem_type)
+        else:
+            new_val = val + 1
+        g_scope.set(node.name, new_val)
     else:
         raise AssertionError(f"{node.__class__.__name__} can't support for p++")
     return val
 
 def _p_sub_sub(node, val):
     if isinstance(node, ID):
-        g_scope.set(node.name, val-1)
+        if isinstance(val, Address):
+            step = val.elem_type.sizeof() if val.elem_type is not None else 1
+            new_val = Address(val.loc, val.offset - step, val.elem_type)
+        else:
+            new_val = val - 1
+        g_scope.set(node.name, new_val)
     else:
         raise AssertionError(f"{node.__class__.__name__} can't support for p--")
     return val
@@ -602,12 +721,16 @@ class ExeAssignment(Execute):
         elif isinstance(lvalue_node, ArrayRef):
             arr = execute(lvalue_node.name)
             idx = execute(lvalue_node.subscript)
-            if isinstance(arr, list):
+            if isinstance(arr, Address):       # 指针下标写 p[i] = v
+                address_write(Address(arr.loc, arr.offset, arr.elem_type), value)
+            elif isinstance(arr, list):
                 arr[idx] = value
             else:
                 raise AssertionError("ArrayRef on non-array")
         elif isinstance(lvalue_node, StructRef):
             obj = execute(lvalue_node.name)
+            if isinstance(obj, Address):       # p->f = v（先解引用）
+                obj = _deref(obj)
             field = lvalue_node.field.name if isinstance(lvalue_node.field, ID) else str(lvalue_node.field)
             if isinstance(obj, StructValue):
                 obj.set(field, value)
@@ -617,6 +740,10 @@ class ExeAssignment(Execute):
                 obj[field] = value
             else:
                 setattr(obj, field, value)
+        elif isinstance(lvalue_node, c_ast.UnaryOp) and lvalue_node.op == '*':
+            # *p = v
+            addr = execute(lvalue_node.expr)
+            address_write(addr, value)
         else:
             raise AssertionError(f"Unsupported lvalue type: {type(lvalue_node).__name__}")
 
@@ -693,6 +820,9 @@ class ExeArrayRef(Execute):
     def execute(self):
         arr = execute(self.node.name)
         idx = execute(self.node.subscript)
+        if isinstance(arr, Address):         # 指针下标 p[i]
+            step = arr.elem_type.sizeof() if arr.elem_type is not None else 1
+            return address_read(Address(arr.loc, arr.offset + idx * step, arr.elem_type))
         if isinstance(arr, (list, tuple)):
             return arr[idx]
         raise AssertionError(f"Cannot subscript non-array value: {type(arr).__name__}")
@@ -700,10 +830,12 @@ class ExeArrayRef(Execute):
 
 class ExeStructRef(Execute):
     """Struct/union member access (M3): StructValue/UnionValue 的 '.' 访问；
-    '->' 在指针模型（MEM-1）前对 struct 值宽松退化为 '.'。"""
+    '->' 对指针（Address）先解引用再取成员（MEM-1）。"""
 
     def execute(self):
         obj = execute(self.node.name)
+        if isinstance(obj, Address):         # p->f（指针解引用）
+            obj = _deref(obj)
         field_node = self.node.field
         field_name = field_node.name if isinstance(field_node, ID) else str(field_node)
 

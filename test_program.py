@@ -518,6 +518,46 @@ int main(void) {
     print(f"    main() = {result}（fact=120+is_even=1+helper=105+count=10；调用栈已清空）✓")
 
 
+def test_mem1_pointer_model():
+    """MEM-1 指针模型：标量写回 / 指针算术 / p[i] / p++ / 指针比较 / -> 写。"""
+    print("  [MEM1] 指针模型（Address：标量写回/算术/p[i]/p++/比较）")
+    src = '''
+struct AAA { int x; int y; };
+int main(void) {
+    /* ① 标量写回（之前做不到） */
+    int x = 0;
+    int *p = &x;
+    *p = 5;
+    int a = x;                    /* 5 */
+    /* ② 指针算术按元素大小 + p[i] + 写 */
+    int arr[3];
+    arr[0] = 10; arr[1] = 20; arr[2] = 30;
+    int *q = &arr[0];
+    int *r = q + 1;               /* int* → 偏移 4 字节 */
+    int b = *r;                   /* 20 */
+    int c = q[2];                 /* 30 */
+    *(q + 1) = 99;                /* arr[1] = 99 */
+    /* ③ p++ 步长 + 指针比较 */
+    int *s = &arr[0];
+    int eq = (s == &arr[0]);      /* 1 */
+    int ne = (s == &arr[1]);      /* 0 */
+    s++;
+    int d = *s;                   /* 99（arr[1] 被写） */
+    /* ④ -> 写 struct 成员（经 Address） */
+    struct AAA o; o.x = 1; o.y = 2;
+    struct AAA *po = &o;
+    po->x = 100;
+    int e = o.x;                  /* 100 */
+    return a + b + c + arr[1] + eq + (1 - ne) + d + e;   /* 5+20+30+99+1+1+99+100 = 355 */
+}
+'''
+    with open('test/multi/mem1_ptr.c', 'w') as f:
+        f.write(src)
+    result = _run(['test/multi/mem1_ptr.c'])
+    assert result == 355, f"期望 355，实际 {result}"
+    print(f"    main() = {result}（标量写回/算术/p[i]/p++/比较/-> 写）✓")
+
+
 def main():
     print("=" * 60)
     print("  program.py — 多文件支持测试（S1+S2+S3+修复）")
@@ -567,8 +607,10 @@ def main():
     test_func_ptr()
     print("\n--- 16. MEM-2 栈帧与递归 ---")
     test_mem2_recursion()
+    print("\n--- 17. MEM-1 指针模型 ---")
+    test_mem1_pointer_model()
     print("\n" + "=" * 60)
-    print("  S1-S3 + 修复 + L1/L2/L3/L4 + 指针 + 函数指针 + 栈帧 全部测试通过! ✅")
+    print("  S1-S3 + 修复 + L1/L2/L3/L4 + 指针 + 函数指针 + 栈帧 + 指针模型 全部测试通过! ✅")
     print("=" * 60)
 
 

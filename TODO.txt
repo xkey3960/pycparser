@@ -70,15 +70,15 @@
 阶段二：内存模型（中期，1-2 周）
 ================================================================================
 
-[MEM-1] 指针与地址模型
+[MEM-1] 指针与地址模型 ✅ 已完成（详见设计文档-指针与地址模型.md）
 --------------------------------------------------
 当前缺失：
-  - &（取地址）运算符
-  - *（解引用）运算符
-  - 指针算术（ptr + n）
-  - NULL 指针
-  - 指针比较
-  - 函数指针调用
+  - &（取地址）运算符             ✅ Address 模型（变量/数组元素/struct 成员；&func=函数指针）
+  - *（解引用）运算符             ✅ address_read/address_write（标量写回/元素/成员）
+  - 指针算术（ptr + n）          ✅ 按元素大小偏移（Address.offset += n*sizeof）
+  - NULL 指针                    ⏳ 指针上下文 0 可作空指针（解引用未特判报错，宽松返回）
+  - 指针比较                      ✅ address_eq（同 loc + offset）
+  - 函数指针调用                  ✅ 函数名→str；fp=inc / &inc；经变量调用
 
 设计思路：
   引入 Address 类表示内存地址：
@@ -94,18 +94,19 @@
           self._data = [0] * size
 
   变量存储方式改变：
-  - Scope 中存储 (Address, type_info) 而非直接值
-  - 所有读写通过 Memory 进行
-  - 支持指针解引用链
+  - Scope 中存储 (Address, type_info) 而非直接值   ⏳ 保持"值 + Symbol.type"；
+      Address.loc 定位 + offset 偏移已覆盖 &/*/算术/下标；逐字节线性内存（Memory）留后续
+  - 所有读写通过 Memory 进行                        ⏳ 同上
+  - 支持指针解引用链                                ✅ *p、p[i]、p->f 已支持
 
 实施步骤：
-  1. 设计 Address/Memory 数据结构
-  2. 修改 Scope 存储方式
-  3. 实现 & 运算符（UnaryOp op='&'）
-  4. 实现 * 运算符（UnaryOp op='*'）
-  5. 实现指针算术（BinaryOp op='+' 中检测 Address 操作数）
-  6. 实现 NULL 常量（Constant(type='int', value='0') 在指针上下文特殊处理）
-  7. 实现函数指针调用（检测 ID 是否为函数指针类型）
+  1. 设计 Address/Memory 数据结构      ✅ Address（loc/offset/elem_type）+ address_read/write
+  2. 修改 Scope 存储方式               ⏳ 值存储保留（Address 定位到 scope）；逐字节模型后续
+  3. 实现 & 运算符（UnaryOp op='&')    ✅
+  4. 实现 * 运算符（UnaryOp op='*')    ✅
+  5. 实现指针算术（BinaryOp '+'）      ✅
+  6. 实现 NULL 常量                    ⏳ 见上
+  7. 实现函数指针调用                  ✅
 
 [MEM-2] 栈帧与递归支持 ✅ 已完成（详见设计文档-栈帧与递归.md）
 --------------------------------------------------
