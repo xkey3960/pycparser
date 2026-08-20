@@ -217,7 +217,7 @@
   3. 在 BinaryOp/Assignment 中使用类型信息做类型检查
   4. 实现 TypedefType 解析链
 
-[TYPE-2] 隐式类型转换
+[TYPE-2] 隐式类型转换 ✅ 已完成（详见设计文档-隐式类型转换.md）
 --------------------------------------------------
 C 的隐式转换规则（Usual Arithmetic Conversions）：
 
@@ -226,15 +226,15 @@ C 的隐式转换规则（Usual Arithmetic Conversions）：
   > unsigned int > int
 
   以及：
-  - 整数提升（char/short → int）
-  - 赋值时的类型转换
-  - 函数参数的类型转换
+  - 整数提升（char/short → int）       ✅ promote（rank < int → int）
+  - 赋值时的类型转换                   ✅ convert_to（int x=3.7→3；char 截断 8 位）
+  - 函数参数的类型转换                 ✅ ExeFuncCall 实参按形参类型转换
 
 实施步骤：
-  1. 实现类型提升等级（rank）系统
-  2. 在 BinaryOp 的每个操作中加入类型提升
-  3. 在 Assignment 中加入赋值类型转换
-  4. 在 FuncCall 中加入参数类型转换
+  1. 实现类型提升等级（rank）系统       ✅ typesys._RANK + type_rank
+  2. 在 BinaryOp 的每个操作中加入类型提升  ✅ usual_convert + ExeBinaryOp 求值前转换
+  3. 在 Assignment 中加入赋值类型转换     ✅ ExeAssignment（= 与复合赋值）
+  4. 在 FuncCall 中加入参数类型转换       ✅ ExeFuncCall 形参；ExeReturn 返回转换
 
 [TYPE-3] 常量折叠（Constant Folding）
 --------------------------------------------------

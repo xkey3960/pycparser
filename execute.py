@@ -65,6 +65,8 @@ from typesys import (
     StructValue,
     UnionValue,
     coerce_to_type,
+    usual_convert,
+    convert_to,
 )
 
 # 内置函数注册表（cbuiltins 模块导入即注册；@builtin 装饰器易扩展）
@@ -482,6 +484,14 @@ class ExeBinaryOp(Execute):
                 return eq if op == '==' else not eq
             raise AssertionError(f"指针不支持运算符 '{op}'")
 
+        # TYPE-2：标量数值按 Usual Arithmetic Conversions 提升后运算
+        if isinstance(left, (int, float)) and isinstance(right, (int, float)) \
+                and not isinstance(left, bool) and not isinstance(right, bool):
+            lt, rt = infer_type(self.node.left), infer_type(self.node.right)
+            common = usual_convert(lt, rt)
+            left = convert_to(left, common)
+            right = convert_to(right, common)
+
         handlers = {
             '+': lambda: left + right,
             '-': lambda: left - right,
@@ -666,12 +676,8 @@ def infer_type(node):
         return infer_type(node.expr)         # + - ! ~ p++ 保持类型（宽松）
     if isinstance(node, BinaryOp):
         lt, rt = infer_type(node.left), infer_type(node.right)
-        # 宽松提升：任一浮点 → double；否则 int
-        if isinstance(lt, BasicType) and ('float' in lt.name or 'double' in lt.name):
-            return lt
-        if isinstance(rt, BasicType) and ('float' in rt.name or 'double' in rt.name):
-            return rt
-        return g_types.resolve(['int'])
+        # TYPE-2：Usual Arithmetic Conversions（整数提升 + 等级/unsigned 规则）
+        return usual_convert(lt, rt)
     if isinstance(node, StructRef):
         obj_t = infer_type(node.name)
         field = node.field.name if isinstance(node.field, ID) else str(node.field)
@@ -752,6 +758,10 @@ class ExeAssignment(Execute):
         rval = execute(self.node.rvalue)
 
         if op == '=':
+            # TYPE-2：按左值类型隐式转换 rval（标量；复合类型原样）
+            target = self._lvalue_type(self.node.lvalue)
+            if target is not None:
+                rval = convert_to(rval, target)
             self._set_lvalue(self.node.lvalue, rval)
             return rval
 
@@ -771,10 +781,22 @@ class ExeAssignment(Execute):
 
         if op in compound_ops:
             new_val = compound_ops[op]()
+            target = self._lvalue_type(self.node.lvalue)
+            if target is not None:
+                new_val = convert_to(new_val, target)
             self._set_lvalue(self.node.lvalue, new_val)
             return new_val
 
         raise AssertionError(f"Unknown assignment operator: '{op}'")
+
+    def _lvalue_type(self, lvalue_node):
+        """取左值的目标类型（赋值转换用）；复杂 lvalue 用 infer_type 推导。"""
+        if isinstance(lvalue_node, ID):
+            return g_scope.get_type(lvalue_node.name)
+        try:
+            return infer_type(lvalue_node)
+        except AssertionError:
+            return None
 
 
 class ExeTernaryOp(Execute):
@@ -972,6 +994,8 @@ class ExeFuncCall(Execute):
                 if isinstance(aval, (StructValue, UnionValue)):
                     aval = aval.copy()            # M5 值传递：形参修改不影响实参
                 ptype = func.param_types[i] if i < len(func.param_types) else None
+                if ptype is not None and not isinstance(aval, (StructValue, UnionValue)):
+                    aval = convert_to(aval, ptype)   # TYPE-2：实参按形参类型转换
                 g_scope.declare(pname, aval, ptype)
 
             # 可变参数：形参之后的实参作为 va_start 源（__builtin_va_list 支持）
@@ -981,9 +1005,14 @@ class ExeFuncCall(Execute):
 
             try:
                 result = execute(func.body)
+                if func.ret_type is not None and not isinstance(result, (StructValue, UnionValue)):
+                    result = convert_to(result, func.ret_type)   # TYPE-2 返回转换
                 return result
             except ReturnException as e:
-                return e.value
+                rv = e.value
+                if func.ret_type is not None and not isinstance(rv, (StructValue, UnionValue)):
+                    rv = convert_to(rv, func.ret_type)          # TYPE-2 返回转换
+                return rv
             finally:
                 g_scope = outer_scope
                 g_call_stack.pop()
@@ -1215,7 +1244,11 @@ class ExeDecl(Execute):
                     ret_type=ctype.ret_type)
             return
         if self.node.init is not None:
-            init_val = coerce_to_type(execute(self.node.init), ctype)
+            init_val = execute(self.node.init)
+            if isinstance(ctype, (StructType, UnionType, ArrayType)):
+                init_val = coerce_to_type(init_val, ctype)   # 复合值语义
+            else:
+                init_val = convert_to(init_val, ctype)       # TYPE-2 标量转换
         else:
             init_val = default_value_for(ctype)
         g_scope.declare(name, init_val, ctype)

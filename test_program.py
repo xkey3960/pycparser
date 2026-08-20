@@ -558,6 +558,33 @@ int main(void) {
     print(f"    main() = {result}（标量写回/算术/p[i]/p++/比较/-> 写）✓")
 
 
+def test_type2_implicit_conversion():
+    """TYPE-2 隐式类型转换：整数提升 / 二元提升 / 赋值 / 参数 / 返回 / 复合赋值。"""
+    print("  [TYPE2] 隐式类型转换（提升/赋值/参数/返回）")
+    src = '''
+double half(double x) { return x / 2; }
+int trunc_int(void) { return 3.7; }          /* 返回转换 → 3 */
+int main(void) {
+    char c = 5;
+    short s = 3;
+    int a = sizeof(c + 1);                    /* 整数提升 char→int → 4 */
+    int b = sizeof(s + s);                    /* 提升 short→int → 4 */
+    double d = 1 + 2.5;                       /* int+double → double 3.5 */
+    int x = 3.7;                              /* 赋值转换 → 3 */
+    int h = (int)(half(5) * 4);               /* 参数 int→double：5.0/2=2.5 → 10 */
+    int t = trunc_int();                      /* 返回转换 → 3 */
+    int y = 5;
+    y += 2.7;                                 /* 复合赋值 → 7 */
+    return (a + b) + (int)(d * 2) + x + h + t + y;   /* 8 + 7 + 3 + 10 + 3 + 7 = 38 */
+}
+'''
+    with open('test/multi/type2_conv.c', 'w') as f:
+        f.write(src)
+    result = _run(['test/multi/type2_conv.c'])
+    assert result == 38, f"期望 38，实际 {result}"
+    print(f"    main() = {result}（提升 sizeof=4/4、int+double=3.5、int x=3.7→3、参数/返回/复合赋值）✓")
+
+
 def main():
     print("=" * 60)
     print("  program.py — 多文件支持测试（S1+S2+S3+修复）")
@@ -609,8 +636,10 @@ def main():
     test_mem2_recursion()
     print("\n--- 17. MEM-1 指针模型 ---")
     test_mem1_pointer_model()
+    print("\n--- 18. TYPE-2 隐式类型转换 ---")
+    test_type2_implicit_conversion()
     print("\n" + "=" * 60)
-    print("  S1-S3 + 修复 + L1/L2/L3/L4 + 指针 + 函数指针 + 栈帧 + 指针模型 全部测试通过! ✅")
+    print("  S1-S3 + 修复 + L1/L2/L3/L4 + 指针 + 函数指针 + 栈帧 + 指针模型 + 类型转换 全部测试通过! ✅")
     print("=" * 60)
 
 

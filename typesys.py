@@ -740,6 +740,102 @@ def deep_copy_value(v):
     return v
 
 
+# ==================== 隐式类型转换（TYPE-2） ====================
+
+# 类型等级（C 标准 §6.3.1.8，rank 从低到高；同等级 signed/unsigned 一族）
+_RANK = {
+    '_Bool': 0, 'bool': 0,
+    'char': 1, 'signed char': 1, 'unsigned char': 1,
+    'short': 2, 'short int': 2, 'signed short': 2, 'signed short int': 2,
+    'unsigned short': 2, 'unsigned short int': 2,
+    'int': 3, 'signed': 3, 'signed int': 3, 'unsigned': 3, 'unsigned int': 3,
+    'long': 4, 'long int': 4, 'signed long': 4, 'signed long int': 4,
+    'unsigned long': 4, 'unsigned long int': 4,
+    'long long': 5, 'long long int': 5, 'signed long long': 5, 'signed long long int': 5,
+    'unsigned long long': 5, 'unsigned long long int': 5,
+    'float': 6, 'double': 7, 'long double': 8,
+}
+
+
+def type_rank(ctype):
+    """类型等级（CType → rank）；非基本类型（指针/struct 等）返回 9+（不参与算术提升）。"""
+    if isinstance(ctype, BasicType):
+        return _RANK.get(ctype.name, 9)
+    if isinstance(ctype, EnumType):
+        return _RANK['int']          # 枚举按 int 参与
+    return 9
+
+
+def _is_unsigned(ctype):
+    return isinstance(ctype, BasicType) and ctype.name.startswith('unsigned')
+
+
+def promote(ctype):
+    """整型提升：rank < int 的整型 → int（64 位平台 int 可表示全部值，简化）。"""
+    if isinstance(ctype, BasicType) and type_rank(ctype) < _RANK['int']:
+        return g_types.resolve(['int'])
+    return ctype
+
+
+def usual_convert(t1, t2):
+    """Usual Arithmetic Conversions：返回二元运算的结果类型。"""
+    t1, t2 = promote(t1), promote(t2)
+    r1, r2 = type_rank(t1), type_rank(t2)
+    # 浮点：任一 long double → long double；double；float
+    for name, rank in (('long double', 8), ('double', 7), ('float', 6)):
+        if r1 == rank or r2 == rank:
+            return g_types.resolve([name])
+    # 整型：取更高等级；同等级 unsigned 优先
+    if r1 >= r2:
+        hi, lo = t1, t2
+    else:
+        hi, lo = t2, t1
+    if r1 == r2 and (_is_unsigned(t1) or _is_unsigned(t2)):
+        # 同等级一方 unsigned → 结果 unsigned（简化：按 hi 的符号位族）
+        if _is_unsigned(hi):
+            return hi
+        name = 'unsigned ' + hi.name if not hi.name.startswith('unsigned') else hi.name
+        return g_types.resolve([name])
+    return hi
+
+
+def convert_to(value, ctype):
+    """隐式转换：按目标类型转换标量值（赋值/初始化/参数/返回）。
+
+    - 整型目标：int() 截断（3.7→3）；char 截断到 8 位
+    - 浮点目标：float()
+    - _Bool：bool()
+    - 指针/复合（struct/union/数组）：原样（复合走 coerce_to_type 值语义）
+    """
+    if ctype is None or value is None:
+        return value
+    if isinstance(ctype, (StructType, UnionType, ArrayType, PtrType, FuncType)):
+        return value
+    if isinstance(value, (StructValue, UnionValue, list, dict)):
+        return value
+    if isinstance(ctype, BasicType):
+        name = ctype.name
+        if '_bool' in name.lower() or name == 'bool':
+            return bool(value)
+        if 'float' in name or 'double' in name:
+            try:
+                return float(value)
+            except (TypeError, ValueError):
+                return value
+        if name == 'char' or name == 'signed char' or name == 'unsigned char':
+            try:
+                v = int(value)
+                return v & 0xFF           # 截断到 8 位
+            except (TypeError, ValueError):
+                return value
+        try:
+            return int(value)             # 整型截断（3.7 → 3）
+        except (TypeError, ValueError):
+            return value
+    return value
+    return v
+
+
 def coerce_to_type(value, ctype):
     """把初始化值转换为目标类型（设计文档 §2.7.4 的 coerce_to_type）。
 
