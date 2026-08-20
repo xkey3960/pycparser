@@ -85,11 +85,11 @@ def test_stdio():
 def test_heap_string():
     print("  [stdlib] malloc/memset/memcpy/strlen/strcmp/atoi:")
     p = call_builtin('malloc', [10])
-    assert p == 0 and isinstance(p, int)
+    assert p >= 8 and isinstance(p, int)   # MEM-4：首块从 8 起，0 保留作 NULL
     call_builtin('memset', [p, 65, 3])                       # AAA...
-    assert bytes(cbuiltins._HEAP[0:3]) == b'AAA'
+    assert bytes(cbuiltins._HEAP[p:p + 3]) == b'AAA'
     call_builtin('memcpy', [p + 3, 'BC', 2])                 # AAABC
-    assert bytes(cbuiltins._HEAP[0:5]) == b'AAABC'
+    assert bytes(cbuiltins._HEAP[p:p + 5]) == b'AAABC'
     assert call_builtin('strlen', ['hello']) == 5
     assert call_builtin('strcmp', ['abc', 'abd']) == -1
     assert call_builtin('strcmp', ['abc', 'abc']) == 0
@@ -98,6 +98,56 @@ def test_heap_string():
     assert call_builtin('abs', [-7]) == 7
     call_builtin('free', [p])
     print("    堆写入/memset/memcpy/str 族/atoi/abs ✓")
+
+
+def test_mem4_first_fit():
+    """MEM-4 堆管理：first-fit 复用 / 相邻合并 / 非法 free 报错 / realloc 保数据。"""
+    print("  [MEM4] first-fit 堆（循环复用 / 合并 / double-free / realloc）")
+    # 保存并重置堆（测试间隔离）
+    import cbuiltins as _cb
+    saved = (_cb._HEAP, _cb._HEAP_NEXT, _cb._ALLOCS, _cb._FREE)
+    _cb._HEAP = bytearray(1024 * 1024)
+    _cb._HEAP_NEXT = 0
+    _cb._ALLOCS = {}
+    _cb._FREE = []
+    try:
+        # 循环 200 次 malloc(100)/free → 游标几乎不动（bump 会耗尽）
+        for i in range(200):
+            q = call_builtin('malloc', [100])
+            assert q != 0
+            call_builtin('free', [q])
+        assert _cb._HEAP_NEXT < 3000, f"游标应复用，实际 {_cb._HEAP_NEXT}"
+        # 碎片复用：free 中间块 → 再分配复用其地址
+        a = call_builtin('malloc', [200])
+        b = call_builtin('malloc', [100])
+        c = call_builtin('malloc', [50])
+        call_builtin('free', [b])
+        d = call_builtin('malloc', [80])
+        assert d == b, f"应复用 b@{b}，实际 {d}"
+        call_builtin('free', [a]); call_builtin('free', [c])
+        # 相邻合并：free 相邻两块 → 分配更大的块复用合并区
+        x = call_builtin('malloc', [100])
+        y = call_builtin('malloc', [100])
+        call_builtin('free', [x]); call_builtin('free', [y])
+        z = call_builtin('malloc', [150])
+        assert z == x, f"应复用合并块 {x}，实际 {z}"
+        call_builtin('free', [z])
+        # double-free 报错
+        p2 = call_builtin('malloc', [10])
+        call_builtin('free', [p2])
+        try:
+            call_builtin('free', [p2])
+            raise AssertionError("double-free 应报错")
+        except AssertionError as e:
+            assert '非法地址' in str(e)
+        # realloc 保留数据
+        p3 = call_builtin('malloc', [10])
+        call_builtin('memset', [p3, 65, 5])
+        p4 = call_builtin('realloc', [p3, 50])
+        assert bytes(_cb._HEAP[p4:p4 + 5]) == b'AAAAA'
+        print("    循环复用 ✓ 碎片复用 ✓ 相邻合并 ✓ double-free 报错 ✓ realloc 保数据 ✓")
+    finally:
+        _cb._HEAP, _cb._HEAP_NEXT, _cb._ALLOCS, _cb._FREE = saved
 
 
 def test_ctype_math_rand():
@@ -231,6 +281,8 @@ def main():
     test_va_list()
     print("\n--- 7. 原型不遮蔽内置 ---")
     test_prototype_not_shadow_builtin()
+    print("\n--- 8. MEM-4 first-fit 堆 ---")
+    test_mem4_first_fit()
     print("\n" + "=" * 60)
     print("  内置函数全部测试通过! ✅")
     print("=" * 60)

@@ -163,11 +163,11 @@
   3. StructRef 通过 layout 计算成员偏移
   4. struct 间赋值实现为 memcpy
 
-[MEM-4] 堆与 malloc/free
+[MEM-4] 堆与 malloc/free ✅ 已完成（详见设计文档-堆管理.md）
 --------------------------------------------------
 当前缺失：
-  - 动态内存分配
-  - 内存泄漏检测（可选）
+  - 动态内存分配                  ✅ first-fit 分配器（bump 兜底）+ 相邻空闲块合并
+  - 内存泄漏检测（可选）          ⏳ 可选（_heap_stats 可观测分配/空闲块数）
 
 设计思路：
   class Heap:
@@ -176,9 +176,10 @@
           self._free_list = [(0, size)]  # (offset, size)
 
 实施步骤：
-  1. 实现简单的 first-fit 分配器
-  2. 添加 malloc/free/realloc/calloc 内置函数
-  3. 添加内存越界检查（可选）
+  1. 实现简单的 first-fit 分配器      ✅ _FREE 空闲表 + first-fit 切割 + bump 兜底
+  2. 添加 malloc/free/realloc/calloc 内置函数   ✅（free 回收 + 合并；realloc 保数据；
+     首块从 _HEAP_BASE=8 起，0 保留作 NULL——malloc 永不返回 0）
+  3. 添加内存越界检查（可选）        ✅ 既有 _read_bytes/_write_bytes 边界校验保留
 
 ================================================================================
 阶段三：类型系统（中期，2-3 周）

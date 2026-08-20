@@ -61,24 +61,74 @@ def list_builtins():
     return sorted(_BUILTINS)
 
 
-# ==================== 简易堆（malloc/free 基础） ====================
+# ==================== 简易堆（malloc/free 基础，MEM-4 first-fit） ====================
 
 _HEAP = bytearray(1024 * 1024)          # 1MB 字节堆
-_HEAP_NEXT = 0                          # bump 分配游标
-_ALLOCS = {}                            # addr -> size（realloc/free 校验）
+_HEAP_NEXT = 0                          # bump 分配游标（无空闲块时增长）
+_ALLOCS = {}                            # addr -> size（已分配块；free/realloc 校验）
+_FREE = []                              # [(addr, size), ...] 空闲块（按 addr 升序，free 时合并）
+
+_MIN_BLOCK = 8                          # 最小空闲块（切割剩余不足则整块使用）
+_HEAP_BASE = 8                          # 首块地址（0 保留作 NULL，malloc 永不返回 0）
 
 
 def _alloc(size):
-    """bump 分配：返回堆内偏移（int 地址）；越界报错。"""
+    """first-fit 分配：优先复用空闲块（首个 size 足够者），无则 bump 扩展。
+
+    返回地址永远 >= _HEAP_BASE（0 保留作 NULL）；malloc(0)/负数 → 0。
+    """
     global _HEAP_NEXT
     if size < 0:
         return 0
+    if size == 0:
+        return 0                        # malloc(0) → NULL 语义
+    if _HEAP_NEXT == 0:
+        _HEAP_NEXT = _HEAP_BASE         # 首块从 base 起（0 是 NULL）
+    # first-fit：找首个足够大的空闲块
+    for i, (addr, free_sz) in enumerate(_FREE):
+        if free_sz >= size:
+            del _FREE[i]
+            remain = free_sz - size
+            if remain >= _MIN_BLOCK:
+                _FREE.insert(i, (addr + size, remain))   # 剩余部分留作空闲
+            _ALLOCS[addr] = size
+            return addr
+    # 无空闲块：bump 扩展
     if _HEAP_NEXT + size > len(_HEAP):
         raise AssertionError(f"malloc: 堆空间不足（需 {size}B）")
     addr = _HEAP_NEXT
     _HEAP_NEXT += size
     _ALLOCS[addr] = size
     return addr
+
+
+def _free_block(addr):
+    """free：移除分配记录，块入空闲表并合并相邻空闲块（减少碎片）。"""
+    size = _ALLOCS.pop(addr, None)
+    if size is None:
+        raise AssertionError(f"free: 非法地址（未分配或已释放）: {addr}")
+    # 插入空闲表（保持按 addr 升序）
+    lo, hi = 0, len(_FREE)
+    while lo < hi:
+        mid = (lo + hi) // 2
+        if _FREE[mid][0] < addr:
+            lo = mid + 1
+        else:
+            hi = mid
+    _FREE.insert(lo, (addr, size))
+    # 合并相邻空闲块（左邻 / 右邻）
+    if lo > 0 and _FREE[lo - 1][0] + _FREE[lo - 1][1] == addr:
+        _FREE[lo - 1] = (_FREE[lo - 1][0], _FREE[lo - 1][1] + size)
+        del _FREE[lo]
+        lo -= 1
+    if lo + 1 < len(_FREE) and addr + size == _FREE[lo + 1][0]:
+        _FREE[lo] = (_FREE[lo][0], _FREE[lo][1] + _FREE[lo + 1][1])
+        del _FREE[lo + 1]
+
+
+def _heap_stats():
+    """测试用：返回 (已分配块数, 空闲块数, 游标位置)。"""
+    return len(_ALLOCS), len(_FREE), _HEAP_NEXT
 
 
 def _read_bytes(ptr, n):
@@ -214,17 +264,19 @@ def _realloc(args):
     if old is not None and size <= old:
         return ptr                   # 收缩：返回同地址
     data = _read_bytes(ptr, old) if old else b''
-    _ALLOCS.pop(ptr, None)
+    _free_block(ptr)
     new_addr = _alloc(size)
-    _write_bytes(new_addr, data[:size])
+    if new_addr:
+        _write_bytes(new_addr, data[:size])
     return new_addr
 
 
 @builtin('free')
 def _free(args):
     ptr = _int_arg(args[0]) if args else 0
-    # bump 分配器 v1 不回收空间（MEM-4 做 first-fit）；仅移除分配记录
-    _ALLOCS.pop(ptr, None)
+    if ptr == 0:
+        return None                  # free(NULL) 是 no-op（C 语义）
+    _free_block(ptr)                 # MEM-4：回收空间 + 相邻合并
     return None
 
 
