@@ -148,9 +148,19 @@ def _printf(args):
     if not args:
         return 0
     fmt = _pyfmt(str(args[0]))
-    out = fmt % tuple(args[1:]) if len(args) > 1 else fmt
+    rest = [_printf_arg(a) for a in args[1:]]
+    out = fmt % tuple(rest) if rest else fmt
     print(out, end='')
     return len(out)
+
+
+def _printf_arg(v):
+    """printf 实参预处理：%x/%p 遇引用对象（StructValue/UnionValue/list）时，
+    以对象身份 id 作地址值（MEM-1 前"取地址"返回对象本身，地址用 id 表示）。"""
+    from typesys import StructValue, UnionValue   # 延迟导入避循环
+    if isinstance(v, (StructValue, UnionValue, list, dict)):
+        return id(v) & 0xFFFFFFFFFFFFFFFF
+    return v
 
 
 @builtin('puts')

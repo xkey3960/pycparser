@@ -68,7 +68,16 @@ def test_stdio():
     with contextlib.redirect_stdout(buf2):
         call_builtin('printf', ['%ld %zu\n', 7, 8])
     assert buf2.getvalue() == '7 8\n'
-    print(f"    printf 格式转换 ✓（含 %p/%ld/%zu）" )
+    # 引用对象（StructValue）作 %x/%p 实参 → 用对象 id 作地址值
+    from typesys import StructType, StructValue
+    sv = StructValue(StructType('S', members=[], size=1, align=1))
+    buf3 = io.StringIO()
+    with contextlib.redirect_stdout(buf3):
+        call_builtin('printf', ['%x %p\n', sv, sv])
+    out3 = buf3.getvalue().strip().split()
+    assert len(out3) == 2 and out3[0] == out3[1].lstrip('0x')  # %x 与 %p 同一地址（%p 带 0x）
+    assert all(c in '0123456789abcdef' for c in out3[0]) and out3[0]
+    print(f"    printf 格式转换 ✓（含 %p/%ld/%zu；引用对象地址 %x/%p）")
 
 
 # ==================== 3. stdlib/string ====================
