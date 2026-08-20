@@ -16,7 +16,7 @@ int main()
     CCC c;
     CCC *pc = &c;
 
-    b.pstAAA = &pc->stAAA;
+    b.pstAAA = (AAA *)pc;
     pa = b.pstAAA;
     pa = pa->pstNext;
 }

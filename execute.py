@@ -257,21 +257,40 @@ class Address:
 
 
 def address_read(addr):
-    """*addr 读值：按 loc 定位容器，结合 offset 取元素。"""
+    """*addr 读值：按 loc 定位容器，结合 offset 取元素。
+
+    类型协调（强转 reinterpret）：elem_type 与容器实际类型不同且都是 struct 时，
+    尝试取容器的**首个同类型成员**（如 (AAA*)pc 读 pc->stAAA，AAA 是 CCC 首成员）。
+    """
     if not isinstance(addr, Address):
         return addr                      # 非地址：原样返回（宽松）
     kind = addr.loc[0]
     if kind == 'var':
         _, scope, name = addr.loc
-        return scope.get(name)           # offset=0 取本体；字节级偏移留 MEM-1 后续
+        val = scope.get(name)
+        return _reinterpret_if_needed(val, addr.elem_type)
     if kind == 'list':
         _, arr, base = addr.loc
         step = addr.elem_type.sizeof() if addr.elem_type is not None else 1
         return arr[base + addr.offset // step]
     if kind == 'member':
         _, obj, field = addr.loc
-        return obj.get(field)
+        val = obj.get(field)
+        return _reinterpret_if_needed(val, addr.elem_type)
     raise AssertionError(f"无法解引用地址: {addr}")
+
+
+def _reinterpret_if_needed(val, want_type):
+    """类型协调：val 是 struct 且 want_type 是 struct 且类型不同时，
+    找 val 中首个类型匹配 want_type 的成员（强转后按新类型解释）。"""
+    if want_type is None:
+        return val
+    if isinstance(val, (StructValue, UnionValue)) and isinstance(want_type, StructType):
+        if val.type is not want_type:
+            for m in val.type.members or []:
+                if m.type is want_type:
+                    return val.get(m.name)
+    return val
 
 
 def address_write(addr, value):
@@ -877,6 +896,9 @@ class ExeCast(Execute):
             ctype = type_of_decl(self.node.to_type)
         except AssertionError:
             ctype = None
+        if isinstance(val, Address) and isinstance(ctype, PtrType):
+            # 指针强转（MEM-1）：(AAA*)pc → 更新 Address 的 elem_type（指向类型）
+            return Address(val.loc, val.offset, ctype.points_to)
         if ctype is not None and isinstance(ctype, (StructType, UnionType, ArrayType, EnumType, PtrType)):
             return coerce_to_type(val, ctype)
         type_names = self._extract_type_names(self.node.to_type)

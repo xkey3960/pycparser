@@ -1,5 +1,5 @@
-/* 复现 test/printf_pointer.c 的链式指针场景（&p->member 成员地址）：
-   typedef 链 + 自引用指针 + 成员地址赋值 + 指针复制 + -> 访问。 */
+/* 复现 test/printf_pointer.c 链式指针 + 强转场景：
+   (AAA*)pc 强转（CCC* → AAA*）后解引用 → 按首成员 reinterpret（AAA 是 CCC 首成员）。 */
 #define NULL 0
 
 typedef struct tagAAA {
@@ -19,8 +19,8 @@ int main(void)
     CCC c;
     CCC *pc = &c;
 
-    b.pstAAA = &pc->stAAA;    /* &(p->member)：成员地址（MEM-1 修复） */
-    pa = b.pstAAA;            /* 指针复制 */
-    pa = pa->pstNext;         /* 自引用指针访问（NULL→0） */
-    return (pa == NULL) ? 7 : 0;   /* pa 未初始化=0（NULL）→ 7 */
+    b.pstAAA = (AAA *)pc;       /* 强转：CCC* → AAA* */
+    pa = b.pstAAA;              /* 指针复制 */
+    pa = pa->pstNext;           /* 按 AAA 解释 c 首成员 stAAA，读 pstNext（NULL→0） */
+    return (pa == NULL) ? 7 : 0;
 }

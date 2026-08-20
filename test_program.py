@@ -565,11 +565,11 @@ int main(void) {
 
 
 def test_chain_ptr_member_addr():
-    """链式指针：&(p->member) 成员地址 + 自引用指针（复现 printf_pointer.c）。"""
-    print("  [Ptr2] &(p->member) 成员地址 + typedef 链指针")
+    """链式指针 + 强转：&(p->member) 与 (AAA*)pc 强转 reinterpret（printf_pointer.c）。"""
+    print("  [Ptr2] 链式指针：&(p->member) / (AAA*)pc 强转 reinterpret")
     result = _run([f'{MULTI}/chain_ptr.c'])
     assert result == 7, f"期望 7，实际 {result}"
-    print(f"    main() = {result}（b.pstAAA=&pc->stAAA；pa=pa->pstNext=NULL→7）✓")
+    print(f"    main() = {result}（b.pstAAA=(AAA*)pc；pa=pa->pstNext 按 AAA 解释 → 7）✓")
 
 
 def test_type2_implicit_conversion():
