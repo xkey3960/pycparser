@@ -1,7 +1,22 @@
-struct {
-    int a;
-} A;
+#define NULL 0
+
+typedef struct tagAAA{
+    struct tagAAA *pstNext;
+}AAA;
+typedef struct tagBBB{
+    AAA *pstAAA;
+}BBB;
+typedef struct tagCCC{
+    AAA stAAA;
+}CCC;
 int main()
 {
-   printf("%llx\n", &A);
+    AAA *pa = NULL;
+    BBB b;
+    CCC c;
+    CCC *pc = &c;
+
+    b.pstAAA = &pc->stAAA;
+    pa = b.pstAAA;
+    pa = pa->pstNext;
 }

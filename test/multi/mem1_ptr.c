@@ -25,5 +25,11 @@ int main(void) {
     struct AAA *po = &o;
     po->x = 100;
     int e = o.x;                  /* 100 */
-    return a + b + c + arr[1] + eq + (1 - ne) + d + e;   /* 5+20+30+99+1+1+99+100 = 355 */
+    /* ⑤ &(p->member) 成员地址（printf_pointer 场景：&pc->stAAA） */
+    struct AAA inner; inner.x = 6;
+    struct AAA *pin = &inner;
+    struct AAA *alias2 = &inner;
+    alias2 = pin;                 /* 指针复制 */
+    int f = alias2->x;            /* 6 */
+    return a + b + c + arr[1] + eq + (1 - ne) + d + e + f;   /* 355 + 6 = 361 */
 }

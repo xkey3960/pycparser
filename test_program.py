@@ -548,14 +548,28 @@ int main(void) {
     struct AAA *po = &o;
     po->x = 100;
     int e = o.x;                  /* 100 */
-    return a + b + c + arr[1] + eq + (1 - ne) + d + e;   /* 5+20+30+99+1+1+99+100 = 355 */
+    /* ⑤ &(p->member) 成员地址（printf_pointer 场景：&pc->stAAA） */
+    struct AAA inner; inner.x = 6;
+    struct AAA *pin = &inner;
+    struct AAA *alias2 = &inner;
+    alias2 = pin;                 /* 指针复制 */
+    int f = alias2->x;            /* 6 */
+    return a + b + c + arr[1] + eq + (1 - ne) + d + e + f;   /* 355 + 6 = 361 */
 }
 '''
     with open('test/multi/mem1_ptr.c', 'w') as f:
         f.write(src)
     result = _run(['test/multi/mem1_ptr.c'])
-    assert result == 355, f"期望 355，实际 {result}"
-    print(f"    main() = {result}（标量写回/算术/p[i]/p++/比较/-> 写）✓")
+    assert result == 361, f"期望 361，实际 {result}"
+    print(f"    main() = {result}（标量写回/算术/p[i]/p++/比较/-> 写/指针别名）✓")
+
+
+def test_chain_ptr_member_addr():
+    """链式指针：&(p->member) 成员地址 + 自引用指针（复现 printf_pointer.c）。"""
+    print("  [Ptr2] &(p->member) 成员地址 + typedef 链指针")
+    result = _run([f'{MULTI}/chain_ptr.c'])
+    assert result == 7, f"期望 7，实际 {result}"
+    print(f"    main() = {result}（b.pstAAA=&pc->stAAA；pa=pa->pstNext=NULL→7）✓")
 
 
 def test_type2_implicit_conversion():
@@ -706,6 +720,8 @@ def main():
     test_mem2_recursion()
     print("\n--- 17. MEM-1 指针模型 ---")
     test_mem1_pointer_model()
+    print("\n--- 17b. 链式指针成员地址 ---")
+    test_chain_ptr_member_addr()
     print("\n--- 18. TYPE-2 隐式类型转换 ---")
     test_type2_implicit_conversion()
     print("\n--- 19. TYPE-3 常量折叠 ---")

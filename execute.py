@@ -661,13 +661,15 @@ def _address_of(node, val):
             return Address(arr.loc, arr.offset, arr.elem_type)
     if isinstance(node, c_ast.StructRef):
         obj = execute(node.name)
+        if isinstance(obj, Address):         # &(p->f)：先解引用指针再取成员
+            obj = _deref(obj)
         field = node.field.name if isinstance(node.field, ID) else str(node.field)
         if isinstance(obj, (StructValue, UnionValue)):
-            return Address(('member', obj, field), 0, None)
-        if isinstance(obj, Address):
-            return Address(obj.loc, obj.offset, obj.elem_type)
+            ftype = obj.type.member_type(field) if hasattr(obj.type, 'member_type') else None
+            return Address(('member', obj, field), 0, ftype)
         if isinstance(obj, dict):
             return Address(('member', obj, field), 0, None)
+        raise AssertionError(f"无法取地址（成员目标不是对象）: {type(obj).__name__}")
     raise AssertionError(f"无法取地址: {type(node).__name__}")
 
 def _p_plus_plus(node, val):
