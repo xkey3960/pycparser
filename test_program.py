@@ -486,6 +486,38 @@ int main(void) {
     print(f"    main() = {result}（apply(inc,41)=42；fp=inc/dbl/&inc 经变量调用）✓")
 
 
+def test_mem2_recursion():
+    """MEM-2 栈帧与递归：递归/互递归/全局计数/局部遮蔽/调用栈弹栈。"""
+    print("  [MEM2] 栈帧与递归（fact / 互递归 / 全局计数 / 调用栈）")
+    src = '''
+int count = 0;
+int fact(int n) { if (n <= 1) return 1; return n * fact(n - 1); }
+int is_odd(int n);
+int is_even(int n) { if (n == 0) return 1; return is_odd(n - 1); }
+int is_odd(int n) { if (n == 0) return 0; return is_even(n - 1); }
+int helper(int n) {
+    int t = 100;                 /* 每帧局部变量独立（递归+遮蔽） */
+    if (n == 0) return t;
+    return helper(n - 1) + 1;
+}
+void bump(int n) { if (n == 0) return; count++; bump(n - 1); }
+int main(void) {
+    bump(10);                    /* 递归写全局 count → 10 */
+    return fact(5) + is_even(10) + helper(5) + count;   /* 120+1+105+10 = 236 */
+}
+'''
+    with open('test/multi/mem2_recursion.c', 'w') as f:
+        f.write(src)
+    exe_mod.setup_global_scope()
+    prog = CProgram([f'{MULTI}/mem2_recursion.c'], lazy=True)
+    prog.load()
+    result = prog.run()
+    assert result == 236, f"期望 236，实际 {result}"
+    assert len(exe_mod.g_call_stack) == 0          # 调用结束后栈清空
+    assert exe_mod.g_scope.get('count') == 10      # 递归写全局生效
+    print(f"    main() = {result}（fact=120+is_even=1+helper=105+count=10；调用栈已清空）✓")
+
+
 def main():
     print("=" * 60)
     print("  program.py — 多文件支持测试（S1+S2+S3+修复）")
@@ -533,8 +565,10 @@ def main():
     test_ptr_address_of()
     print("\n--- 15. 函数指针 ---")
     test_func_ptr()
+    print("\n--- 16. MEM-2 栈帧与递归 ---")
+    test_mem2_recursion()
     print("\n" + "=" * 60)
-    print("  S1-S3 + 修复 + L1/L2/L3/L4 + 指针 + 函数指针 全部测试通过! ✅")
+    print("  S1-S3 + 修复 + L1/L2/L3/L4 + 指针 + 函数指针 + 栈帧 全部测试通过! ✅")
     print("=" * 60)
 
 

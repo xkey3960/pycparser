@@ -164,11 +164,28 @@ class Function:
         self.ret_type = ret_type               # CType | None
 
 
+class StackFrame:
+    """一次函数调用的完整上下文（MEM-2）。
+
+    scope 的 parent 是全局作用域（C 顶层函数语义，不再用定义时捕获的
+    closure_scope）；caller_scope 记录返回点，用于调用结束后恢复。
+    """
+
+    __slots__ = ("func_name", "scope", "caller_scope", "ret_type")
+
+    def __init__(self, func_name, scope, caller_scope, ret_type=None):
+        self.func_name = func_name
+        self.scope = scope
+        self.caller_scope = caller_scope
+        self.ret_type = ret_type
+
+
 # ==================== Global State ====================
 
 g_scope = Scope()
 g_global_scope = g_scope   # 全局（根）作用域：惰性文件激活时在其上执行文件顶层
 g_functions = {}
+g_call_stack = []          # MEM-2：调用栈（栈顶 = 活动帧），错误回溯/递归深度用
 
 
 # ==================== Type Utilities ====================
@@ -810,8 +827,13 @@ class ExeFuncCall(Execute):
                     raise AssertionError(f"函数 '{func_name}' 只有声明无定义（链接错误）")
 
         if func is not None:
+            # MEM-2 调用协议：新建栈帧，parent = 全局作用域（C 顶层函数语义，
+            # 不再用定义时捕获的 closure_scope——函数体访问外部变量走全局）
+            frame = StackFrame(func_name, Scope(g_global_scope), g_scope,
+                               ret_type=func.ret_type)
+            g_call_stack.append(frame)
             outer_scope = g_scope
-            g_scope = Scope(func.closure_scope)
+            g_scope = frame.scope
 
             for i, pname in enumerate(func.param_names):
                 aval = args[i] if i < len(args) else 0
@@ -832,6 +854,7 @@ class ExeFuncCall(Execute):
                 return e.value
             finally:
                 g_scope = outer_scope
+                g_call_stack.pop()
                 pop_va_frame()
 
         return self._call_builtin(func_name, args)
@@ -1534,12 +1557,13 @@ g_exe_class = {
 
 def setup_global_scope():
     """Reset the global scope and function table for testing."""
-    global g_scope, g_functions, g_global_scope
+    global g_scope, g_functions, g_global_scope, g_call_stack
     g_scope = Scope()
     g_global_scope = g_scope
     g_scope.declare('i', 0)
     g_scope.declare('j', 0)
     g_functions = {}
+    g_call_stack = []
 
 
 # ----- Standard Node Tests -----
