@@ -67,6 +67,7 @@ from typesys import (
     coerce_to_type,
     usual_convert,
     convert_to,
+    _eval_constant,
 )
 
 # 内置函数注册表（cbuiltins 模块导入即注册；@builtin 装饰器易扩展）
@@ -1154,16 +1155,20 @@ class ExeSwitch(Execute):
                 if isinstance(item, Case):
                     if not matched:
                         case_expr = item.expr
+                        # TYPE-3 常量折叠：case 标签编译期求值（失败回退 execute）
+                        def _fold(x):
+                            v = _eval_constant(x)
+                            return v if v is not None else execute(x)
                         # Handle RangeExpression in case ranges
                         if isinstance(case_expr, RangeExpression):
-                            first = execute(case_expr.first)
-                            last = execute(case_expr.last)
+                            first = _fold(case_expr.first)
+                            last = _fold(case_expr.last)
                             if first <= cond <= last:
                                 matched = True
                             else:
                                 continue
                         else:
-                            case_val = execute(case_expr)
+                            case_val = _fold(case_expr)
                             if case_val == cond:
                                 matched = True
                             else:

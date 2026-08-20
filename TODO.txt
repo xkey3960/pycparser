@@ -236,23 +236,24 @@ C 的隐式转换规则（Usual Arithmetic Conversions）：
   3. 在 Assignment 中加入赋值类型转换     ✅ ExeAssignment（= 与复合赋值）
   4. 在 FuncCall 中加入参数类型转换       ✅ ExeFuncCall 形参；ExeReturn 返回转换
 
-[TYPE-3] 常量折叠（Constant Folding）
+[TYPE-3] 常量折叠（Constant Folding） ✅ 已完成（详见设计文档-常量折叠.md）
 --------------------------------------------------
 编译期常量表达式求值：
 
   int x = (1 + 2) * 3;   // 编译期计算为 9
 
   当前已部分支持（execute 自然求值），但需要在以下场景增强：
-  - 数组维度：int arr[10 + 20];  // 维度应为常量表达式
-  - case 标签值：case 1 + 2:
-  - enum 初始值
-  - 位域宽度
+  - 数组维度：int arr[10 + 20];   ✅ _eval_constant（M5）
+  - case 标签值：case 1 + 2:      ✅ ExeSwitch 用 _eval_constant（失败回退 execute）
+  - enum 初始值                   ✅（ExeConstant 进制解析）
+  - 位域宽度                       ✅ _fold_bitsize（int x: 4+4 → 8）
 
 实施步骤：
-  1. 实现 _fold_constant(node) 函数
-  2. 在 ArrayDecl 的 dim 求值时调用
-  3. 在 Case 的 expr 求值时调用
-  4. 在 Enumerator 的 value 求值时调用
+  1. 实现 _fold_constant(node) 函数    ✅（_eval_constant 已有，统一折叠入口）
+  2. 在 ArrayDecl 的 dim 求值时调用    ✅
+  3. 在 Case 的 expr 求值时调用        ✅（含 RangeExpression）
+  4. 在 Enumerator 的 value 求值时调用 ✅
+  5. 位域宽度折叠                     ✅ _fold_bitsize（布局两处接入）
 
 ================================================================================
 阶段四：控制流与高级特性（长期，3-4 周）

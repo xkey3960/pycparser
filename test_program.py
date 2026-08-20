@@ -585,6 +585,38 @@ int main(void) {
     print(f"    main() = {result}（提升 sizeof=4/4、int+double=3.5、int x=3.7→3、参数/返回/复合赋值）✓")
 
 
+def test_type3_constant_folding():
+    """TYPE-3 常量折叠：case 标签表达式 / 枚举 case / 字符 case / case range / 位域宽度。"""
+    print("  [TYPE3] 常量折叠（case 表达式/枚举/字符/range/位域宽度）")
+    src = '''
+enum Color { RED, GREEN, BLUE };
+int pick(int x) {
+    switch (x) {
+        case 1 + 2: return 10;       /* 折叠为 3 */
+        case GREEN: return 20;       /* 枚举常量 1 */
+        case 'A': return 30;         /* 字符 65 */
+        default: return 99;
+    }
+}
+int rng(int x) {
+    switch (x) {
+        case 1 ... 5: return 1;      /* case range */
+        default: return 0;
+    }
+}
+struct Bits { int a : 4 + 4; int b : 3; };   /* 位域宽度折叠 4+4 → 8 */
+int main(void) {
+    return pick(3) + pick(1) + pick(65) + pick(9) + rng(3) + rng(9)
+           + sizeof(struct Bits);    /* 10+20+30+99 + 1+0 + 8 = 168 */
+}
+'''
+    with open('test/multi/type3_fold.c', 'w') as f:
+        f.write(src)
+    result = _run(['test/multi/type3_fold.c'])
+    assert result == 168, f"期望 168，实际 {result}"
+    print(f"    main() = {result}（case 1+2/GREEN/'A'/range、位域 4+4→8）✓")
+
+
 def main():
     print("=" * 60)
     print("  program.py — 多文件支持测试（S1+S2+S3+修复）")
@@ -638,8 +670,10 @@ def main():
     test_mem1_pointer_model()
     print("\n--- 18. TYPE-2 隐式类型转换 ---")
     test_type2_implicit_conversion()
+    print("\n--- 19. TYPE-3 常量折叠 ---")
+    test_type3_constant_folding()
     print("\n" + "=" * 60)
-    print("  S1-S3 + 修复 + L1/L2/L3/L4 + 指针 + 函数指针 + 栈帧 + 指针模型 + 类型转换 全部测试通过! ✅")
+    print("  S1-S3 + 修复 + L1/L2/L3/L4 + 指针 + 函数指针 + 栈帧 + 指针模型 + 类型转换 + 常量折叠 全部测试通过! ✅")
     print("=" * 60)
 
 

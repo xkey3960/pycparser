@@ -446,6 +446,20 @@ def _eval_constant(node):
     return None
 
 
+def _fold_bitsize(bitsize):
+    """位域宽度折叠（TYPE-3）：常量直接取；表达式（int x: 4+4）折叠；
+    非常量/失败返回 None（按普通成员，宽松）。"""
+    if bitsize is None:
+        return None
+    if isinstance(bitsize, c_ast.Constant):
+        try:
+            return int(bitsize.value)
+        except ValueError:
+            return None
+    v = _eval_constant(bitsize)
+    return v if isinstance(v, int) else None
+
+
 def type_of_decl(t):
     """把声明类型 AST 节点解析为 CType（设计文档 §2.9.1）。
 
@@ -533,7 +547,7 @@ def _register_compound(node):
             if isinstance(d, c_ast.Decl) and d.name:
                 mt = type_of_decl(d.type)
                 ensure_complete(mt)          # L4 修复：成员可能是内联命名类型（只注册未布局）
-                members.append((d.name, mt, d.bitsize))
+                members.append((d.name, mt, _fold_bitsize(d.bitsize)))
         layout, size, align = compute(members)
         return ctor(None, members=layout, size=size, align=align)
 
@@ -603,7 +617,7 @@ def ensure_complete(ctype):
         if isinstance(d, c_ast.Decl) and d.name:
             mt = type_of_decl(d.type)
             ensure_complete(mt)
-            members.append((d.name, mt, d.bitsize))
+            members.append((d.name, mt, _fold_bitsize(d.bitsize)))
     if isinstance(ctype, UnionType):
         layout, size, align = compute_union_layout(members)
     else:
