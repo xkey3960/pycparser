@@ -669,6 +669,34 @@ int main(void) {
     print("    调用链 main → helper → inner ✓（异常分类 UndefinedVariable）")
 
 
+def test_container_of():
+    """container_of 宏：typeof + 语句表达式 + offsetof（GNU 扩展链）。"""
+    print("  [GNU] container_of 宏（typeof/语句表达式/offsetof）")
+    src = '''
+#define offsetof(TYPE, MEMBER) ((unsigned long) &((TYPE *)0)->MEMBER)
+#define container_of(ptr, type, member) ({              \\
+    const typeof( ((type *)0)->member ) *__mptr = (ptr); \\
+    (type *)( (char *)__mptr - offsetof(type, member) );})
+
+struct Node { int value; struct Node *next; };
+struct List { struct Node node; int count; };
+int main(void) {
+    struct List list;
+    list.node.value = 42;
+    list.count = 7;
+    struct Node *np = &list.node;
+    struct List *lp = container_of(np, struct List, node);
+    /* 通过 container_of 从 Node 指针找回宿主 List：读 value 与 count */
+    return lp->count * 10 + lp->node.value / 42;   /* 7*10 + 1 = 71 */
+}
+'''
+    with open('test/multi/co_main.c', 'w') as f:
+        f.write(src)
+    result = _run(['test/multi/co_main.c'])
+    assert result == 71, f"期望 71，实际 {result}"
+    print(f"    main() = {result}（container_of 从 Node* 找回 List*）✓")
+
+
 def main():
     print("=" * 60)
     print("  program.py — 多文件支持测试（S1+S2+S3+修复）")
@@ -728,8 +756,10 @@ def main():
     test_type3_constant_folding()
     print("\n--- 20. QOL-1 错误回溯 ---")
     test_qol1_error_traceback()
+    print("\n--- 21. GNU container_of 宏 ---")
+    test_container_of()
     print("\n" + "=" * 60)
-    print("  S1-S3 + 修复 + L1/L2/L3/L4 + 指针 + 函数指针 + 栈帧 + 指针模型 + 类型转换 + 常量折叠 + 错误回溯 全部测试通过! ✅")
+    print("  S1-S3 + 修复 + L1/L2/L3/L4 + 指针 + 函数指针 + 栈帧 + 指针模型 + 类型转换 + 常量折叠 + 错误回溯 + container_of 全部测试通过! ✅")
     print("=" * 60)
 
 

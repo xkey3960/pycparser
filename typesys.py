@@ -498,6 +498,10 @@ def type_of_decl(t):
         return _resolve_type_lazy(t.names)
     if isinstance(t, (c_ast.Struct, c_ast.Union, c_ast.Enum)):  # 含 StructExt
         return _register_compound(t)
+    if type(t).__name__ == 'TypeOfExpression':
+        # GNU typeof(expr)：类型 = 表达式静态推导（container_of 依赖）
+        from execute import infer_type   # 延迟导入避免循环
+        return infer_type(t.expr)
     raise AssertionError(f"无法解析类型节点: {type(t).__name__}")
 
 

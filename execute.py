@@ -68,6 +68,7 @@ from typesys import (
     usual_convert,
     convert_to,
     _eval_constant,
+    ensure_complete,
 )
 
 # 内置函数注册表（cbuiltins 模块导入即注册；@builtin 装饰器易扩展）
@@ -276,6 +277,10 @@ def address_read(addr):
     if kind == 'member':
         _, obj, field = addr.loc
         val = obj.get(field)
+        if addr.elem_type is not None and isinstance(obj, StructValue) \
+                and obj.type is addr.elem_type:
+            # container_of：成员地址按宿主类型解释（(&list.node) 按 List → list 本身）
+            return obj
         return _reinterpret_if_needed(val, addr.elem_type)
     raise AssertionError(f"无法解引用地址: {addr}")
 
@@ -683,6 +688,12 @@ def _address_of(node, val):
         if isinstance(obj, Address):         # &(p->f)：先解引用指针再取成员
             obj = _deref(obj)
         field = node.field.name if isinstance(node.field, ID) else str(node.field)
+        if obj == 0:
+            # offsetof 语义：&((T*)0)->m 是编译期成员偏移（NULL 指针取成员地址）
+            t = infer_type(node.name)
+            if isinstance(t, PtrType) and isinstance(t.points_to, (StructType, UnionType)):
+                ensure_complete(t.points_to)
+                return t.points_to.member_offset(field)
         if isinstance(obj, (StructValue, UnionValue)):
             ftype = obj.type.member_type(field) if hasattr(obj.type, 'member_type') else None
             return Address(('member', obj, field), 0, ftype)
@@ -1115,17 +1126,19 @@ class ExeExprList(Execute):
 # ==================== Statement Executors ====================
 
 class ExeCompound(Execute):
-    """Compound statement / block { ... }."""
+    """Compound statement / block { ... }（GNU 语句表达式：返回最后一个语句的值）。"""
 
     def execute(self):
         global g_scope
         outer = g_scope
         g_scope = Scope(outer)
         try:
+            result = None
             for item in self.node.block_items or []:
-                execute(item)
+                result = execute(item)
         finally:
             g_scope = outer
+        return result
 
 
 class ExeIf(Execute):
