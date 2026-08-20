@@ -294,16 +294,19 @@ C 的隐式转换规则（Usual Arithmetic Conversions）：
 阶段五：性能与质量（持续）
 ================================================================================
 
-[QOL-1] 错误信息改进
+[QOL-1] 错误信息改进 ✅ 已完成（详见设计文档-错误回溯.md）
 --------------------------------------------------
 当前：
   - AssertionError("Undefined variable: 'x'")
   - AssertionError("Unexpected AST node: 'XXX'")
 
 改进方向：
-  1. 自定义异常类（InterpreterError, UndefinedVariable, TypeError 等）
-  2. 堆栈跟踪（显示调用链和源码位置）
-  3. 行号信息（利用 node.coord 属性）
+  1. 自定义异常类（InterpreterError, UndefinedVariable, TypeError 等） ✅
+     InterpreterError 继承 AssertionError（既有测试零破坏）；子类：
+     UndefinedVariable / TypeError_ / UnsupportedError / LinkError / MemoryError_
+  2. 堆栈跟踪（显示调用链和源码位置）        ✅ [error] <coord>: <msg> + 调用链
+  3. 行号信息（利用 node.coord 属性）        ✅ execute() 传播时 _attach_coord；
+     调用链来自异常携带的 g_call_stack 快照（异常传播时栈被 finally 弹掉）
 
 [QOL-2] 测试覆盖率
 --------------------------------------------------
@@ -331,21 +334,24 @@ C 的隐式转换规则（Usual Arithmetic Conversions）：
 总结：实施优先级
 ================================================================================
 
-  P0（紧急）  │ BUG-1 sizeof 语义  │ 立即修复
-  P0（紧急）  │ BUG-2 alignof 语义 │ 立即修复
+  P0（紧急）  │ BUG-1 sizeof 语义  │ 立即修复 ✅
+  P0（紧急）  │ BUG-2 alignof 语义 │ 立即修复 ✅
   ────────────┼────────────────────┼────────────
-  P1（短期）  │ MEM-1 指针模型     │ 第 1 周
-  P1（短期）  │ MEM-2 栈帧与递归   │ 第 1 周
-  P1（短期）  │ MEM-3 struct 布局  │ 第 2 周
+  P1（短期）  │ MEM-1 指针模型     │ 第 1 周 ✅
+  P1（短期）  │ MEM-2 栈帧与递归   │ 第 1 周 ✅
+  P1（短期）  │ MEM-3 struct 布局  │ 第 2 周 ✅
   ────────────┼────────────────────┼────────────
-  P2（中期）  │ TYPE-1 类型系统    │ 第 2-3 周
-  P2（中期）  │ TYPE-2 隐式转换    │ 第 3 周
-  P2（中期）  │ MEM-4 堆与 malloc  │ 第 3 周
+  P2（中期）  │ TYPE-1 类型系统    │ 第 2-3 周 ✅
+  P2（中期）  │ TYPE-2 隐式转换    │ 第 3 周 ✅
+  P2（中期）  │ MEM-4 堆与 malloc  │ 第 3 周 ✅
+  P2（中期）  │ TYPE-3 常量折叠    │ 第 4 周 ✅
+  P2（中期）  │ CTRL-3 可变参数    │ ✅
   ────────────┼────────────────────┼────────────
-  P3（长期）  │ CTRL-1 Goto        │ 第 4 周
-  P3（长期）  │ TYPE-3 常量折叠    │ 第 4 周
-  P3（长期）  │ QOL-1 错误信息     │ 持续
+  P3（短期）  │ QOL-1 错误回溯     │ 下一个（当前进行中）
+  P3（短期）  │ S4 static 隔离+CLI │ QOL-1 之后
+  P3（短期）  │ BUG-3 StaticAssert │ S4 之后
+  P3（中期）  │ 方案 C strict 预链接│ BUG-3 之后
   ────────────┼────────────────────┼────────────
-  P4（远期）  │ CTRL-2 setjmp      │ 待定
-  P4（远期）  │ CTRL-3 可变参数    │ 待定
+  P4（远期）  │ CTRL-1 Goto        │ 方案 C 之后
+  P4（远期）  │ CTRL-2 setjmp      │ Goto 之后
   P4（远期）  │ QOL-3 性能优化     │ 待定

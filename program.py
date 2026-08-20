@@ -34,7 +34,7 @@ from sources import (
 )
 
 import execute as exe_mod
-from execute import execute
+from execute import execute, InterpreterError
 
 
 class CProgram:
@@ -214,7 +214,27 @@ class CProgram:
             args_node = c_ast.ExprList(exprs=[
                 c_ast.Constant(type='int', value=str(a)) for a in args])
         call = c_ast.FuncCall(name=c_ast.ID(name=self.entry), args=args_node)
-        return execute(call)
+        try:
+            return execute(call)
+        except InterpreterError as e:
+            # QOL-1：打印源码位置 + 调用链，然后原样抛出（测试 except 兼容）
+            self._report_error(e)
+            raise
+
+    def _report_error(self, e):
+        """QOL-1：打印 [error] 源码位置 + 调用链（异常携带的栈快照）。"""
+        msg = getattr(e, 'message', str(e))
+        print(f"[error] {msg}")
+        stack = getattr(e, '_call_stack', None) or []
+        if stack:
+            lines = []
+            for frame in stack:
+                coord = getattr(frame, 'call_coord', None)
+                loc = f" at {coord}" if coord is not None else ""
+                lines.append(f"调用 {frame.func_name}(){loc}")
+            print("调用链:")
+            for ln in lines:
+                print(f"  {ln}")
 
     # ==================== 便捷 ====================
 

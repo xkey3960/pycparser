@@ -617,6 +617,44 @@ int main(void) {
     print(f"    main() = {result}（case 1+2/GREEN/'A'/range、位域 4+4→8）✓")
 
 
+def test_qol1_error_traceback():
+    """QOL-1 错误回溯：源码位置（coord）+ 调用链 + 异常分类。"""
+    print("  [QOL1] 错误回溯（coord 定位 + 调用链 + 分类）")
+    src = '''
+int inner(int a) {
+    return a + zz;               /* 第 3 行：未定义 zz */
+}
+int helper(int x) {
+    return inner(x) + 1;         /* 第 6 行调用 */
+}
+int main(void) {
+    return helper(5);            /* 第 9 行调用 */
+}
+'''
+    with open('test/multi/qol1_err.c', 'w') as f:
+        f.write(src)
+    exe_mod.setup_global_scope()
+    prog = CProgram([f'{MULTI}/qol1_err.c'], lazy=True)
+    prog.load()
+    buf = io.StringIO()
+    try:
+        with contextlib.redirect_stdout(buf):
+            prog.run()
+        raise AssertionError("应报未定义变量")
+    except AssertionError as e:
+        # 异常分类（InterpreterError 子类）+ 源码位置
+        assert isinstance(e, exe_mod.UndefinedVariable), type(e).__name__
+        assert 'qol1_err.c:3' in str(e), f"应含源码位置: {str(e)}"
+        assert "Undefined variable: 'zz'" in str(e)
+    out = buf.getvalue()
+    # 错误报告：coord + 调用链（main → helper → inner）
+    assert '[error]' in out and 'qol1_err.c:3' in out, out
+    assert '调用链' in out, out
+    assert 'helper' in out and 'inner' in out, out
+    print(f"    [error] {out.strip().splitlines()[0]}（coord 定位）")
+    print("    调用链 main → helper → inner ✓（异常分类 UndefinedVariable）")
+
+
 def main():
     print("=" * 60)
     print("  program.py — 多文件支持测试（S1+S2+S3+修复）")
@@ -672,8 +710,10 @@ def main():
     test_type2_implicit_conversion()
     print("\n--- 19. TYPE-3 常量折叠 ---")
     test_type3_constant_folding()
+    print("\n--- 20. QOL-1 错误回溯 ---")
+    test_qol1_error_traceback()
     print("\n" + "=" * 60)
-    print("  S1-S3 + 修复 + L1/L2/L3/L4 + 指针 + 函数指针 + 栈帧 + 指针模型 + 类型转换 + 常量折叠 全部测试通过! ✅")
+    print("  S1-S3 + 修复 + L1/L2/L3/L4 + 指针 + 函数指针 + 栈帧 + 指针模型 + 类型转换 + 常量折叠 + 错误回溯 全部测试通过! ✅")
     print("=" * 60)
 
 

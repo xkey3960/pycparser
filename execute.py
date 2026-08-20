@@ -95,6 +95,55 @@ class ContinueException(Exception):
     """Raised to skip to the next loop iteration."""
 
 
+# ==================== 解释器错误体系（QOL-1） ====================
+
+class InterpreterError(AssertionError):
+    """解释器错误基类（QOL-1）。
+
+    继承 AssertionError 保证既有 `except AssertionError` 测试零破坏。
+    携带出错的 AST 节点（取 coord 定位源码），消息可在顶层附上位置。
+    """
+
+    def __init__(self, message, node=None):
+        self.message = message
+        self.node = node
+        super().__init__(message)
+
+
+class UndefinedVariable(InterpreterError):
+    """未定义变量/函数（含未定义类型引用）。"""
+
+
+class TypeError_(InterpreterError):
+    """类型错误：指针/下标/成员访问/类型推导等。"""
+
+
+class UnsupportedError(InterpreterError):
+    """尚未支持的特性（goto/指定初始化器/指针相减等）。"""
+
+
+class LinkError(InterpreterError):
+    """链接错误：原型无定义、重复定义等。"""
+
+
+class MemoryError_(InterpreterError):
+    """内存/堆错误：越界、非法地址、堆空间不足等。"""
+
+
+def _attach_coord(exc, node):
+    """给 InterpreterError 附上首次出错的源码位置（coord）与调用栈快照。"""
+    coord = getattr(node, 'coord', None)
+    if coord is not None and not getattr(exc, '_has_coord', False):
+        exc._has_coord = True
+        exc.message = f"{coord}: {exc.message}"
+        exc.args = (exc.message,)
+        # QOL-1：快照调用链（异常传播时栈会被 finally 弹掉，需在源头保存）
+        try:
+            exc._call_stack = list(g_call_stack)
+        except Exception:
+            exc._call_stack = []
+
+
 class Symbol:
     """变量绑定：值 + 可选 C 类型（M0 起存储；类型系统就绪前 type 为 None）。
 
@@ -130,7 +179,7 @@ class Scope:
             return self._symbols[name]
         if self._parent:
             return self._parent._get(name)
-        raise AssertionError(f"Undefined variable: '{name}'")
+        raise UndefinedVariable(f"Undefined variable: '{name}'")
 
     def get(self, name):
         return self._get(name).value
@@ -172,15 +221,17 @@ class StackFrame:
 
     scope 的 parent 是全局作用域（C 顶层函数语义，不再用定义时捕获的
     closure_scope）；caller_scope 记录返回点，用于调用结束后恢复。
+    call_coord：调用点源码位置（QOL-1 错误调用链用）。
     """
 
-    __slots__ = ("func_name", "scope", "caller_scope", "ret_type")
+    __slots__ = ("func_name", "scope", "caller_scope", "ret_type", "call_coord")
 
-    def __init__(self, func_name, scope, caller_scope, ret_type=None):
+    def __init__(self, func_name, scope, caller_scope, ret_type=None, call_coord=None):
         self.func_name = func_name
         self.scope = scope
         self.caller_scope = caller_scope
         self.ret_type = ret_type
+        self.call_coord = call_coord
 
 
 class Address:
@@ -313,7 +364,12 @@ def execute(node):
         return None
     class_name = node.__class__.__name__
     if class_name in g_exe_class:
-        return g_exe_class[class_name](node).execute()
+        try:
+            return g_exe_class[class_name](node).execute()
+        except InterpreterError as e:
+            # QOL-1：附上首次出错的源码位置（coord），向上传播
+            _attach_coord(e, node)
+            raise
     raise AssertionError(f"Unexpected AST node: '{class_name}'")
 
 
@@ -452,11 +508,11 @@ class ExeID(Execute):
         name = self.node.name
         try:
             return g_scope.get(name)
-        except AssertionError:
+        except UndefinedVariable:
             pass
         if name in g_functions:
             return name          # 函数名 → 函数指针值（字符串引用）
-        raise AssertionError(f"未定义变量 '{name}'")
+        raise UndefinedVariable(f"Undefined variable: '{name}'", node=self.node)
 
 
 class ExeBinaryOp(Execute):
@@ -985,7 +1041,7 @@ class ExeFuncCall(Execute):
             # MEM-2 调用协议：新建栈帧，parent = 全局作用域（C 顶层函数语义，
             # 不再用定义时捕获的 closure_scope——函数体访问外部变量走全局）
             frame = StackFrame(func_name, Scope(g_global_scope), g_scope,
-                               ret_type=func.ret_type)
+                               ret_type=func.ret_type, call_coord=self.node.coord)
             g_call_stack.append(frame)
             outer_scope = g_scope
             g_scope = frame.scope
