@@ -395,7 +395,9 @@ def test_l4_tag_redef_conflict_on_use():
     prog3 = CProgram([f'{MULTI}/lazy4_dup_a.c', f'{MULTI}/lazy4_dup_b.c'],
                      lazy=True, entry='l4_dup_a', strict=True)
     prog3.load()
-    prog3.run()          # 启动装载（activate_all）：注册全部类型（不布局）
+    # 两文件都装载（模拟都可达：手动 activate_all，绕过方案 C 的可达性圈定）
+    import sources as _src
+    _src.g_source_index.activate_all()
     try:
         from typesys import ensure_complete
         ensure_complete(exe_mod.g_types.lookup_tag('struct', 'L4Dup'))
@@ -778,6 +780,54 @@ int main(void) { return 7; }
     print("    link 编译期同样报错 ✓")
 
 
+def test_plan_c_reachable_prelink():
+    """方案 C strict 可达性预链接：运行前检查可达路径；不可达坏文件不报。"""
+    print("  [PlanC] strict 可达性预链接（运行前查可达，不可达坏文件不报）")
+    open(f'{MULTI}/c_good.c', 'w').write('int use_a(void) { return 42; }\n')
+    open(f'{MULTI}/c_bad_unused.c', 'w').write(
+        'typedef struct BadU { int arr[no_such_c + 1]; } BadU;\n'
+        'int unused_bad(void) { return 0; }\n')
+    open(f'{MULTI}/c_main.c', 'w').write(
+        'int use_a(void);\n'
+        'int main(void) { return use_a(); }\n')
+    # a) strict：不可达坏文件不报（可达性圈定）
+    exe_mod.setup_global_scope()
+    prog = CProgram([f'{MULTI}/c_main.c', f'{MULTI}/c_good.c', f'{MULTI}/c_bad_unused.c'],
+                    lazy=True, strict=True)
+    prog.load()
+    r = prog.run()
+    assert r == 42, f"strict 不可达坏文件应不报，实际 {r}"
+    # 不可达文件未装载（方案 C 只激活可达）
+    st = sources.g_source_index.state
+    assert st[f'{MULTI}/c_bad_unused.c'] == 'unloaded', st
+    print(f"    a) strict 不可达坏文件不报（未装载）✓")
+    # b) 默认惰性（strict=False）：行为不变（activate_all 装载全部）
+    exe_mod.setup_global_scope()
+    prog2 = CProgram([f'{MULTI}/c_main.c', f'{MULTI}/c_good.c', f'{MULTI}/c_bad_unused.c'],
+                     lazy=True, strict=False)
+    prog2.load()
+    assert prog2.run() == 42
+    assert sources.g_source_index.state[f'{MULTI}/c_bad_unused.c'] == 'loaded'
+    print(f"    b) 默认惰性 activate_all 装载全部（不变）✓")
+    # c) strict 可达坏类型 → 运行前报错（比默认惰性的运行时暴露更早）
+    open(f'{MULTI}/c_bad_reach.c', 'w').write(
+        'typedef struct BadR { int arr[no_such_r + 1]; } BadR;\n'
+        'int use_bad(void) { return sizeof(struct BadR); }\n')
+    open(f'{MULTI}/c_main2.c', 'w').write(
+        'int use_bad(void);\n'
+        'int main(void) { return use_bad(); }\n')
+    exe_mod.setup_global_scope()
+    prog3 = CProgram([f'{MULTI}/c_main2.c', f'{MULTI}/c_bad_reach.c'],
+                     lazy=True, strict=True)
+    prog3.load()
+    try:
+        prog3.run()
+        raise AssertionError("strict 可达坏类型应运行前报错")
+    except AssertionError as e:
+        assert 'arr' in str(e) or '数组' in str(e) or '不完整' in str(e)
+    print(f"    c) strict 可达坏类型运行前暴露 ✓")
+
+
 def main():
     print("=" * 60)
     print("  program.py — 多文件支持测试（S1+S2+S3+修复）")
@@ -843,8 +893,10 @@ def main():
     test_s4_static_isolation()
     print("\n--- 23. BUG-3 _Static_assert 编译期 ---")
     test_bug3_static_assert()
+    print("\n--- 24. 方案 C strict 可达性预链接 ---")
+    test_plan_c_reachable_prelink()
     print("\n" + "=" * 60)
-    print("  S1-S3 + 修复 + L1/L2/L3/L4 + 指针 + 函数指针 + 栈帧 + 指针模型 + 类型转换 + 常量折叠 + 错误回溯 + container_of + static 隔离 + StaticAssert 全部测试通过! ✅")
+    print("  S1-S3 + 修复 + L1/L2/L3/L4 + 指针 + 函数指针 + 栈帧 + 指针模型 + 类型转换 + 常量折叠 + 错误回溯 + container_of + static 隔离 + StaticAssert + 方案C 全部测试通过! ✅")
     print("=" * 60)
 
 

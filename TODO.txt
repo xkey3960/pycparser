@@ -351,8 +351,8 @@ C 的隐式转换规则（Usual Arithmetic Conversions）：
   P3（短期）  │ QOL-1 错误回溯     │ ✅
   P3（短期）  │ S4 static 隔离+CLI │ ✅（详见设计文档-static作用域与CLI.md）
   P3（短期）  │ BUG-3 StaticAssert │ ✅（详见设计文档-StaticAssert编译期检查.md）
-  P3（中期）  │ 方案 C strict 预链接│ 下一个
+  P3（中期）  │ 方案 C strict 预链接│ ✅（详见设计文档-方案C可达性预链接.md）
   ────────────┼────────────────────┼────────────
-  P4（远期）  │ CTRL-1 Goto        │ 方案 C 之后
+  P4（远期）  │ CTRL-1 Goto        │ 下一个
   P4（远期）  │ CTRL-2 setjmp      │ Goto 之后
   P4（远期）  │ QOL-3 性能优化     │ 待定

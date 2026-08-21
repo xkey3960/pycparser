@@ -173,6 +173,99 @@ class SourceIndex:
         loc = self._funcs.get(entry)
         return loc[0] if loc else None
 
+    # ---------- 方案 C：可达性预链接 ----------
+
+    def reachable(self, entry):
+        """从入口函数反向收集**可达文件集合**（依赖图不动点）。
+
+        可达符号：入口 → 函数体调用的函数 + 引用的类型 → 各自定义文件。
+        迭代至不动点。不可达文件（含坏代码）不在此集合——strict 预链接
+        只检查可达部分（惰性承诺严格化）。
+        返回 set[路径]。
+        """
+        reachable_funcs = set()
+        reachable_types = set()      # (kind, name) 或 typedef 名
+        queue = [entry]
+        # 符号 → 定义文件
+        while queue:
+            fname = queue.pop()
+            if fname in reachable_funcs:
+                continue
+            reachable_funcs.add(fname)
+            loc = self._funcs.get(fname)
+            if loc is None:
+                continue
+            _path, fdef = loc
+            deps_f, deps_t = _collect_deps(fdef)
+            for g in deps_f:
+                if g not in reachable_funcs:
+                    queue.append(g)
+            for t in deps_t:
+                reachable_types.add(t)
+        # 类型 → 定义文件（并递归其成员类型引用的类型）
+        type_queue = list(reachable_types)
+        while type_queue:
+            t = type_queue.pop()
+            loc = self._typedefs.get(t) or self._tags.get(t)
+            if loc is None:
+                continue
+            _path, node = loc
+            if isinstance(node, c_ast.Typedef):
+                _deps_f, deps_t2 = _collect_deps(node)
+                for t2 in deps_t2:
+                    if t2 not in reachable_types:
+                        reachable_types.add(t2)
+                        type_queue.append(t2)
+        # 汇总可达文件
+        files = set()
+        for fname in reachable_funcs:
+            loc = self._funcs.get(fname)
+            if loc:
+                files.add(loc[0])
+        for t in reachable_types:
+            loc = self._typedefs.get(t) or self._tags.get(t)
+            if loc:
+                files.add(loc[0])
+        return files
+
+
+def _collect_deps(node):
+    """AST 遍历：收集函数调用目标（set[str]）与类型引用（set[(kind,name)|typedef名]）。
+
+    遍历所有子节点：FuncCall 目标函数名；类型节点（Decl.type/Typedef/Cast/参数）
+    中的 struct/union/enum 标签与 typedef 名。返回 (函数集, 类型集)。
+    """
+    funcs, types = set(), set()
+
+    def walk(n):
+        if n is None:
+            return
+        tn = type(n).__name__
+        if tn == 'FuncCall':
+            name_node = n.name
+            if isinstance(name_node, c_ast.ID):
+                funcs.add(name_node.name)
+        elif tn in ('IdentifierType',):
+            names = n.names or []
+            if names and names[0].lower() in ('struct', 'union', 'enum') and len(names) >= 2:
+                types.add((names[0].lower(), names[1]))
+            elif len(names) == 1 and names[0] != 'void':
+                types.add(names[0])      # typedef 名（含内建，过滤 void）
+        elif tn in ('Struct', 'Union', 'Enum'):
+            if n.name:
+                kind = 'struct' if tn == 'Struct' else ('union' if tn == 'Union' else 'enum')
+                types.add((kind, n.name))
+        elif tn == 'Typedef':
+            if n.name:
+                types.add(n.name)        # typedef 名本身
+        # 遍历子节点（pycparser children()：返回 (attr, node) 对，自动展开列表）
+        for _attr, child in n.children():
+            if isinstance(child, c_ast.Node):
+                walk(child)
+
+    walk(node)
+    return funcs, types
+
 
 # ==================== 共享冲突检测（L3） ====================
 # 供 SourceIndex.activate（惰性"用到才检"）与 CProgram.link（全量检查）共用。

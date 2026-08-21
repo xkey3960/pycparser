@@ -153,6 +153,22 @@ class CProgram:
                 if g_types.has_tag(kind, name):
                     ensure_complete(g_types.lookup_tag(kind, name))
 
+    def _complete_reachable_types(self, reachable_files):
+        """方案 C：补全可达文件的 struct/union 标签（运行前暴露布局错误）。
+
+        与 _complete_all_tags 同机制，但范围 = 可达文件（strict 预链接）。
+        """
+        tags = set()
+        for ast, path in zip(self.asts, self.files):
+            if path not in reachable_files:
+                continue
+            for ext in ast.ext or []:
+                tags |= _collect_tag_names(ext)
+        for kind in ('struct', 'union'):
+            for name in tags:
+                if g_types.has_tag(kind, name):
+                    ensure_complete(g_types.lookup_tag(kind, name))
+
     # ---------- 冲突检测（S2） ----------
 
     def _warn_or_raise(self, msg, force_raise=False):
@@ -218,8 +234,15 @@ class CProgram:
         if self.lazy:
             self._resolve_entry()                       # 名字扫描（零解析）
             if self.entry not in exe_mod.g_functions:
-                # 未 link：启动装载全部文件（全局 eager；类型检查惰性）
-                g_source_index.activate_all()
+                if self.strict:
+                    # 方案 C：strict 可达性预链接——只装载+检查可达文件（运行前暴露可达错误）
+                    reachable = g_source_index.reachable(self.entry)
+                    for path in sorted(reachable):
+                        g_source_index.activate(path)
+                    self._complete_reachable_types(reachable)
+                else:
+                    # 未 link：启动装载全部文件（全局 eager；类型检查惰性）
+                    g_source_index.activate_all()
         if self.entry not in exe_mod.g_functions:
             raise AssertionError(f"入口函数 '{self.entry}' 未注册（是否已 link？）")
         args_node = None
