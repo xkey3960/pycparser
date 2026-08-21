@@ -828,6 +828,71 @@ def test_plan_c_reachable_prelink():
     print(f"    c) strict 可达坏类型运行前暴露 ✓")
 
 
+def test_ctrl1_goto():
+    """CTRL-1 Goto：向前/向后跳、跳出循环、嵌套跳外层、未定义 label 报错。"""
+    print("  [Goto] goto 与标签（前跳/回跳/跳出循环/嵌套跳外层）")
+    cases = [
+        ('''
+int main(void) {
+    int x = 0;
+    goto skip;
+    x = 100;
+skip:
+    x += 5;
+    return x;
+}
+''', 5, '向前跳跳过语句'),
+        ('''
+int main(void) {
+    int i = 0, sum = 0;
+loop:
+    sum += i;
+    i++;
+    if (i < 5) goto loop;
+    return sum;
+}
+''', 10, '向后跳实现循环'),
+        ('''
+int main(void) {
+    int i;
+    for (i = 0; i < 100; i++) {
+        if (i == 7) goto done;
+    }
+done:
+    return i;
+}
+''', 7, 'goto 跳出循环'),
+        ('''
+int main(void) {
+    int x = 0;
+    if (1) {
+        goto out;
+    }
+    x = 99;
+out:
+    return x + 1;
+}
+''', 1, '嵌套块跳外层 label'),
+    ]
+    for i, (src, expect, desc) in enumerate(cases):
+        with open(f'{MULTI}/goto_{i}.c', 'w') as f:
+            f.write(src)
+        result = _run([f'{MULTI}/goto_{i}.c'])
+        assert result == expect, f"{desc}: 期望 {expect}，实际 {result}"
+        print(f"    {desc}: main() = {result} ✓")
+    # 未定义 label → GotoException
+    with open(f'{MULTI}/goto_bad.c', 'w') as f:
+        f.write('int main(void) { goto nowhere; return 0; }\n')
+    exe_mod.setup_global_scope()
+    prog = CProgram([f'{MULTI}/goto_bad.c'], lazy=True)
+    prog.load()
+    try:
+        prog.run()
+        raise AssertionError("未定义 label 应报错")
+    except exe_mod.GotoException:
+        print("    未定义 label → GotoException ✓")
+
+
 def main():
     print("=" * 60)
     print("  program.py — 多文件支持测试（S1+S2+S3+修复）")
@@ -895,8 +960,10 @@ def main():
     test_bug3_static_assert()
     print("\n--- 24. 方案 C strict 可达性预链接 ---")
     test_plan_c_reachable_prelink()
+    print("\n--- 25. CTRL-1 Goto ---")
+    test_ctrl1_goto()
     print("\n" + "=" * 60)
-    print("  S1-S3 + 修复 + L1/L2/L3/L4 + 指针 + 函数指针 + 栈帧 + 指针模型 + 类型转换 + 常量折叠 + 错误回溯 + container_of + static 隔离 + StaticAssert + 方案C 全部测试通过! ✅")
+    print("  S1-S3 + 修复 + L1/L2/L3/L4 + 指针 + 函数指针 + 栈帧 + 指针模型 + 类型转换 + 常量折叠 + 错误回溯 + container_of + static 隔离 + StaticAssert + 方案C + Goto 全部测试通过! ✅")
     print("=" * 60)
 
 

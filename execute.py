@@ -96,6 +96,14 @@ class ContinueException(Exception):
     """Raised to skip to the next loop iteration."""
 
 
+class GotoException(Exception):
+    """goto 跳转信号（CTRL-1）：携带目标标签名，由 Compound 捕获后跳转。"""
+
+    def __init__(self, label):
+        self.label = label
+        super().__init__(f"goto {label}")
+
+
 # ==================== 解释器错误体系（QOL-1） ====================
 
 class InterpreterError(AssertionError):
@@ -1170,16 +1178,36 @@ class ExeExprList(Execute):
 # ==================== Statement Executors ====================
 
 class ExeCompound(Execute):
-    """Compound statement / block { ... }（GNU 语句表达式：返回最后一个语句的值）。"""
+    """Compound statement / block { ... }（GNU 语句表达式：返回最后一个语句的值）。
+
+    CTRL-1 goto：两遍扫描——先收集同层 Label → 语句索引；顺序执行时 goto 抛
+    GotoException，本层捕获则跳到目标语句继续，否则向上传播（嵌套块/跳出循环）。
+    """
 
     def execute(self):
         global g_scope
         outer = g_scope
         g_scope = Scope(outer)
         try:
+            items = self.node.block_items or []
+            # 第一遍：收集 Label → 语句索引（同层）
+            label_index = {}
+            for i, item in enumerate(items):
+                if isinstance(item, Label):
+                    label_index[item.name] = i
+            # 第二遍：顺序执行；goto 按索引跳转（可前可后）
             result = None
-            for item in self.node.block_items or []:
-                result = execute(item)
+            i = 0
+            while i < len(items):
+                item = items[i]
+                try:
+                    result = execute(item)
+                except GotoException as g:
+                    if g.label in label_index:
+                        i = label_index[g.label]   # 跳到目标语句，其后继续
+                        continue
+                    raise                          # 本层无此标签 → 上层处理
+                i += 1
         finally:
             g_scope = outer
         return result
@@ -1463,12 +1491,10 @@ class ExeLabel(Execute):
 
 
 class ExeGoto(Execute):
-    """Goto statement (not supported)."""
+    """Goto statement (CTRL-1)：抛 GotoException，由 Compound 捕获跳转。"""
 
     def execute(self):
-        raise AssertionError(
-            f"Goto is not supported in the interpreter (target: '{self.node.name}')"
-        )
+        raise GotoException(self.node.name)
 
 
 # ==================== Initializer Executors ====================

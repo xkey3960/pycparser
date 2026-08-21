@@ -260,19 +260,20 @@ C 的隐式转换规则（Usual Arithmetic Conversions）：
 阶段四：控制流与高级特性（长期，3-4 周）
 ================================================================================
 
-[CTRL-1] Goto 与标签
+[CTRL-1] Goto 与标签 ✅ 已完成（详见设计文档-Goto与标签.md）
 --------------------------------------------------
 当前状态：抛出 AssertionError("Goto not supported")
 
 设计思路：
   需要两遍扫描：
-  第一遍：收集所有 Label 节点的位置（以语句索引形式）
-  第二遍：Goto 执行时查表跳转到对应位置
+  第一遍：收集所有 Label 节点的位置（以语句索引形式）  ✅ Compound 执行时收集同层 Label → index
+  第二遍：Goto 执行时查表跳转到对应位置                 ✅ 索引跳转（可前可后）
 
 实施步骤：
-  1. 在 Compound 执行时，扫描 block_items 收集 Label → index 映射
-  2. GotoException(label_name) 异常携带目标标签
-  3. Compound 捕获 GotoException，跳转到对应语句
+  1. 在 Compound 执行时，扫描 block_items 收集 Label → index 映射  ✅
+  2. GotoException(label_name) 异常携带目标标签                     ✅
+  3. Compound 捕获 GotoException，跳转到对应语句                    ✅
+     （本层无此标签 → 向上传播：嵌套块跳外层 / 跳出循环）
 
 [CTRL-2] setjmp/longjmp
 --------------------------------------------------
