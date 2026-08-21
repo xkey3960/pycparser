@@ -311,15 +311,24 @@ C 的隐式转换规则（Usual Arithmetic Conversions）：
   3. 行号信息（利用 node.coord 属性）        ✅ execute() 传播时 _attach_coord；
      调用链来自异常携带的 g_call_stack 快照（异常传播时栈被 finally 弹掉）
 
-[QOL-2] 测试覆盖率
+[QOL-2] 测试覆盖率 ✅ 已完成（详见 test_qol2.py）
 --------------------------------------------------
 当前：~30 个测试覆盖基本功能。
 
 需要补充：
-  1. 边界条件测试（空数组、超大值、负值）
-  2. 错误路径测试（未定义变量、类型不匹配等）
-  3. 复杂嵌套测试（多层循环、递归函数、多维数组）
-  4. GNU C 扩展的解析+执行端到端测试（用 GnuCParser 解析 test_ext.c）
+  1. 边界条件测试（空数组、超大值、负值）      ✅ 空数组/数组上下界/INT_MIN/溢出回绕/
+     unsigned 下溢/long long/负数/char 提升
+  2. 错误路径测试（未定义变量、类型不匹配等）  ✅ UndefinedVariable/TypeError_(int+str)/
+     MemoryError_(越界)/除零/未初始化指针写
+  3. 复杂嵌套测试（多层循环、递归函数、多维数组）✅ 三层循环/递归 fib/二维三维数组/
+     do-while/continue+break/嵌套函数调用
+  4. GNU C 扩展的解析+执行端到端测试（用 GnuCParser 解析 test_ext.c） ✅ 语句表达式 ({})/
+     typeof/__attribute__/指定初始化器（CProgram 默认 GnuCParser）
+
+顺带修复（execute() 分发层）：
+  - 裸 Python 异常（TypeError/IndexError/ZeroDivisionError 等）→ 包装进
+    InterpreterError 体系（TypeError_/MemoryError_ + coord 定位），错误路径
+    不再抛无上下文的裸异常；未初始化指针写等内部断言保留 AssertionError
 
 [QOL-3] 性能优化
 --------------------------------------------------
@@ -357,4 +366,5 @@ C 的隐式转换规则（Usual Arithmetic Conversions）：
   ────────────┼────────────────────┼────────────
   P4（远期）  │ CTRL-1 Goto        │ ✅（详见设计文档-Goto与标签.md）
   P4（远期）  │ CTRL-2 setjmp      │ ✅（详见设计文档-setjmp与longjmp.md）
-  P4（远期）  │ QOL-3 性能优化     │ 待定
+  P4（中期）  │ QOL-2 测试覆盖率   │ ✅（详见 test_qol2.py：边界/错误路径/嵌套/GNU 扩展）
+  P4（远期）  │ QOL-3 性能优化     │ 待定（唯一剩余项）

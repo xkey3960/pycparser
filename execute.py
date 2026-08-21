@@ -425,6 +425,17 @@ def execute(node):
             # QOL-1：附上首次出错的源码位置（coord），向上传播
             _attach_coord(e, node)
             raise
+        except (TypeError, IndexError, ZeroDivisionError, KeyError,
+                AttributeError, ValueError, OverflowError) as e:
+            # QOL-2：裸 Python 异常 → 解释器错误体系（分类 + coord）
+            if isinstance(e, (IndexError,)):
+                wrapped = MemoryError_(f"越界访问: {e}", node)
+            elif isinstance(e, (ZeroDivisionError,)):
+                wrapped = TypeError_(f"除零: {e}", node)
+            else:
+                wrapped = TypeError_(f"{class_name} 求值错误: {e}", node)
+            _attach_coord(wrapped, node)
+            raise wrapped from e
     raise AssertionError(f"Unexpected AST node: '{class_name}'")
 
 
