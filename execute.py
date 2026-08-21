@@ -215,6 +215,7 @@ class Function:
         self.closure_scope = closure_scope
         self.param_types = param_types or []   # [CType] 与 param_names 对齐
         self.ret_type = ret_type               # CType | None
+        self.file = None                       # S4：定义所在文件（static 归属）
 
 
 class StackFrame:
@@ -223,16 +224,18 @@ class StackFrame:
     scope 的 parent 是全局作用域（C 顶层函数语义，不再用定义时捕获的
     closure_scope）；caller_scope 记录返回点，用于调用结束后恢复。
     call_coord：调用点源码位置（QOL-1 错误调用链用）。
+    file：函数定义所在源文件（S4 static 解析用）。
     """
 
-    __slots__ = ("func_name", "scope", "caller_scope", "ret_type", "call_coord")
+    __slots__ = ("func_name", "scope", "caller_scope", "ret_type", "call_coord", "file")
 
-    def __init__(self, func_name, scope, caller_scope, ret_type=None, call_coord=None):
+    def __init__(self, func_name, scope, caller_scope, ret_type=None, call_coord=None, file=None):
         self.func_name = func_name
         self.scope = scope
         self.caller_scope = caller_scope
         self.ret_type = ret_type
         self.call_coord = call_coord
+        self.file = file
 
 
 class Address:
@@ -334,6 +337,12 @@ g_scope = Scope()
 g_global_scope = g_scope   # 全局（根）作用域：惰性文件激活时在其上执行文件顶层
 g_functions = {}
 g_call_stack = []          # MEM-2：调用栈（栈顶 = 活动帧），错误回溯/递归深度用
+
+# S4 static 文件级作用域（内部链接）：按文件隔离
+g_static_funcs = {}        # 文件路径 -> {函数名: Function}
+g_static_globals = {}      # 文件路径 -> {变量名: value}
+g_static_global_types = {} # 文件路径 -> {变量名: CType}
+g_current_file = None      # 当前装载/执行的源文件（activate 时设置）
 
 
 # ==================== Type Utilities ====================
@@ -534,6 +543,14 @@ class ExeID(Execute):
             return g_scope.get(name)
         except UndefinedVariable:
             pass
+        # S4：static 全局变量（当前文件内部链接）
+        cur_file = g_call_stack[-1].file if g_call_stack else g_current_file
+        if cur_file:
+            sg = g_static_globals.get(cur_file, {})
+            if name in sg:
+                return sg[name]
+            if name in g_static_funcs.get(cur_file, {}):
+                return name          # static 函数名 → 函数指针值
         if name in g_functions:
             return name          # 函数名 → 函数指针值（字符串引用）
         raise UndefinedVariable(f"Undefined variable: '{name}'", node=self.node)
@@ -748,7 +765,15 @@ def infer_type(node):
             return PtrType(g_types.resolve(['char']))
         return g_types.resolve(['int'])      # int/long/short/unsigned 等
     if isinstance(node, ID):
-        t = g_scope.get_type(node.name)
+        name = node.name
+        try:
+            t = g_scope.get_type(name)
+        except UndefinedVariable:
+            t = None
+        if t is None:
+            cur_file = g_call_stack[-1].file if g_call_stack else g_current_file
+            if cur_file:
+                t = g_static_global_types.get(cur_file, {}).get(name)   # S4 static
         return t if t is not None else g_types.resolve(['int'])
     if isinstance(node, Cast):
         return type_of_decl(node.to_type)
@@ -812,7 +837,12 @@ class ExeAssignment(Execute):
 
     def _set_lvalue(self, lvalue_node, value):
         if isinstance(lvalue_node, ID):
-            g_scope.set(lvalue_node.name, value)
+            name = lvalue_node.name
+            cur_file = g_call_stack[-1].file if g_call_stack else g_current_file
+            if cur_file and name in g_static_globals.get(cur_file, {}):
+                g_static_globals[cur_file][name] = value   # S4 static 全局写
+            else:
+                g_scope.set(name, value)
         elif isinstance(lvalue_node, ArrayRef):
             arr = execute(lvalue_node.name)
             idx = execute(lvalue_node.subscript)
@@ -881,7 +911,11 @@ class ExeAssignment(Execute):
     def _lvalue_type(self, lvalue_node):
         """取左值的目标类型（赋值转换用）；复杂 lvalue 用 infer_type 推导。"""
         if isinstance(lvalue_node, ID):
-            return g_scope.get_type(lvalue_node.name)
+            name = lvalue_node.name
+            cur_file = g_call_stack[-1].file if g_call_stack else g_current_file
+            if cur_file and name in g_static_global_types.get(cur_file, {}):
+                return g_static_global_types[cur_file][name]   # S4 static 全局类型
+            return g_scope.get_type(name)
         try:
             return infer_type(lvalue_node)
         except AssertionError:
@@ -1055,11 +1089,20 @@ class ExeFuncCall(Execute):
 
         args = self._eval_args(self.node.args)
 
-        func = g_functions.get(func_name)
+        # S4：先查当前文件 static 表（内部链接优先），再查外部函数
+        func = None
+        cur_file = g_call_stack[-1].file if g_call_stack else g_current_file
+        if cur_file:
+            func = g_static_funcs.get(cur_file, {}).get(func_name)
+        if func is None:
+            func = g_functions.get(func_name)
         if func is None:
             # L1 惰性：未注册且非内置 → 尝试激活定义文件（幂等；非源符号 no-op）
             g_source_index.activate_for(func_name)
-            func = g_functions.get(func_name)
+            if cur_file:
+                func = g_static_funcs.get(cur_file, {}).get(func_name)
+            if func is None:
+                func = g_functions.get(func_name)
 
         if func is not None and func.body is None:
             # 原型占位无定义：若是内置函数名 → 声明引用的实现由内建提供（不报错）
@@ -1076,7 +1119,8 @@ class ExeFuncCall(Execute):
             # MEM-2 调用协议：新建栈帧，parent = 全局作用域（C 顶层函数语义，
             # 不再用定义时捕获的 closure_scope——函数体访问外部变量走全局）
             frame = StackFrame(func_name, Scope(g_global_scope), g_scope,
-                               ret_type=func.ret_type, call_coord=self.node.coord)
+                               ret_type=func.ret_type, call_coord=self.node.coord,
+                               file=func.file or cur_file)
             g_call_stack.append(frame)
             outer_scope = g_scope
             g_scope = frame.scope
@@ -1349,6 +1393,11 @@ class ExeDecl(Execute):
                 init_val = convert_to(init_val, ctype)       # TYPE-2 标量转换
         else:
             init_val = default_value_for(ctype)
+        # S4：static 顶层变量 → 文件级隔离（内部链接）；局部 static 变量仍是普通局部
+        if 'static' in (self.node.storage or []) and g_scope is g_global_scope:
+            g_static_globals.setdefault(g_current_file, {})[name] = init_val
+            g_static_global_types.setdefault(g_current_file, {})[name] = ctype
+            return
         g_scope.declare(name, init_val, ctype)
 
 
@@ -1381,7 +1430,7 @@ class ExeFuncDef(Execute):
             param_types = ft.param_types
             ret_type = ft.ret_type
 
-        g_functions[func_name] = Function(
+        func = Function(
             name=func_name,
             param_names=param_names,
             body=self.node.body,
@@ -1389,6 +1438,13 @@ class ExeFuncDef(Execute):
             param_types=param_types,
             ret_type=ret_type,
         )
+        func.file = g_current_file        # S4：记录定义文件
+        # S4：static 函数 → 文件级隔离（内部链接，不进外部表）
+        if 'static' in (decl.storage or []):
+            f = g_current_file
+            g_static_funcs.setdefault(f, {})[func_name] = func
+            return
+        g_functions[func_name] = func
 
 
 class ExeEmptyStatement(Execute):
@@ -1821,12 +1877,17 @@ g_exe_class = {
 def setup_global_scope():
     """Reset the global scope and function table for testing."""
     global g_scope, g_functions, g_global_scope, g_call_stack
+    global g_static_funcs, g_static_globals, g_static_global_types, g_current_file
     g_scope = Scope()
     g_global_scope = g_scope
     g_scope.declare('i', 0)
     g_scope.declare('j', 0)
     g_functions = {}
     g_call_stack = []
+    g_static_funcs = {}
+    g_static_globals = {}
+    g_static_global_types = {}
+    g_current_file = None
 
 
 # ----- Standard Node Tests -----

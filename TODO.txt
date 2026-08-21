@@ -347,9 +347,9 @@ C 的隐式转换规则（Usual Arithmetic Conversions）：
   P2（中期）  │ TYPE-3 常量折叠    │ 第 4 周 ✅
   P2（中期）  │ CTRL-3 可变参数    │ ✅
   ────────────┼────────────────────┼────────────
-  P3（短期）  │ QOL-1 错误回溯     │ 下一个（当前进行中）
-  P3（短期）  │ S4 static 隔离+CLI │ QOL-1 之后
-  P3（短期）  │ BUG-3 StaticAssert │ S4 之后
+  P3（短期）  │ QOL-1 错误回溯     │ ✅
+  P3（短期）  │ S4 static 隔离+CLI │ ✅（详见设计文档-static作用域与CLI.md）
+  P3（短期）  │ BUG-3 StaticAssert │ 下一个
   P3（中期）  │ 方案 C strict 预链接│ BUG-3 之后
   ────────────┼────────────────────┼────────────
   P4（远期）  │ CTRL-1 Goto        │ 方案 C 之后

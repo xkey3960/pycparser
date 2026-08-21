@@ -697,6 +697,44 @@ int main(void) {
     print(f"    main() = {result}（container_of 从 Node* 找回 List*）✓")
 
 
+def test_s4_static_isolation():
+    """S4 static 文件级隔离：两文件同 static 函数/全局互不干扰（lazy 与 link 双模式）。"""
+    print("  [S4] static 文件级作用域（函数/全局隔离，lazy + link）")
+    # 夹具：两个文件各有 static helper() 和 static g（同名单，应隔离）
+    open(f'{MULTI}/st_a.c', 'w').write(
+        'static int helper(void) { return 10; }\n'
+        'static int g = 100;\n'
+        'int use_a(void) { g += 1; return helper() + g; }   /* 10 + 101 = 111 */\n')
+    open(f'{MULTI}/st_b.c', 'w').write(
+        'static int helper(void) { return 20; }\n'
+        'static int g = 200;\n'
+        'int use_b(void) { g += 5; return helper() + g; }   /* 20 + 205 = 225 */\n')
+    open(f'{MULTI}/st_main.c', 'w').write(
+        'int use_a(void);\n'
+        'int use_b(void);\n'
+        'int main(void) { return use_a() + use_b(); }       /* 111 + 225 = 336 */\n')
+    # lazy 模式
+    exe_mod.setup_global_scope()
+    prog = CProgram([f'{MULTI}/st_main.c', f'{MULTI}/st_a.c', f'{MULTI}/st_b.c'], lazy=True)
+    prog.load()
+    r = prog.run()
+    assert r == 336, f"lazy 期望 336，实际 {r}"
+    assert 'helper' in exe_mod.g_static_funcs.get(f'{MULTI}/st_a.c', {})
+    assert 'helper' in exe_mod.g_static_funcs.get(f'{MULTI}/st_b.c', {})
+    assert 'helper' not in exe_mod.g_functions          # static 不进外部表
+    assert exe_mod.g_static_globals[f'{MULTI}/st_a.c']['g'] == 101   # use_a 改了 a 的 g
+    assert exe_mod.g_static_globals[f'{MULTI}/st_b.c']['g'] == 205   # use_b 改了 b 的 g
+    print(f"    lazy: main() = {r}；static helper/g 按文件隔离（a.g=101, b.g=205）✓")
+    # link 模式
+    exe_mod.setup_global_scope()
+    prog2 = CProgram([f'{MULTI}/st_main.c', f'{MULTI}/st_a.c', f'{MULTI}/st_b.c'], lazy=False)
+    prog2.load()
+    prog2.link()
+    r2 = prog2.run()
+    assert r2 == 336, f"link 期望 336，实际 {r2}"
+    print(f"    link:  main() = {r2}（隔离同样生效）✓")
+
+
 def main():
     print("=" * 60)
     print("  program.py — 多文件支持测试（S1+S2+S3+修复）")
@@ -758,8 +796,10 @@ def main():
     test_qol1_error_traceback()
     print("\n--- 21. GNU container_of 宏 ---")
     test_container_of()
+    print("\n--- 22. S4 static 隔离 + CLI ---")
+    test_s4_static_isolation()
     print("\n" + "=" * 60)
-    print("  S1-S3 + 修复 + L1/L2/L3/L4 + 指针 + 函数指针 + 栈帧 + 指针模型 + 类型转换 + 常量折叠 + 错误回溯 + container_of 全部测试通过! ✅")
+    print("  S1-S3 + 修复 + L1/L2/L3/L4 + 指针 + 函数指针 + 栈帧 + 指针模型 + 类型转换 + 常量折叠 + 错误回溯 + container_of + static 隔离 全部测试通过! ✅")
     print("=" * 60)
 
 

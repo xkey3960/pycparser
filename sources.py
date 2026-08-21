@@ -113,6 +113,8 @@ class SourceIndex:
 
         saved_scope = exe_mod.g_scope
         exe_mod.g_scope = exe_mod.g_global_scope   # 文件顶层 → 全局作用域
+        saved_file = exe_mod.g_current_file
+        exe_mod.g_current_file = path              # S4：当前文件（static 归属）
         try:
             # 1a 类型（含裸类型定义 Decl(name=None)）：注册（L4 不布局）。
             # enum 保持 eager（注册即注入常量）→ 冲突即时检；struct/union
@@ -146,6 +148,7 @@ class SourceIndex:
                     execute(ext)
         finally:
             exe_mod.g_scope = saved_scope
+            exe_mod.g_current_file = saved_file
         self._state[path] = 'loaded'
 
     def activate_all(self):
@@ -219,16 +222,14 @@ def check_tag_conflict(ext, strict):
 
 
 def check_func_conflict(name, storage, entry, func_names, strict):
-    """函数重名：登记 func_names；非 static 非入口重复 → 报错；static 重复 → warn；
-    入口重复豁免（由入口定位处理：警告 + 取第一）。"""
-    is_static = 'static' in (storage or [])
+    """函数重名：登记 func_names；非 static 非入口重复 → 报错；
+    static 不参与（S4 文件级隔离，无跨文件冲突）；入口重复豁免。"""
+    if 'static' in (storage or []):
+        return                       # S4：static 内部链接，同文件注册由 ExeFuncDef 隔离
     if name not in func_names:
-        func_names[name] = is_static
+        func_names[name] = False
         return
-    prev_static = func_names[name]
-    if is_static or prev_static:
-        _warn_or_raise(f"static 函数 '{name}' 跨文件重名，后者覆盖（v1）", strict)
-    elif name == entry:
+    if name == entry:
         pass  # 入口函数重名：入口定位警告 + 取第一个
     else:
         _warn_or_raise(f"函数 '{name}' 重复定义（C 语义: 重复定义）", strict, force_raise=True)

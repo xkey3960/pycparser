@@ -107,20 +107,30 @@ class CProgram:
         # 暴露类型错误/重定义冲突；跨测试残留标签不碰）
         self._complete_all_tags()
         # 1b 函数收集：FuncDef 全部注册（只注册不执行体 → 前向引用可用；重名检测）
-        for ast in self.asts:
-            for ext in ast.ext or []:
-                if isinstance(ext, c_ast.FuncDef):
-                    self._check_func_conflict(ext)
-                    execute(ext)
+        for ast, path in zip(self.asts, self.files):
+            saved_file = exe_mod.g_current_file
+            exe_mod.g_current_file = path            # S4：static 归属当前文件
+            try:
+                for ext in ast.ext or []:
+                    if isinstance(ext, c_ast.FuncDef):
+                        self._check_func_conflict(ext)
+                        execute(ext)
+            finally:
+                exe_mod.g_current_file = saved_file
         # 2 全局变量 / 编译期检查（此时函数表已齐，init 可调函数）
-        for ast in self.asts:
-            for ext in ast.ext or []:
-                if isinstance(ext, (c_ast.Decl, c_ast.DeclList)):
-                    for d in _iter_decls(ext):
-                        if self._should_declare_global(d):
-                            execute(d)
-                elif isinstance(ext, c_ast.StaticAssert):
-                    execute(ext)
+        for ast, path in zip(self.asts, self.files):
+            saved_file = exe_mod.g_current_file
+            exe_mod.g_current_file = path
+            try:
+                for ext in ast.ext or []:
+                    if isinstance(ext, (c_ast.Decl, c_ast.DeclList)):
+                        for d in _iter_decls(ext):
+                            if self._should_declare_global(d):
+                                execute(d)
+                    elif isinstance(ext, c_ast.StaticAssert):
+                        execute(ext)
+            finally:
+                exe_mod.g_current_file = saved_file
         # 入口定位：多个文件定义入口时以第一个为准（重新注册覆盖）
         self._resolve_entry()
         if len(self._entry_candidates) > 1:
@@ -274,3 +284,20 @@ def _collect_tag_names(node):
         else:
             found |= _collect_tag_names(child)
     return found
+
+
+# ==================== CLI（S4） ====================
+
+if __name__ == '__main__':
+    import sys
+    args = [a for a in sys.argv[1:] if not a.startswith('--')]
+    entry = 'main'
+    if '--entry' in sys.argv:
+        entry = sys.argv[sys.argv.index('--entry') + 1]
+    if not args:
+        print("用法: python program.py <a.c> [b.c ...] [--entry 函数名]")
+        sys.exit(1)
+    prog = CProgram(args, entry=entry)
+    prog.load()
+    result = prog.run()
+    print(result)
