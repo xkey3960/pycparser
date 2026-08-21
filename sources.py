@@ -134,17 +134,19 @@ class SourceIndex:
                     if isinstance(inner, c_ast.Enum) and inner.name:
                         check_tag_conflict(inner, self.strict)
                     execute(ext)
+            # 1a 后：顶层 _Static_assert 编译期检查（BUG-3：类型已注册，sizeof 可算）
+            for ext in ast.ext or []:
+                if isinstance(ext, c_ast.StaticAssert):
+                    execute(ext)
             # 1b 函数：注册 + 重名检测（L3）
             for ext in ast.ext or []:
                 if isinstance(ext, c_ast.FuncDef):
                     check_func_conflict(ext.decl.name, ext.decl.storage,
                                         self.entry, self._func_names, self.strict)
                     execute(ext)
-            # 2 全局变量 / 编译期断言（init 可触发其他文件激活）
+            # 2 全局变量（init 可触发其他文件激活）
             for ext in ast.ext or []:
                 if isinstance(ext, (c_ast.Decl, c_ast.DeclList)):
-                    execute(ext)
-                elif isinstance(ext, c_ast.StaticAssert):
                     execute(ext)
         finally:
             exe_mod.g_scope = saved_scope

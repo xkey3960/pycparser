@@ -106,6 +106,11 @@ class CProgram:
         # 1a 后：L4 全量补全（eager link = 全量检查：布局本次定义的 struct/union，
         # 暴露类型错误/重定义冲突；跨测试残留标签不碰）
         self._complete_all_tags()
+        # 1a 后：顶层 _Static_assert 编译期检查（BUG-3：类型已注册，sizeof 可算）
+        for ast in self.asts:
+            for ext in ast.ext or []:
+                if isinstance(ext, c_ast.StaticAssert):
+                    execute(ext)
         # 1b 函数收集：FuncDef 全部注册（只注册不执行体 → 前向引用可用；重名检测）
         for ast, path in zip(self.asts, self.files):
             saved_file = exe_mod.g_current_file
@@ -127,8 +132,6 @@ class CProgram:
                         for d in _iter_decls(ext):
                             if self._should_declare_global(d):
                                 execute(d)
-                    elif isinstance(ext, c_ast.StaticAssert):
-                        execute(ext)
             finally:
                 exe_mod.g_current_file = saved_file
         # 入口定位：多个文件定义入口时以第一个为准（重新注册覆盖）

@@ -735,6 +735,49 @@ def test_s4_static_isolation():
     print(f"    link:  main() = {r2}（隔离同样生效）✓")
 
 
+def test_bug3_static_assert():
+    """BUG-3 _Static_assert 编译期检查：装载阶段折叠求值（lazy 与 link）。"""
+    print("  [BUG3] _Static_assert 编译期检查（顶层装载时折叠求值）")
+    ok = '''
+_Static_assert(sizeof(int) == 4, "int 必须 4 字节");
+_Static_assert(1 + 1 == 2, "算术折叠");
+int main(void) { return 7; }
+'''
+    with open(f'{MULTI}/sa_ok.c', 'w') as f:
+        f.write(ok)
+    exe_mod.setup_global_scope()
+    prog = CProgram([f'{MULTI}/sa_ok.c'], lazy=True)
+    prog.load()
+    assert prog.run() == 7
+    print("    顶层断言通过（sizeof/算术折叠）✓")
+    bad = '''
+_Static_assert(1 == 2, "fails here");
+int main(void) { return 7; }
+'''
+    with open(f'{MULTI}/sa_bad.c', 'w') as f:
+        f.write(bad)
+    # lazy：装载时报错
+    exe_mod.setup_global_scope()
+    prog2 = CProgram([f'{MULTI}/sa_bad.c'], lazy=True)
+    prog2.load()
+    try:
+        prog2.run()
+        raise AssertionError("lazy 应报断言失败")
+    except AssertionError as e:
+        assert 'static_assert' in str(e) and 'fails here' in str(e)
+    print("    lazy 装载时报 'static_assert failed: fails here' ✓")
+    # link：同样编译期报错
+    exe_mod.setup_global_scope()
+    prog3 = CProgram([f'{MULTI}/sa_bad.c'], lazy=False)
+    prog3.load()
+    try:
+        prog3.link()
+        raise AssertionError("link 应报断言失败")
+    except AssertionError as e:
+        assert 'static_assert' in str(e) and 'fails here' in str(e)
+    print("    link 编译期同样报错 ✓")
+
+
 def main():
     print("=" * 60)
     print("  program.py — 多文件支持测试（S1+S2+S3+修复）")
@@ -798,8 +841,10 @@ def main():
     test_container_of()
     print("\n--- 22. S4 static 隔离 + CLI ---")
     test_s4_static_isolation()
+    print("\n--- 23. BUG-3 _Static_assert 编译期 ---")
+    test_bug3_static_assert()
     print("\n" + "=" * 60)
-    print("  S1-S3 + 修复 + L1/L2/L3/L4 + 指针 + 函数指针 + 栈帧 + 指针模型 + 类型转换 + 常量折叠 + 错误回溯 + container_of + static 隔离 全部测试通过! ✅")
+    print("  S1-S3 + 修复 + L1/L2/L3/L4 + 指针 + 函数指针 + 栈帧 + 指针模型 + 类型转换 + 常量折叠 + 错误回溯 + container_of + static 隔离 + StaticAssert 全部测试通过! ✅")
     print("=" * 60)
 
 

@@ -54,7 +54,7 @@
      - struct: 最大成员对齐值
   3. 更新测试
 
-[BUG-3] _Static_assert 的 cond 不应在运行时求值
+[BUG-3] _Static_assert 的 cond 不应在运行时求值 ✅ 已完成（详见设计文档-StaticAssert编译期检查.md）
 --------------------------------------------------
 问题描述：
   _Static_assert 是编译期检查，当前却在 execute() 时求值。
@@ -63,8 +63,9 @@
 实施步骤：
   1. 评估两种策略：
      a) 保留现状（运行时检查），但在文档中注明语义差异
-     b) 移到 ExeFileAST 执行前做一次性检查
-  2. 至少确保 StaticAssert 的 cond 使用常量折叠求值
+     b) 移到 ExeFileAST 执行前做一次性检查    ✅ 顶层断言移入 activate/link 的 1a 后
+  2. 至少确保 StaticAssert 的 cond 使用常量折叠求值   ✅ _eval_constant 优先
+     （sizeof/算术等编译期表达式折叠；函数体内断言（C23）保留运行时但同样折叠）
 
 ================================================================================
 阶段二：内存模型（中期，1-2 周）
@@ -349,8 +350,8 @@ C 的隐式转换规则（Usual Arithmetic Conversions）：
   ────────────┼────────────────────┼────────────
   P3（短期）  │ QOL-1 错误回溯     │ ✅
   P3（短期）  │ S4 static 隔离+CLI │ ✅（详见设计文档-static作用域与CLI.md）
-  P3（短期）  │ BUG-3 StaticAssert │ 下一个
-  P3（中期）  │ 方案 C strict 预链接│ BUG-3 之后
+  P3（短期）  │ BUG-3 StaticAssert │ ✅（详见设计文档-StaticAssert编译期检查.md）
+  P3（中期）  │ 方案 C strict 预链接│ 下一个
   ────────────┼────────────────────┼────────────
   P4（远期）  │ CTRL-1 Goto        │ 方案 C 之后
   P4（远期）  │ CTRL-2 setjmp      │ Goto 之后

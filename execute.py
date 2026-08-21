@@ -1667,10 +1667,17 @@ class ExeAlignas(Execute):
 
 
 class ExeStaticAssert(Execute):
-    """Static assertion (_Static_assert)."""
+    """Static assertion (_Static_assert).
+
+    BUG-3：cond 用**常量折叠**求值（编译期语义，含 sizeof/算术）；
+    顶层断言在装载阶段检查（sources.activate / program.link），
+    函数体内断言（C23）走本执行器（同样折叠）。
+    """
 
     def execute(self):
-        cond = execute(self.node.cond)
+        cond = _eval_constant(self.node.cond)
+        if cond is None:
+            cond = execute(self.node.cond)          # 回退（宽松）
         if not cond:
             msg = execute(self.node.message) if self.node.message else ""
             raise AssertionError(f"static_assert failed: {msg}")
