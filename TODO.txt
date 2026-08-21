@@ -275,14 +275,15 @@ C 的隐式转换规则（Usual Arithmetic Conversions）：
   3. Compound 捕获 GotoException，跳转到对应语句                    ✅
      （本层无此标签 → 向上传播：嵌套块跳外层 / 跳出循环）
 
-[CTRL-2] setjmp/longjmp
+[CTRL-2] setjmp/longjmp ✅ 已完成（详见设计文档-setjmp与longjmp.md）
 --------------------------------------------------
 非局部跳转，需要在调用栈上做 unwinding。
 
 实施步骤：
-  1. 实现 jmp_buf 存储（保存栈帧状态）
-  2. setjmp 返回 0（第一次）或 longjmp 传入的值
-  3. longjmp 通过异常机制 unwind 到 setjmp 所在的栈帧
+  1. 实现 jmp_buf 存储（保存栈帧状态）       ✅ _JMP_BUFS[buf] = {depth, compound, idx, retval}
+  2. setjmp 返回 0（第一次）或 longjmp 传入的值 ✅ 调用点重放：longjmp 后 setjmp 二次返回 val
+  3. longjmp 通过异常机制 unwind 到 setjmp 所在的栈帧 ✅ LongJmpException 跨帧传播，
+     setjmp 所在 Compound 捕获并跳回重放（类似 goto）；未 setjmp 就 longjmp 报错
 
 [CTRL-3] 可变参数函数
 --------------------------------------------------
@@ -354,6 +355,6 @@ C 的隐式转换规则（Usual Arithmetic Conversions）：
   P3（短期）  │ BUG-3 StaticAssert │ ✅（详见设计文档-StaticAssert编译期检查.md）
   P3（中期）  │ 方案 C strict 预链接│ ✅（详见设计文档-方案C可达性预链接.md）
   ────────────┼────────────────────┼────────────
-  P4（远期）  │ CTRL-1 Goto        │ 下一个
-  P4（远期）  │ CTRL-2 setjmp      │ Goto 之后
+  P4（远期）  │ CTRL-1 Goto        │ ✅（详见设计文档-Goto与标签.md）
+  P4（远期）  │ CTRL-2 setjmp      │ ✅（详见设计文档-setjmp与longjmp.md）
   P4（远期）  │ QOL-3 性能优化     │ 待定

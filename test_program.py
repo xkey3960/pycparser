@@ -893,6 +893,75 @@ out:
         print("    未定义 label → GotoException ✓")
 
 
+def test_ctrl2_setjmp_longjmp():
+    """CTRL-2 setjmp/longjmp：跨栈帧 unwind、setjmp 二次返回 val、未 setjmp 报错。"""
+    print("  [Jmp] setjmp/longjmp（跨帧 unwind / 二次返回 / 未 setjmp 报错）")
+    cases = [
+        ('''
+#include <setjmp.h>
+jmp_buf env;
+int deep(void) { longjmp(env, 42); return 0; }
+int main(void) {
+    int r;
+    if (setjmp(env) == 0) {
+        r = 1;
+        deep();
+    } else {
+        r = 2;
+    }
+    return r;              /* longjmp 后 r=2 */
+}
+''', 2, '基本：longjmp 跳回走 else'),
+        ('''
+#include <setjmp.h>
+jmp_buf env;
+int level3(void) { longjmp(env, 7); return 0; }
+int level2(void) { return level3(); }
+int level1(void) { return level2(); }
+int main(void) {
+    int got = 0;
+    if (setjmp(env) == 0) {
+        level1();
+    } else {
+        got = 1;
+    }
+    return got;            /* 跨 3 层跳回 -> 1 */
+}
+''', 1, '跨 3 层函数 unwind'),
+        ('''
+#include <setjmp.h>
+jmp_buf env;
+int main(void) {
+    int v = setjmp(env);
+    if (v == 0) {
+        longjmp(env, 99);
+        return 0;
+    }
+    return v;              /* setjmp 二次返回 99 */
+}
+''', 99, 'setjmp 第二次返回 longjmp 值'),
+    ]
+    for i, (src, expect, desc) in enumerate(cases):
+        with open(f'{MULTI}/jmp_{i}.c', 'w') as f:
+            f.write(src)
+        result = _run([f'{MULTI}/jmp_{i}.c'])
+        assert result == expect, f"{desc}: 期望 {expect}，实际 {result}"
+        print(f"    {desc}: main() = {result} ✓")
+    # 未 setjmp 就 longjmp → 报错
+    with open(f'{MULTI}/jmp_bad.c', 'w') as f:
+        f.write('#include <setjmp.h>\njmp_buf env;\n'
+                'int main(void) { longjmp(env, 1); return 0; }\n')
+    exe_mod.setup_global_scope()
+    prog = CProgram([f'{MULTI}/jmp_bad.c'], lazy=True)
+    prog.load()
+    try:
+        prog.run()
+        raise AssertionError("未 setjmp 应报错")
+    except AssertionError as e:
+        assert 'setjmp' in str(e) or 'longjmp' in str(e)
+        print(f"    未 setjmp 就 longjmp 报错: {str(e)[:40]}… ✓")
+
+
 def main():
     print("=" * 60)
     print("  program.py — 多文件支持测试（S1+S2+S3+修复）")
@@ -962,8 +1031,10 @@ def main():
     test_plan_c_reachable_prelink()
     print("\n--- 25. CTRL-1 Goto ---")
     test_ctrl1_goto()
+    print("\n--- 26. CTRL-2 setjmp/longjmp ---")
+    test_ctrl2_setjmp_longjmp()
     print("\n" + "=" * 60)
-    print("  S1-S3 + 修复 + L1/L2/L3/L4 + 指针 + 函数指针 + 栈帧 + 指针模型 + 类型转换 + 常量折叠 + 错误回溯 + container_of + static 隔离 + StaticAssert + 方案C + Goto 全部测试通过! ✅")
+    print("  S1-S3 + 修复 + L1/L2/L3/L4 + 指针 + 函数指针 + 栈帧 + 指针模型 + 类型转换 + 常量折叠 + 错误回溯 + container_of + static 隔离 + StaticAssert + 方案C + Goto + setjmp 全部测试通过! ✅")
     print("=" * 60)
 
 

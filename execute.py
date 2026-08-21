@@ -104,6 +104,15 @@ class GotoException(Exception):
         super().__init__(f"goto {label}")
 
 
+class LongJmpException(Exception):
+    """longjmp 跳转信号（CTRL-2）：跨栈帧 unwind 到 setjmp 调用点。"""
+
+    def __init__(self, buf, val):
+        self.buf = buf
+        self.val = val
+        super().__init__(f"longjmp {buf} -> {val}")
+
+
 # ==================== 解释器错误体系（QOL-1） ====================
 
 class InterpreterError(AssertionError):
@@ -351,6 +360,11 @@ g_static_funcs = {}        # 文件路径 -> {函数名: Function}
 g_static_globals = {}      # 文件路径 -> {变量名: value}
 g_static_global_types = {} # 文件路径 -> {变量名: CType}
 g_current_file = None      # 当前装载/执行的源文件（activate 时设置）
+
+# CTRL-2 setjmp/longjmp：调用点重放
+_JMP_BUFS = {}             # buf 变量名 -> {depth, compound, idx, retval}
+_ACTIVE_COMPOUND = None    # ExeCompound 执行时记录（setjmp 定位调用点）
+_ACTIVE_STMT_IDX = 0
 
 
 # ==================== Type Utilities ====================
@@ -1024,6 +1038,48 @@ class ExeFuncCall(Execute):
         """内置函数分发：经 cbuiltins 注册表（@builtin 装饰器注册，易扩展）。"""
         return call_builtin(name, args)
 
+    def _do_setjmp(self):
+        """CTRL-2 setjmp(buf)：记录调用点（栈深度 + 所在 Compound + 语句索引），返回 0。
+
+        重放（longjmp 跳回）：若该 buf 已有 retval → 取走并返回（第二次返回非 0）。
+        """
+        global _ACTIVE_COMPOUND, _ACTIVE_STMT_IDX
+        # buf 实参是 ID（jmp_buf 变量名）
+        name_node = self.node.args
+        buf = None
+        if isinstance(name_node, ExprList) and name_node.exprs:
+            a = name_node.exprs[0]
+            if isinstance(a, ID):
+                buf = a.name
+        if buf is None:
+            raise AssertionError("setjmp: 无法确定 buf 变量名")
+        rec = _JMP_BUFS.get(buf)
+        if rec and rec['retval']:
+            val = rec['retval']
+            rec['retval'] = 0          # 一次性
+            return val                 # 重放：setjmp 第二次返回 longjmp 的值
+        _JMP_BUFS[buf] = {
+            'depth': len(g_call_stack),
+            'compound': _ACTIVE_COMPOUND,
+            'idx': _ACTIVE_STMT_IDX,
+            'retval': 0,
+        }
+        return 0                       # 第一次：返回 0
+
+    def _do_longjmp(self, args):
+        """CTRL-2 longjmp(buf, val)：抛 LongJmpException，跨帧 unwind 到 setjmp 调用点。"""
+        name_node = self.node.args
+        buf = None
+        if isinstance(name_node, ExprList) and name_node.exprs:
+            a = name_node.exprs[0]
+            if isinstance(a, ID):
+                buf = a.name
+        if buf is None or buf not in _JMP_BUFS:
+            raise AssertionError(
+                f"longjmp: buf 未初始化或未 setjmp（{buf}）")
+        val = args[1] if len(args) > 1 else 1
+        raise LongJmpException(buf, val)
+
     def _handle_va_builtin(self, func_name):
         """可变参数内建：从 AST 实参取 ID 名，按名管理 va_list 槽。
 
@@ -1096,6 +1152,12 @@ class ExeFuncCall(Execute):
             return self._handle_va_builtin(func_name)
 
         args = self._eval_args(self.node.args)
+
+        # CTRL-2 setjmp/longjmp（需要求值实参，故在此拦截）
+        if func_name == 'setjmp':
+            return self._do_setjmp()
+        if func_name == 'longjmp':
+            return self._do_longjmp(args)
 
         # S4：先查当前文件 static 表（内部链接优先），再查外部函数
         func = None
@@ -1185,7 +1247,7 @@ class ExeCompound(Execute):
     """
 
     def execute(self):
-        global g_scope
+        global g_scope, _ACTIVE_COMPOUND, _ACTIVE_STMT_IDX
         outer = g_scope
         g_scope = Scope(outer)
         try:
@@ -1199,6 +1261,8 @@ class ExeCompound(Execute):
             result = None
             i = 0
             while i < len(items):
+                _ACTIVE_COMPOUND = self          # CTRL-2：setjmp 定位调用点
+                _ACTIVE_STMT_IDX = i
                 item = items[i]
                 try:
                     result = execute(item)
@@ -1207,6 +1271,14 @@ class ExeCompound(Execute):
                         i = label_index[g.label]   # 跳到目标语句，其后继续
                         continue
                     raise                          # 本层无此标签 → 上层处理
+                except LongJmpException as e:
+                    # CTRL-2：本层是 setjmp 调用点所在 Compound → 跳回重放
+                    rec = _JMP_BUFS.get(e.buf)
+                    if rec and rec['compound'] is self:
+                        rec['retval'] = e.val      # setjmp 第二次返回 val
+                        i = rec['idx']             # 重放 setjmp 语句（返回 val）
+                        continue
+                    raise                          # 非本层 → 跨帧传播
                 i += 1
         finally:
             g_scope = outer
@@ -1911,6 +1983,7 @@ def setup_global_scope():
     """Reset the global scope and function table for testing."""
     global g_scope, g_functions, g_global_scope, g_call_stack
     global g_static_funcs, g_static_globals, g_static_global_types, g_current_file
+    global _JMP_BUFS
     g_scope = Scope()
     g_global_scope = g_scope
     g_scope.declare('i', 0)
@@ -1921,6 +1994,7 @@ def setup_global_scope():
     g_static_globals = {}
     g_static_global_types = {}
     g_current_file = None
+    _JMP_BUFS = {}
 
 
 # ----- Standard Node Tests -----
