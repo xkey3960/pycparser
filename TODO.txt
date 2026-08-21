@@ -330,7 +330,7 @@ C 的隐式转换规则（Usual Arithmetic Conversions）：
     InterpreterError 体系（TypeError_/MemoryError_ + coord 定位），错误路径
     不再抛无上下文的裸异常；未初始化指针写等内部断言保留 AssertionError
 
-[QOL-3] 性能优化
+[QOL-3] 性能优化 ✅ 已完成（详见设计文档-性能优化.md）
 --------------------------------------------------
 当前问题：
   - 频繁的全局状态切换（g_scope 的重新赋值）
@@ -338,9 +338,21 @@ C 的隐式转换规则（Usual Arithmetic Conversions）：
   - 异常控制流的开销（BreakException/ContinueException/ReturnException）
 
 改进方向：
-  1. execute() 改用缓存查找（NodeVisitor 模式）
-  2. 循环使用本地变量而非异常（while 中的 BreakException 可改用 return 标记）
-  3. 内联简单节点（Constant、ID 等可以直接返回而无需创建 Executor 对象）
+  1. execute() 改用缓存查找（NodeVisitor 模式）    ✅ _EXE_BY_CLASS 类键镜像（免类名字符串）
+  2. 循环使用本地变量而非异常（while 中的 BreakException 可改用 return 标记） ⏳ 保留异常（语义必需，见设计文档 §二-C）
+  3. 内联简单节点（Constant、ID 等可以直接返回而无需创建 Executor 对象） ✅
+     Constant/ID 内联 _exec_constant_inline/_exec_id_inline（跳过执行器对象）
+
+实测提升（热循环 1e6 + 递归 fib(18)，同机同解释器）：
+  - 热循环：15261ms → 10317ms（-32%）
+  - 递归 fib(18)：305ms → 194ms（-36%）
+  - 合计：-31%
+
+其余优化：
+  - BinaryOp common 类型按 AST 节点缓存（C 静态类型推导稳定，_BINOP_COMMON，setup_global_scope 重置）
+  - 整型字面量解析缓存（_INT_LITERAL_CACHE，字符串 → int）
+  - Scope._get 递归改迭代（链式查找）
+  - convert_to 标量快速路径（int/float 同族免重建）
 
 ================================================================================
 总结：实施优先级
@@ -367,4 +379,4 @@ C 的隐式转换规则（Usual Arithmetic Conversions）：
   P4（远期）  │ CTRL-1 Goto        │ ✅（详见设计文档-Goto与标签.md）
   P4（远期）  │ CTRL-2 setjmp      │ ✅（详见设计文档-setjmp与longjmp.md）
   P4（中期）  │ QOL-2 测试覆盖率   │ ✅（详见 test_qol2.py：边界/错误路径/嵌套/GNU 扩展）
-  P4（远期）  │ QOL-3 性能优化     │ 待定（唯一剩余项）
+  P4（远期）  │ QOL-3 性能优化     │ ✅（详见设计文档-性能优化.md：热循环 -32%、fib -36%）

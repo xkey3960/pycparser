@@ -832,6 +832,21 @@ def convert_to(value, ctype):
         return value
     if isinstance(value, (StructValue, UnionValue, list, dict)):
         return value
+    # QOL-3-B：快速路径——值已是 int/float 且目标也是同族标量 → 直接返回
+    if isinstance(value, int) and not isinstance(value, bool):
+        if isinstance(ctype, BasicType):
+            nm = ctype.name
+            if nm == 'char' or nm == 'signed char' or nm == 'unsigned char':
+                return value & 0xFF
+            if 'float' in nm or 'double' in nm:
+                return float(value)
+            if '_bool' in nm.lower() or nm == 'bool':
+                return bool(value)
+            return value
+        return value
+    if isinstance(value, float) and isinstance(ctype, BasicType):
+        if 'float' in ctype.name or 'double' in ctype.name:
+            return value
     if isinstance(ctype, BasicType):
         name = ctype.name
         if '_bool' in name.lower() or name == 'bool':

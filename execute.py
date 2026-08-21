@@ -193,10 +193,13 @@ class Scope:
         return ret
 
     def _get(self, name):
-        if name in self._symbols:
-            return self._symbols[name]
-        if self._parent:
-            return self._parent._get(name)
+        # QOL-3-B：迭代链式查找（原递归；热路径每层调用一次函数更省）
+        scope = self
+        while scope is not None:
+            sym = scope._symbols.get(name)
+            if sym is not None:
+                return sym
+            scope = scope._parent
         raise UndefinedVariable(f"Undefined variable: '{name}'")
 
     def get(self, name):
@@ -417,10 +420,16 @@ def execute(node):
     """Dispatch an AST node to its executor."""
     if node is None:
         return None
-    class_name = node.__class__.__name__
-    if class_name in g_exe_class:
+    cls = node.__class__
+    # QOL-3-B：简单节点内联（常量/变量读取是表达式树最大热点，跳过执行器对象）
+    if cls is c_ast.Constant:
+        return _exec_constant_inline(node)
+    if cls is c_ast.ID:
+        return _exec_id_inline(node)
+    exe_cls = _EXE_BY_CLASS.get(cls)
+    if exe_cls is not None:
         try:
-            return g_exe_class[class_name](node).execute()
+            return exe_cls(node).execute()
         except InterpreterError as e:
             # QOL-1：附上首次出错的源码位置（coord），向上传播
             _attach_coord(e, node)
@@ -433,10 +442,10 @@ def execute(node):
             elif isinstance(e, (ZeroDivisionError,)):
                 wrapped = TypeError_(f"除零: {e}", node)
             else:
-                wrapped = TypeError_(f"{class_name} 求值错误: {e}", node)
+                wrapped = TypeError_(f"{cls.__name__} 求值错误: {e}", node)
             _attach_coord(wrapped, node)
             raise wrapped from e
-    raise AssertionError(f"Unexpected AST node: '{class_name}'")
+    raise AssertionError(f"Unexpected AST node: '{cls.__name__}'")
 
 
 # ==================== Expression Executors ====================
@@ -451,6 +460,10 @@ def _c_int_literal(v):
     """C 整型字面量 → int。支持 10/16/8/2 进制与 U/L/LL 后缀（含小写），
     如 '0x100'、'0xFFu'、'0755'、'0b1010'、'123L'。失败时返回原值（宽松）。"""
     if isinstance(v, str):
+        # QOL-3-B：结果缓存（同一字面量字符串反复求值——热循环常量）
+        cached = _INT_LITERAL_CACHE.get(v, _INT_LITERAL_MISS)
+        if cached is not _INT_LITERAL_MISS:
+            return cached
         s = v.strip()
         # 去后缀（U/u/L/l 任意组合，如 0x100ULL、42l）
         i = len(s)
@@ -459,15 +472,23 @@ def _c_int_literal(v):
         body = s[:i]
         try:
             if body.lower().startswith('0x'):
-                return int(body, 16)
-            if body.lower().startswith('0b'):
-                return int(body, 2)
-            if len(body) > 1 and body.startswith('0') and body.isdigit():
-                return int(body, 8)      # 八进制（0755）；'0' 单独是 0
-            return int(body, 10)
+                out = int(body, 16)
+            elif body.lower().startswith('0b'):
+                out = int(body, 2)
+            elif len(body) > 1 and body.startswith('0') and body.isdigit():
+                out = int(body, 8)      # 八进制（0755）；'0' 单独是 0
+            else:
+                out = int(body, 10)
         except ValueError:
-            return v
+            out = v
+        _INT_LITERAL_CACHE[v] = out
+        return out
     return v
+
+
+# QOL-3-B：整型字面量解析缓存（字符串 → int；宽松失败缓存原值）。
+_INT_LITERAL_CACHE = {}
+_INT_LITERAL_MISS = object()
 
 
 def _char_literal_code(v):
@@ -551,16 +572,33 @@ class ExeConstant(Execute):
         self._int_keywords = ('int', 'long', 'short', 'unsigned', 'signed', 'bool')
 
     def execute(self):
-        t = self.node.type
-        if t in self._type_force:
-            return self._type_force[t](self.node.value)
-        # 整型字面量：'unsigned int'/'long long'/'unsigned long' 等 → 进制解析
-        if isinstance(t, str) and any(k in t for k in self._int_keywords):
-            return _c_int_literal(self.node.value)
-        try:
-            return int(self.node.value)
-        except (ValueError, TypeError):
-            return self.node.value
+        return _exec_constant_inline(self.node)
+
+
+# QOL-3-B：常量内联的查表（模块级，避免每次执行都重建 dict）
+_CONST_TYPE_FORCE = {
+    'int': _c_int_literal,
+    'float': float,
+    'double': float,
+    'char': _char_literal_code,
+    'string': _string_literal_value,
+    '_Bool': lambda v: bool(_c_int_literal(v)),
+}
+_CONST_INT_KEYWORDS = ('int', 'long', 'short', 'unsigned', 'signed', 'bool')
+
+
+def _exec_constant_inline(node):
+    """QOL-3-B：常量字面量内联求值（ExeConstant.execute 正文，热路径）。"""
+    t = node.type
+    if t in _CONST_TYPE_FORCE:
+        return _CONST_TYPE_FORCE[t](node.value)
+    # 整型字面量：'unsigned int'/'long long'/'unsigned long' 等 → 进制解析
+    if isinstance(t, str) and any(k in t for k in _CONST_INT_KEYWORDS):
+        return _c_int_literal(node.value)
+    try:
+        return int(node.value)
+    except (ValueError, TypeError):
+        return node.value
 
 
 class ExeID(Execute):
@@ -571,22 +609,27 @@ class ExeID(Execute):
     """
 
     def execute(self):
-        name = self.node.name
-        try:
-            return g_scope.get(name)
-        except UndefinedVariable:
-            pass
-        # S4：static 全局变量（当前文件内部链接）
-        cur_file = g_call_stack[-1].file if g_call_stack else g_current_file
-        if cur_file:
-            sg = g_static_globals.get(cur_file, {})
-            if name in sg:
-                return sg[name]
-            if name in g_static_funcs.get(cur_file, {}):
-                return name          # static 函数名 → 函数指针值
-        if name in g_functions:
-            return name          # 函数名 → 函数指针值（字符串引用）
-        raise UndefinedVariable(f"Undefined variable: '{name}'", node=self.node)
+        return _exec_id_inline(self.node)
+
+
+def _exec_id_inline(node):
+    """QOL-3-B：标识符读取内联求值（ExeID.execute 正文，热路径）。"""
+    name = node.name
+    try:
+        return g_scope.get(name)
+    except UndefinedVariable:
+        pass
+    # S4：static 全局变量（当前文件内部链接）
+    cur_file = g_call_stack[-1].file if g_call_stack else g_current_file
+    if cur_file:
+        sg = g_static_globals.get(cur_file, {})
+        if name in sg:
+            return sg[name]
+        if name in g_static_funcs.get(cur_file, {}):
+            return name          # static 函数名 → 函数指针值
+    if name in g_functions:
+        return name          # 函数名 → 函数指针值（字符串引用）
+    raise UndefinedVariable(f"Undefined variable: '{name}'", node=node)
 
 
 class ExeBinaryOp(Execute):
@@ -618,8 +661,12 @@ class ExeBinaryOp(Execute):
         # TYPE-2：标量数值按 Usual Arithmetic Conversions 提升后运算
         if isinstance(left, (int, float)) and isinstance(right, (int, float)) \
                 and not isinstance(left, bool) and not isinstance(right, bool):
-            lt, rt = infer_type(self.node.left), infer_type(self.node.right)
-            common = usual_convert(lt, rt)
+            # QOL-3-B：common 类型按 AST 节点缓存（C 静态类型，推导结果稳定）
+            common = _BINOP_COMMON.get(self.node)
+            if common is None:
+                lt, rt = infer_type(self.node.left), infer_type(self.node.right)
+                common = usual_convert(lt, rt)
+                _BINOP_COMMON[self.node] = common
             left = convert_to(left, common)
             right = convert_to(right, common)
 
@@ -1987,6 +2034,18 @@ g_exe_class = {
     'FuncDeclExt': ExeFuncDeclExt,
 }
 
+# QOL-3：类键镜像（避免每次 execute() 都取类名字符串再查字典）。
+# 类 → 执行器类；g_exe_class 保留（外部/测试引用兼容）。
+_EXE_BY_CLASS = {}
+for _name, _exe in g_exe_class.items():
+    _cls = getattr(c_ast, _name, None)
+    if _cls is not None:
+        _EXE_BY_CLASS[_cls] = _exe
+
+# QOL-3-B：BinaryOp 的 common 类型缓存（C 静态类型：同一 AST 节点推导结果稳定）。
+# key 用节点对象（一次运行内 AST 生命周期稳定）；类型注册表全局持久故缓存安全。
+_BINOP_COMMON = {}
+
 
 # ==================== Tests ====================
 
@@ -1994,7 +2053,7 @@ def setup_global_scope():
     """Reset the global scope and function table for testing."""
     global g_scope, g_functions, g_global_scope, g_call_stack
     global g_static_funcs, g_static_globals, g_static_global_types, g_current_file
-    global _JMP_BUFS
+    global _JMP_BUFS, _BINOP_COMMON
     g_scope = Scope()
     g_global_scope = g_scope
     g_scope.declare('i', 0)
@@ -2006,6 +2065,7 @@ def setup_global_scope():
     g_static_global_types = {}
     g_current_file = None
     _JMP_BUFS = {}
+    _BINOP_COMMON = {}     # QOL-3-B：节点键缓存随运行重置（AST 重建后对象 id 可能复用）
 
 
 # ----- Standard Node Tests -----
