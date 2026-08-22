@@ -1,3 +1,10 @@
+#!/usr/bin/python
+"""test_ext.py — GNU C 扩展解析端到端（pytest 化）
+
+用 CustomerCParser（GnuCParser 子类，收集函数定义）解析 test_ext.c，
+验证函数/结构体定义收集与调用关系访问（FuncDefVisitor / FuncCallVisitor）。
+"""
+
 from typing import (
     List,
     Optional,
@@ -20,14 +27,15 @@ args = [
     '-E'
 ]
 
+
 # 同时遍历找到 函数定义和结构体定义
 class DependVisitor(c_ast.NodeVisitor):
     def visit_FuncDef(self, node: c_ast.FuncDef) -> None:
         print(f"{node.decl.name} at {node.decl.coord}")
     def visit_Struct(self, node: c_ast.Struct) -> None:
         print(f"{node.name} at {node.coord}")
- 
-from pycparser import c_ast
+
+
 # 定制化类，支持 函数指针
 class CustomerCParser(ext_c_parser.GnuCParser):
     def __init__(self):
@@ -35,7 +43,6 @@ class CustomerCParser(ext_c_parser.GnuCParser):
         self.func_db = {}
         super().__init__()
 
-    # 函数重载 
     # 在增加函数定义时，添加到函数列表 func_db
     def _build_function_definition(
         self,
@@ -46,10 +53,9 @@ class CustomerCParser(ext_c_parser.GnuCParser):
     ) -> c_ast.Node:
         """Builds a function definition."""
         # 调用父类的函数处理 函数定义
-        node:c_ast.FuncDef = super()._build_function_definition(spec, decl, param_decls, body)
+        node: c_ast.FuncDef = super()._build_function_definition(spec, decl, param_decls, body)
         # 将 函数名 插入到  func_db
         self.func_db[node.decl.name] = node
-
         return node
 
     # print_funcs
@@ -58,23 +64,32 @@ class CustomerCParser(ext_c_parser.GnuCParser):
         for func in self.func_db.keys():
             print(func)
 
-#parser = ext_c_parser.GnuCParser()
-parser = CustomerCParser()
 
-ast = parse_file(
-    "test_ext.c",
-    use_cpp = True,
-    cpp_path = "gcc",
-    cpp_args = args,
-    parser = parser,
-)
+def test_gnu_ext_parse():
+    """解析 test_ext.c（GNU 扩展：函数指针/类型属性等），验证收集函数定义。"""
+    parser = CustomerCParser()
+    ast = parse_file(
+        "test_ext.c",
+        use_cpp=True,
+        cpp_path="gcc",
+        cpp_args=args,
+        parser=parser,
+    )
+    assert ast is not None and hasattr(ast, 'ext')
+    # 函数定义收集（test_ext.c 中定义的函数）
+    assert 'func1' in parser.func_db, f"func1 应被收集，实际 {list(parser.func_db)}"
 
-v = FuncDefVisitor()
-v.visit(ast)
+    v = FuncDefVisitor()
+    v.visit(ast)
 
-v = FuncCallVisitor("func1")
-v.visit(ast)
+    v = FuncCallVisitor("func1")
+    v.visit(ast)
 
-v = DependVisitor()
-v.visit(ast)
-parser.print_funcs()
+    v = DependVisitor()
+    v.visit(ast)
+    parser.print_funcs()
+
+
+if __name__ == '__main__':
+    test_gnu_ext_parse()
+    print("test_ext GNU 扩展解析通过 ✓")

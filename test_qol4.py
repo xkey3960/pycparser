@@ -25,14 +25,8 @@ MULTI = 'test/multi'
 # 用独立缓存目录，避免污染用户真实缓存
 _FAKE_CACHE = os.path.join(MULTI, '_q4_cache')
 
-
-def _run(files, entry='main', args=(), **kw):
-    exe_mod.setup_global_scope()
-    prog = CProgram(files, entry=entry, **kw)
-    prog.load()
-    if kw.get('lazy', True) is False:
-        prog.link()
-    return prog.run(*args)
+# pytest 直接收集 test 函数（不执行 main()）→ 模块级设置隔离缓存目录
+os.environ['PYCPARSER_AST_CACHE'] = os.path.abspath(_FAKE_CACHE)
 
 
 def _setup_files():
@@ -51,6 +45,15 @@ def _setup_files():
 
 def _clear_cache():
     shutil.rmtree(_FAKE_CACHE, ignore_errors=True)
+
+
+def _run(files, entry='main', args=(), **kw):
+    exe_mod.setup_global_scope()
+    prog = CProgram(files, entry=entry, **kw)
+    prog.load()
+    if kw.get('lazy', True) is False:
+        prog.link()
+    return prog.run(*args)
 
 
 # ==================== 1. 并行一致性 ====================
