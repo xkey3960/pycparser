@@ -36,6 +36,32 @@ from sources import (
 import execute as exe_mod
 from execute import execute, InterpreterError
 
+import hashlib
+import os
+import pickle
+import tempfile
+from concurrent.futures import ThreadPoolExecutor
+
+
+def _ast_cache_dir():
+    """AST 缓存根目录（QOL-4）。
+
+    默认用户级缓存 ~/.cache/pycparser-ast/；环境变量 PYCPARSER_AST_CACHE
+    可覆盖；设为空字符串禁用缓存。
+    """
+    env = os.environ.get('PYCPARSER_AST_CACHE')
+    if env is not None:
+        return env  # 空串 = 禁用（_ast_cache_path 会判空）
+    return os.path.join(os.path.expanduser('~'), '.cache', 'pycparser-ast')
+
+
+def _ast_cache_path(file_hash):
+    """缓存文件路径：<缓存根>/<hash>.pkl；禁用（根为空）返回 None。"""
+    root = _ast_cache_dir()
+    if not root:
+        return None
+    return os.path.join(root, file_hash + '.pkl')
+
 
 class CProgram:
     """一组 C 源文件组成的程序（共享解释器全局状态）。
@@ -47,7 +73,8 @@ class CProgram:
     """
 
     def __init__(self, files, entry='main', cpp_path='gcc', cpp_args=None,
-                 parser=None, encoding=None, strict=False, lazy=True):
+                 parser=None, encoding=None, strict=False, lazy=True,
+                 parallel=True, ast_cache=True):
         self.files = list(files)
         self.entry = entry
         self.cpp_path = cpp_path
@@ -57,6 +84,8 @@ class CProgram:
         self.encoding = encoding
         self.strict = strict
         self.lazy = lazy
+        self.parallel = parallel          # QOL-4：多线程并行解析
+        self.ast_cache = ast_cache        # QOL-4：AST 缓存持久化（文件 hash）
         self.asts = []                 # list[FileAST]
         self.entry_file = None         # 入口函数所在文件
         self._entry_candidates = []    # 入口 FuncDef 节点列表
@@ -64,17 +93,75 @@ class CProgram:
 
     # ==================== 阶段 1：解析 ====================
 
+    def _parse_one(self, path):
+        """解析单个文件（QOL-4）：查 AST 缓存 → 未命中 parse_file → 写缓存。
+
+        缓存键 = sha256(文件字节 + cpp_args + parser 名)：内容/cpp 参数任一
+        变化 → miss 重编译；命中 → pickle.load 直接复用 AST（跳过 gcc+解析）。
+        """
+        if self.ast_cache:
+            h = self._source_hash(path)
+            cache_path = _ast_cache_path(h)
+            if cache_path and os.path.exists(cache_path):
+                try:
+                    with open(cache_path, 'rb') as f:
+                        ast = pickle.load(f)
+                    if hasattr(ast, 'ext'):     # 校验是 FileAST
+                        return ast
+                except Exception:
+                    pass                        # 损坏/版本不匹配 → 重编译
+        ast = parse_file(path, use_cpp=True, cpp_path=self.cpp_path,
+                         cpp_args=self.cpp_args, parser=self.parser,
+                         encoding=self.encoding)
+        if self.ast_cache:
+            h = self._source_hash(path)
+            cache_path = _ast_cache_path(h)
+            if cache_path:
+                self._write_cache(cache_path, ast)
+        return ast
+
+    def _source_hash(self, path):
+        """缓存键：源文件字节 + cpp_args + parser 名（任一变化即 miss）。"""
+        with open(path, 'rb') as f:
+            content = f.read()
+        h = hashlib.sha256()
+        h.update(content)
+        h.update(repr(self.cpp_args).encode('utf-8'))
+        h.update(type(self.parser).__name__.encode('utf-8'))
+        return h.hexdigest()
+
+    def _write_cache(self, cache_path, ast):
+        """原子写缓存：临时文件 + rename（避免并发/中断产生半文件）。"""
+        tmp = None
+        try:
+            os.makedirs(os.path.dirname(cache_path), exist_ok=True)
+            fd, tmp = tempfile.mkstemp(dir=os.path.dirname(cache_path),
+                                       suffix='.tmp')
+            with os.fdopen(fd, 'wb') as f:
+                pickle.dump(ast, f, protocol=pickle.HIGHEST_PROTOCOL)
+            os.replace(tmp, cache_path)
+        except Exception:
+            # 缓存写入失败不影响主流程（仅失去缓存）
+            if tmp is not None:
+                try:
+                    os.unlink(tmp)
+                except Exception:
+                    pass
+
     def load(self):
         """解析全部文件 → FileAST[]（逐文件 cpp 预处理 + parser）。
 
+        QOL-4：多线程并行解析（线程池，结果保序）；AST 缓存持久化
+        （文件 hash 命中直接反序列化，跳过 gcc+解析）。
         lazy 模式下同时建立零检查符号索引（只扫名字，不解析类型），
         并把 strict/entry 配置传给索引（激活时的冲突检测用）。
         """
-        for f in self.files:
-            ast = parse_file(f, use_cpp=True, cpp_path=self.cpp_path,
-                             cpp_args=self.cpp_args, parser=self.parser,
-                             encoding=self.encoding)
-            self.asts.append(ast)
+        if self.parallel and len(self.files) > 1:
+            workers = min(os.cpu_count() or 1, len(self.files))
+            with ThreadPoolExecutor(max_workers=workers) as pool:
+                self.asts = list(pool.map(self._parse_one, self.files))
+        else:
+            self.asts = [self._parse_one(f) for f in self.files]
         if self.lazy:
             g_source_index.build(self.asts, self.files)
             g_source_index.strict = self.strict
