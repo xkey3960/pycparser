@@ -22,3 +22,4 @@ ast.pickle
 .vscode/*
 **/a.out
 gnu_linux_headers/**
+**/*.pkl
