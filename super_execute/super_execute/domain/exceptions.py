@@ -59,3 +59,39 @@ class LinkError(InterpreterError):
 
 class MemoryError_(InterpreterError):
     """内存/堆错误：越界、非法地址、堆空间不足等。"""
+
+
+# ==================== 新领域（super_execute）====================
+#
+# 上面的 InterpreterError 体系继承 AssertionError，是旧 execute.py 的妥协
+# （QOL-1 为了不破坏既有测试，见其 docstring）。新实现没有这个包袱，因此
+# 另起一棵树：DomainError 直接继承 Exception，不再假装成断言失败。
+# 旧体系保留不动，等 strangler 迁移完成后再统一（D7）。
+
+
+class DomainError(Exception):
+    """新领域（super_execute）的错误基类。"""
+
+
+class InvalidSymbolError(DomainError, ValueError):
+    """符号构造参数非法：空名字、地址落在错误的区、字段组合不合法等。"""
+
+
+class InvalidScopeError(DomainError, ValueError):
+    """作用域构造或状态转移非法：父子关系不成立、id 越界、链接属性放错了层等。"""
+
+
+class DuplicateSymbolError(DomainError):
+    """同一命名空间的同一层重复声明了同一个名字。"""
+
+
+class UndefinedSymbolError(DomainError):
+    """沿作用域链找不到该名字。"""
+
+
+class ScopeExhaustedError(DomainError):
+    """8 位作用域 id 空间用尽（D3 的直接后果）。"""
+
+
+class AddressError(DomainError, ValueError):
+    """地址编码/解码/算术越界。"""

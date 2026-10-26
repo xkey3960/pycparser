@@ -10,5 +10,5 @@ int main(void) {
     } else {
         r = 2;
     }
-    return r;              /* longjmp å r=2 */
+    return r;              /* longjmp ºó r=2 */
 }

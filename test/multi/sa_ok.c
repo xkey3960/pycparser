@@ -1,4 +1,4 @@
 
-_Static_assert(sizeof(int) == 4, "int å¿…é¡» 4 å­—èŠ‚");
-_Static_assert(1 + 1 == 2, "ç®—æœ¯æŠ˜å ");
+_Static_assert(sizeof(int) == 4, "int ±ØĞë 4 ×Ö½Ú");
+_Static_assert(1 + 1 == 2, "ËãÊõÕÛµş");
 int main(void) { return 7; }

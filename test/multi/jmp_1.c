@@ -11,5 +11,5 @@ int main(void) {
     } else {
         got = 1;
     }
-    return got;            /* è·¨ 3 å±‚è·³å›ž -> 1 */
+    return got;            /* ¿ç 3 ²ãÌø»Ø -> 1 */
 }

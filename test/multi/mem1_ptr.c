@@ -1,35 +1,35 @@
 
 struct AAA { int x; int y; };
 int main(void) {
-    /* â‘  æ ‡é‡å†™å›ï¼ˆä¹‹å‰åšä¸åˆ°ï¼‰ */
+    /* ¢Ù ±êÁ¿Ğ´»Ø£¨Ö®Ç°×ö²»µ½£© */
     int x = 0;
     int *p = &x;
     *p = 5;
     int a = x;                    /* 5 */
-    /* â‘¡ æŒ‡é’ˆç®—æœ¯æŒ‰å…ƒç´ å¤§å° + p[i] + å†™ */
+    /* ¢Ú Ö¸ÕëËãÊõ°´ÔªËØ´óĞ¡ + p[i] + Ğ´ */
     int arr[3];
     arr[0] = 10; arr[1] = 20; arr[2] = 30;
     int *q = &arr[0];
-    int *r = q + 1;               /* int* â†’ åç§» 4 å­—èŠ‚ */
+    int *r = q + 1;               /* int* ¡ú Æ«ÒÆ 4 ×Ö½Ú */
     int b = *r;                   /* 20 */
     int c = q[2];                 /* 30 */
     *(q + 1) = 99;                /* arr[1] = 99 */
-    /* â‘¢ p++ æ­¥é•¿ + æŒ‡é’ˆæ¯”è¾ƒ */
+    /* ¢Û p++ ²½³¤ + Ö¸Õë±È½Ï */
     int *s = &arr[0];
     int eq = (s == &arr[0]);      /* 1 */
     int ne = (s == &arr[1]);      /* 0 */
     s++;
-    int d = *s;                   /* 99ï¼ˆarr[1] è¢«å†™ï¼‰ */
-    /* â‘£ -> å†™ struct æˆå‘˜ï¼ˆç» Addressï¼‰ */
+    int d = *s;                   /* 99£¨arr[1] ±»Ğ´£© */
+    /* ¢Ü -> Ğ´ struct ³ÉÔ±£¨¾­ Address£© */
     struct AAA o; o.x = 1; o.y = 2;
     struct AAA *po = &o;
     po->x = 100;
     int e = o.x;                  /* 100 */
-    /* â‘¤ &(p->member) æˆå‘˜åœ°å€ï¼ˆprintf_pointer åœºæ™¯ï¼š&pc->stAAAï¼‰ */
+    /* ¢İ &(p->member) ³ÉÔ±µØÖ·£¨printf_pointer ³¡¾°£º&pc->stAAA£© */
     struct AAA inner; inner.x = 6;
     struct AAA *pin = &inner;
     struct AAA *alias2 = &inner;
-    alias2 = pin;                 /* æŒ‡é’ˆå¤åˆ¶ */
+    alias2 = pin;                 /* Ö¸Õë¸´ÖÆ */
     int f = alias2->x;            /* 6 */
     return a + b + c + arr[1] + eq + (1 - ne) + d + e + f;   /* 355 + 6 = 361 */
 }

@@ -7,5 +7,5 @@ int main(void) {
         longjmp(env, 99);
         return 0;
     }
-    return v;              /* setjmp äºŒæ¬¡è¿”å›ž 99 */
+    return v;              /* setjmp ¶þ´Î·µ»Ø 99 */
 }

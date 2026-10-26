@@ -5,7 +5,7 @@ int apply(int (*fp)(int), int x) { return fp(x); }
 int main(void) {
     int (*fp)(int);
     fp = inc;
-    int a = fp(41);              /* 42ï¼ˆç»å˜é‡è°ƒç”¨ï¼‰ */
+    int a = fp(41);              /* 42£¨¾­±äÁ¿µ÷ÓÃ£© */
     fp = dbl;
     int b = fp(21);              /* 42 */
     fp = &inc;

@@ -26,7 +26,7 @@ int outer(int n, ...)
     va_list ap;
     va_start(ap, n);
     int a = va_arg(ap, int);
-    int b = inner(1, 100);        /* åµŒå¥—è°ƒç”¨ï¼šä¸åº”ç ´åå¤–å±‚ va */
+    int b = inner(1, 100);        /* Ç¶Ì×µ÷ÓÃ£º²»Ó¦ÆÆ»µÍâ²ã va */
     int c = va_arg(ap, int);
     va_end(ap);
     return a + b + c;

@@ -1,16 +1,16 @@
 
 double half(double x) { return x / 2; }
-int trunc_int(void) { return 3.7; }          /* è¿”å›è½¬æ¢ â†’ 3 */
+int trunc_int(void) { return 3.7; }          /* ·µ»Ø×ª»» ¡ú 3 */
 int main(void) {
     char c = 5;
     short s = 3;
-    int a = sizeof(c + 1);                    /* æ•´æ•°æå‡ charâ†’int â†’ 4 */
-    int b = sizeof(s + s);                    /* æå‡ shortâ†’int â†’ 4 */
-    double d = 1 + 2.5;                       /* int+double â†’ double 3.5 */
-    int x = 3.7;                              /* èµ‹å€¼è½¬æ¢ â†’ 3 */
-    int h = (int)(half(5) * 4);               /* å‚æ•° intâ†’doubleï¼š5.0/2=2.5 â†’ 10 */
-    int t = trunc_int();                      /* è¿”å›è½¬æ¢ â†’ 3 */
+    int a = sizeof(c + 1);                    /* ÕûÊıÌáÉı char¡úint ¡ú 4 */
+    int b = sizeof(s + s);                    /* ÌáÉı short¡úint ¡ú 4 */
+    double d = 1 + 2.5;                       /* int+double ¡ú double 3.5 */
+    int x = 3.7;                              /* ¸³Öµ×ª»» ¡ú 3 */
+    int h = (int)(half(5) * 4);               /* ²ÎÊı int¡údouble£º5.0/2=2.5 ¡ú 10 */
+    int t = trunc_int();                      /* ·µ»Ø×ª»» ¡ú 3 */
     int y = 5;
-    y += 2.7;                                 /* å¤åˆèµ‹å€¼ â†’ 7 */
+    y += 2.7;                                 /* ¸´ºÏ¸³Öµ ¡ú 7 */
     return (a + b) + (int)(d * 2) + x + h + t + y;   /* 8 + 7 + 3 + 10 + 3 + 7 = 38 */
 }

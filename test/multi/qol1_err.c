@@ -1,10 +1,10 @@
 
 int inner(int a) {
-    return a + zz;               /* ç¬¬ 3 è¡Œï¼šæœªå®šä¹‰ zz */
+    return a + zz;               /* µÚ 3 ÐÐ£ºÎ´¶¨Òå zz */
 }
 int helper(int x) {
-    return inner(x) + 1;         /* ç¬¬ 6 è¡Œè°ƒç”¨ */
+    return inner(x) + 1;         /* µÚ 6 ÐÐµ÷ÓÃ */
 }
 int main(void) {
-    return helper(5);            /* ç¬¬ 9 è¡Œè°ƒç”¨ */
+    return helper(5);            /* µÚ 9 ÐÐµ÷ÓÃ */
 }

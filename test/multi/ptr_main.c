@@ -5,7 +5,7 @@ int main(void) {
     a.x = 5;
     a.y = 37;
     struct AAA *pa = &a;
-    pa->x = 99;              /* ÁªèÊåáÈíàÂÜôÂõû aÔºàStructValue ÂºïÁî®ÂÖ±‰∫´Ôºâ */
-    int via_ptr = pa->y;     /* ÁªèÊåáÈíàËØª */
+    pa->x = 99;              /* æ≠÷∏’Î–¥ªÿ a£®StructValue “˝”√π≤œÌ£© */
+    int via_ptr = pa->y;     /* æ≠÷∏’Î∂¡ */
     return a.x + via_ptr;    /* 99 + 37 = 136 */
 }

@@ -12,6 +12,6 @@ int main(void) {
     list.count = 7;
     struct Node *np = &list.node;
     struct List *lp = container_of(np, struct List, node);
-    /* é€šè¿‡ container_of ä»Ž Node æŒ‡é’ˆæ‰¾å›žå®¿ä¸» Listï¼šè¯» value ä¸Ž count */
+    /* Í¨¹ý container_of ´Ó Node Ö¸ÕëÕÒ»ØËÞÖ÷ List£º¶Á value Óë count */
     return lp->count * 10 + lp->node.value / 42;   /* 7*10 + 1 = 71 */
 }
