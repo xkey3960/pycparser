@@ -101,10 +101,12 @@ class TestGoldenLayouts:
 
 
 class TestEdgeCases:
-    def test_empty_struct(self):
-        """C 不允许空结构体（GCC 扩展给 0）——这里按 0/1 处理，不算错。"""
-        t = struct("Empty")
-        assert (t.sizeof(), t.alignof()) == (0, 1)
+    def test_empty_struct_rejected(self):
+        """C99 6.7.2.1p1 要求至少一个具名成员；空结构体 sizeof==0 会让成员地址重合。"""
+        with pytest.raises(InvalidTypeError, match="至少需要一个具名成员"):
+            struct("Empty")
+        with pytest.raises(InvalidTypeError, match="至少需要一个具名成员"):
+            union("EmptyUnion")
 
     def test_single_char_struct(self):
         t = struct("One", m("a", CHAR))

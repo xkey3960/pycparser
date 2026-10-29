@@ -7,6 +7,7 @@ from super_execute.domain.entities.c_types import (
     BasicType,
     EnumType,
     FunctionType,
+    Member,
     PointerType,
     StructType,
     UnionType,
@@ -97,7 +98,9 @@ class TestArrayType:
             a.sizeof()
 
     def test_zero_and_negative(self):
-        assert ArrayType(INT, 0).sizeof() == 0
+        """C99 没有零长数组（FAM 走 count=None），两者都必须报错。"""
+        with pytest.raises(InvalidTypeError, match="必须为正"):
+            ArrayType(INT, 0)
         with pytest.raises(InvalidTypeError):
             ArrayType(INT, -1)
 
@@ -165,8 +168,8 @@ class TestCompoundIdentity:
         """成员完全相同的两个 struct 也是**不同**类型——C 语义如此。"""
         a = StructType("P")
         b = StructType("P")
-        a.define([])
-        b.define([])
+        a.define([Member("x", INT)])
+        b.define([Member("x", INT)])
         assert a != b
 
     def test_tag_is_not_a_unique_name(self):

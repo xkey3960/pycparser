@@ -43,13 +43,15 @@ BASIC_TYPES: dict[str, BasicType] = {
     )
 }
 
-#: 参与类型说明符组合的关键字（长 double 等组合不在本轮范围内）。
+#: 参与类型说明符组合的关键字（long double 等组合不在本轮范围内）。
+#: 注意 ``bool`` 不在这里：C 里它来自 <stdbool.h> 的宏，不是关键字。真正走预处理器
+#: 之后 ``bool`` 已经被展开成 ``_Bool``，剩下的只可能是用户自己 typedef 的名字。
 SPECIFIER_KEYWORDS = frozenset({
     "void", "char", "short", "int", "long",
-    "float", "double", "signed", "unsigned", "_bool", "bool",
+    "float", "double", "signed", "unsigned", "_bool",
 })
 
-_BASES = ("void", "char", "float", "double", "_bool", "bool", "int")
+_BASES = ("void", "char", "float", "double", "_bool", "int")
 
 
 def basic(name: str) -> BasicType | None:
@@ -82,8 +84,14 @@ def canonical_type_name(names: Sequence[str]) -> str | None:
         return None
 
     unsigned = "unsigned" in words
+    signed_kw = "signed" in words
     short = "short" in words
     long_count = words.count("long")
+    if unsigned and signed_kw:
+        return None                       # "signed unsigned int" 非法
+    if (words.count("unsigned") > 1 or words.count("signed") > 1
+            or words.count("short") > 1):
+        return None                       # 说明符重复，如 "unsigned unsigned"
     bases_present = {word for word in words if word in _BASES}
     if len(bases_present) > 1:
         return None                       # 例如 "char int" 这种非法组合
@@ -101,7 +109,7 @@ def canonical_type_name(names: Sequence[str]) -> str | None:
     if base == "float":
         return None if (unsigned or short or long_count) else "float"
 
-    if base in ("_bool", "bool"):
+    if base == "_bool":
         return None if (unsigned or short or long_count) else "_Bool"
 
     if base == "double":

@@ -77,6 +77,9 @@ class ScopeTypeResolver:
     def _resolve_tag(self, head: str, words: list[str]) -> CType:
         if len(words) < 2:
             raise InvalidTypeError(f"'{head}' 缺少标签名")
+        if len(words) > 2:
+            raise InvalidTypeError(
+                f"'{head} {words[1]}' 后面有多余的词: {' '.join(words[2:])}")
         tag_name = words[1]
         symbol = self._scope.find_tag(tag_name)
         if symbol is None:

@@ -111,6 +111,12 @@ class Address:
     offset: int = 0
 
     def __post_init__(self) -> None:
+        # bool 是 int 的子类，但 True 会被当成 1 号内存区（HEAP）——这不是调用方
+        # 想要的，所以在任何运算之前就挡掉。
+        if isinstance(self.region, bool):
+            raise AddressError(f"地址区不能是 bool: {self.region!r}")
+        if isinstance(self.scope_id, bool) or isinstance(self.offset, bool):
+            raise AddressError("地址的 scope_id / offset 不能是 bool")
         # 允许传整数（如 Address(1, 0, 16)），统一收敛成 IntEnum。
         try:
             region = AddressRegion(self.region)
@@ -157,11 +163,17 @@ class Address:
 
     @classmethod
     def from_packed(cls, raw: int) -> Address:
-        """从 4 字节整数还原地址（与 :meth:`packed` 互逆）。"""
+        """从 4 字节整数还原地址（与 :meth:`packed` 互逆）。
+
+        注意这不是全域映射：region 字节为 0 且 scope_id 为 0 的值（``0x0001``
+        到 ``0xFFFF``）表示"0 号作用域 + 非零偏移"，而 0 号作用域是 NULL 专用，
+        这类值会抛 :class:`AddressError`。也就是说 ``from_packed`` 的合法定义域是
+        ``{0} ∪ [0x10000, 0xFFFFFFFF]``。
+        """
         if not isinstance(raw, int) or isinstance(raw, bool):
             raise AddressError(f"地址必须是整数，收到 {type(raw).__name__}")
-        if not 0 <= raw <= 0xFFFFFFFF:
-            raise AddressError(f"地址超出 4 字节范围: {raw}")
+        if not 0 <= raw < (1 << (8 * ADDRESS_SIZE)):
+            raise AddressError(f"地址超出 {ADDRESS_SIZE} 字节范围: {raw}")
         try:
             region = AddressRegion(raw >> _REGION_SHIFT)
         except ValueError as exc:

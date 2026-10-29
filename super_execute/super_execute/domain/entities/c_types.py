@@ -69,6 +69,15 @@ class CType(ABC):
         """类型是否已经完整（能求大小）。"""
         return True
 
+    @property
+    def has_flexible_array(self) -> bool:
+        """是否为"含弹性数组成员的结构体"。
+
+        这种类型不能作结构体成员、联合体成员或数组元素——它的 ``sizeof``
+        不包含弹性部分，拿去当成员会静默少分配（C99 6.7.2.1p3）。
+        """
+        return False
+
     def describe(self) -> str:
         return self.name
 
@@ -142,18 +151,26 @@ class BasicType(CType):
 
 
 class PointerType(CType):
-    """指针：大小固定等于地址宽度。"""
+    """指针：大小固定等于地址宽度。
 
-    __slots__ = ("target",)
+    目标只读：布局一旦算好就冻住了，类型的可变性会让 ``sizeof``/``offsetof``
+    与布局脱节（评审 P0）。需要换目标就造一个新的 :class:`PointerType`。
+    """
+
+    __slots__ = ("_target",)
 
     def __init__(self, target: CType) -> None:
         if not isinstance(target, CType):
             raise InvalidTypeError(f"指针目标必须是 CType，收到 {type(target).__name__}")
-        self.target = target
+        self._target = target
+
+    @property
+    def target(self) -> CType:
+        return self._target
 
     @property
     def name(self) -> str:
-        return f"{self.target.name} *"
+        return f"{self._target.name} *"
 
     def sizeof(self) -> int:
         return POINTER_SIZE
@@ -174,37 +191,57 @@ class PointerType(CType):
 class ArrayType(CType):
     """数组。
 
-    ``count=None`` 表示不完整数组（``int a[];``），它有两种合法归宿：
-    补上长度，或者作为结构体的**最后一个**成员（弹性数组成员，C99）。
+    ``count=None`` 表示不完整数组（``int a[];``），它只有两种合法归宿：
+    用 :meth:`complete` 补上长度得到**新实例**，或者作为结构体的最后一个成员
+    （弹性数组成员，C99）。
+
+    长度只读是刻意的（评审 P0）：结构体布局在 ``define()`` 时就冻结了，
+    如果外层还能事后把 ``count`` 改大，``arr.sizeof()`` 与宿主结构体的
+    ``sizeof``/``offsetof`` 会静默不一致。
     """
 
-    __slots__ = ("element", "count")
+    __slots__ = ("_element", "_count")
 
     def __init__(self, element: CType, count: int | None = None) -> None:
         if not isinstance(element, CType):
             raise InvalidTypeError(f"数组元素必须是 CType，收到 {type(element).__name__}")
-        if count is not None and count < 0:
-            raise InvalidTypeError(f"数组长度不能为负: {count}")
-        self.element = element
-        self.count = count
+        if element.has_flexible_array:
+            raise InvalidTypeError("数组元素不能是含弹性数组成员的结构体")
+        if count is not None and count <= 0:
+            # C99 没有零长数组；FAM 走 count=None 这条路径
+            raise InvalidTypeError(f"数组长度必须为正: {count}")
+        self._element = element
+        self._count = count
+
+    @property
+    def element(self) -> CType:
+        return self._element
+
+    @property
+    def count(self) -> int | None:
+        return self._count
+
+    def complete(self, count: int) -> ArrayType:
+        """补上长度，返回**新实例**（本身保持不变）。"""
+        return ArrayType(self._element, count)
 
     @property
     def name(self) -> str:
-        size = "" if self.count is None else str(self.count)
-        return f"{self.element.name}[{size}]"
+        size = "" if self._count is None else str(self._count)
+        return f"{self._element.name}[{size}]"
 
     @property
     def is_complete(self) -> bool:
-        return self.count is not None
+        return self._count is not None
 
     def sizeof(self) -> int:
-        if self.count is None:
+        if self._count is None:
             raise IncompleteTypeError("不完整数组（缺长度）没有大小")
-        return self.element.sizeof() * self.count
+        return self._element.sizeof() * self._count
 
     def alignof(self) -> int:
         # C 规定：数组的对齐要求等于元素的对齐要求。
-        return self.element.alignof()
+        return self._element.alignof()
 
     def __eq__(self, other: object) -> bool:
         return (isinstance(other, ArrayType)
@@ -340,6 +377,8 @@ def align_up(value: int, alignment: int) -> int:
     """把 value 向上对齐到 alignment 的整数倍。"""
     if alignment <= 0:
         raise InvalidTypeError(f"对齐值必须为正: {alignment}")
+    if value < 0:
+        raise InvalidTypeError(f"待对齐的值不能为负: {value}")
     remainder = value % alignment
     return value if remainder == 0 else value + (alignment - remainder)
 
@@ -362,6 +401,9 @@ class _CompoundType(CType):
         if self._members is not None:
             raise InvalidTypeError(f"{self.name} 已经定义过了")
         members = tuple(members)
+        if not members:
+            raise InvalidTypeError(
+                f"{self.name} 至少需要一个具名成员（C99 6.7.2.1p1）")
         seen: set[str] = set()
         for member in members:
             if not isinstance(member, Member):
@@ -369,6 +411,10 @@ class _CompoundType(CType):
             if member.name in seen:
                 raise InvalidTypeError(f"{self.name} 里成员 '{member.name}' 重复")
             seen.add(member.name)
+            if member.ctype.has_flexible_array:
+                raise InvalidTypeError(
+                    f"{self.name} 的成员 '{member.name}' 是含弹性数组成员的结构体，"
+                    "不能作成员（它的大小不含弹性部分，会静默少分配）")
         size, align, offsets = self._layout(members)
         self._members = members
         self._offsets = offsets
@@ -429,6 +475,13 @@ class StructType(_CompoundType):
     def name(self) -> str:
         return f"struct {self.tag}" if self.tag else "struct <anonymous>"
 
+    @property
+    def has_flexible_array(self) -> bool:
+        """最后一个成员是长度未定的数组时，就是 C 的弹性数组成员结构体。"""
+        if self._members is None:
+            return False
+        return bool(self._members) and _is_flexible_array(self._members[-1].ctype)
+
     def _layout(self, members: tuple[Member, ...]) -> tuple[int, int, dict[str, int]]:
         offsets: dict[str, int] = {}
         cursor = 0
@@ -460,9 +513,11 @@ class UnionType(_CompoundType):
         align = 1
         size = 0
         for member in members:
-            align = max(align, member.ctype.alignof())
             if _is_flexible_array(member.ctype):
-                continue
+                raise InvalidTypeError(
+                    f"{self.name} 的成员 '{member.name}' 是弹性数组："
+                    "联合体不允许弹性数组成员（C99 6.7.2.1p1）")
+            align = max(align, member.ctype.alignof())
             size = max(size, member.ctype.sizeof())
         return align_up(size, align), align, offsets
 

@@ -68,7 +68,6 @@ class TestCanonicalization:
         (["char"], "char"),
         (["signed", "char"], "signed char"),
         (["unsigned", "char"], "unsigned char"),
-        (["bool"], "_Bool"),
         (["_Bool"], "_Bool"),
         (["float"], "float"),
         (["double"], "double"),
@@ -87,6 +86,10 @@ class TestCanonicalization:
         (["char", "int"]),           # 两个基础类型
         (["char", "short"]),
         (["int", "int"]),            # 重复
+        (["signed", "unsigned", "int"]),  # 互相矛盾
+        (["unsigned", "unsigned"]),  # 说明符重复
+        (["short", "short"]),
+        (["bool"]),                  # 不是 C 关键字（stdbool.h 的宏，预处理后是 _Bool）
         (["MyType"]),                # 不是说明符关键字
     ])
     def test_invalid_combinations_return_none(self, specifiers):

@@ -1,6 +1,6 @@
 # super_execute · Scope 领域层（entities + value objects + services）
 
-- STATUS: OPEN
+- STATUS: CLOSED
 - PRIORITY: 100
 - TAGS: super_execute, scope, domain
 
