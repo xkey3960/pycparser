@@ -168,8 +168,8 @@ class TestDefensiveCopies:
 
     def test_enum_constants_returns_copy(self):
         e = EnumType("Color", {"RED": 0})
-        e.constants["BLUE"] = 2                     # 改副本
-        assert e.constants == {"RED": 0}            # 内部不受影响
+        e.constants["BLUE"] = 2  # 改副本
+        assert e.constants == {"RED": 0}  # 内部不受影响
 
     def test_basic_type_equality_ignores_size(self):
         """判等按类型名，不看 size/align——两个 BasicType("int", 8, 8) 仍是 int。"""

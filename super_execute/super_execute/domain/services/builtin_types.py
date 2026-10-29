@@ -12,7 +12,7 @@ docstring）。
 
 from __future__ import annotations
 
-from typing import Iterable, Sequence
+from typing import Sequence
 
 from super_execute.domain.entities.c_types import BasicType
 from super_execute.domain.exceptions import UndefinedTypeError
@@ -35,21 +35,43 @@ BOOL = BasicType("_Bool", 1, 1, signed=False)
 
 #: 规范化名 → 单例。
 BASIC_TYPES: dict[str, BasicType] = {
-    t.name: t for t in (
-        VOID, CHAR, SIGNED_CHAR, UNSIGNED_CHAR,
-        SHORT, UNSIGNED_SHORT, INT, UNSIGNED_INT,
-        LONG, UNSIGNED_LONG, LONG_LONG, UNSIGNED_LONG_LONG,
-        FLOAT, DOUBLE, BOOL,
+    t.name: t
+    for t in (
+        VOID,
+        CHAR,
+        SIGNED_CHAR,
+        UNSIGNED_CHAR,
+        SHORT,
+        UNSIGNED_SHORT,
+        INT,
+        UNSIGNED_INT,
+        LONG,
+        UNSIGNED_LONG,
+        LONG_LONG,
+        UNSIGNED_LONG_LONG,
+        FLOAT,
+        DOUBLE,
+        BOOL,
     )
 }
 
 #: 参与类型说明符组合的关键字（long double 等组合不在本轮范围内）。
 #: 注意 ``bool`` 不在这里：C 里它来自 <stdbool.h> 的宏，不是关键字。真正走预处理器
 #: 之后 ``bool`` 已经被展开成 ``_Bool``，剩下的只可能是用户自己 typedef 的名字。
-SPECIFIER_KEYWORDS = frozenset({
-    "void", "char", "short", "int", "long",
-    "float", "double", "signed", "unsigned", "_bool",
-})
+SPECIFIER_KEYWORDS = frozenset(
+    {
+        "void",
+        "char",
+        "short",
+        "int",
+        "long",
+        "float",
+        "double",
+        "signed",
+        "unsigned",
+        "_bool",
+    }
+)
 
 _BASES = ("void", "char", "float", "double", "_bool", "int")
 
@@ -88,15 +110,18 @@ def canonical_type_name(names: Sequence[str]) -> str | None:
     short = "short" in words
     long_count = words.count("long")
     if unsigned and signed_kw:
-        return None                       # "signed unsigned int" 非法
-    if (words.count("unsigned") > 1 or words.count("signed") > 1
-            or words.count("short") > 1):
-        return None                       # 说明符重复，如 "unsigned unsigned"
+        return None  # "signed unsigned int" 非法
+    if (
+        words.count("unsigned") > 1
+        or words.count("signed") > 1
+        or words.count("short") > 1
+    ):
+        return None  # 说明符重复，如 "unsigned unsigned"
     bases_present = {word for word in words if word in _BASES}
     if len(bases_present) > 1:
-        return None                       # 例如 "char int" 这种非法组合
+        return None  # 例如 "char int" 这种非法组合
     if any(words.count(word) > 1 for word in bases_present):
-        return None                       # 例如 "int int"
+        return None  # 例如 "int int"
     base = next(iter(bases_present), None)
 
     if base is None:

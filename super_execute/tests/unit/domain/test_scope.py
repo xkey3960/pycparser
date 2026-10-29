@@ -70,7 +70,7 @@ class TestStructure:
 
     def test_block_scope_nests_freely_and_can_be_root(self, function_scope):
         assert Scope(3, ScopeKind.BLOCK, function_scope).parent is function_scope
-        assert Scope(9, ScopeKind.BLOCK).is_root          # 单测/语句表达式便利
+        assert Scope(9, ScopeKind.BLOCK).is_root  # 单测/语句表达式便利
 
     @pytest.mark.parametrize("scope_id", [0, -1, 256, 1000])
     def test_scope_id_range(self, scope_id):
@@ -116,7 +116,7 @@ class TestDeclaration:
 
     def test_same_name_in_different_layers_is_shadowing(self, file_scope, block_scope):
         file_scope.declare(_var("x", 1, 0))
-        block_scope.declare(_var("x", 3, 0))     # 不报错：不同层
+        block_scope.declare(_var("x", 3, 0))  # 不报错：不同层
         assert block_scope.find("x").address.scope_id == 3
 
     @pytest.mark.parametrize("linkage", [Linkage.INTERNAL, Linkage.EXTERNAL])
@@ -142,15 +142,15 @@ class TestLookup:
     def test_inner_shadows_outer(self, file_scope, block_scope):
         file_scope.declare(_var("x", 1, 0))
         block_scope.declare(_var("x", 3, 0))
-        assert block_scope.find("x").address.scope_id == 3     # 内层优先
-        assert file_scope.find("x").address.scope_id == 1      # 外层不变
+        assert block_scope.find("x").address.scope_id == 3  # 内层优先
+        assert file_scope.find("x").address.scope_id == 1  # 外层不变
 
     def test_require_raises_with_search_path(self, block_scope):
         with pytest.raises(UndefinedSymbolError) as info:
             block_scope.require("nope")
         message = str(info.value)
         assert "nope" in message
-        assert "block#3" in message and "file#1" in message    # 错误消息带查找路径
+        assert "block#3" in message and "file#1" in message  # 错误消息带查找路径
 
     def test_tags_are_searched_separately(self, file_scope, block_scope):
         """标签与普通标识符是两个命名空间：查 find('P') 查不到标签 P。"""
@@ -193,8 +193,8 @@ class TestRegressionAnchors:
         block = Scope(2, ScopeKind.BLOCK, file_scope)
         block.declare(TypedefSymbol("T", ctype=DOUBLE))
 
-        assert block.find("T").ctype is DOUBLE        # 块内遮蔽
-        assert file_scope.find("T").ctype is INT      # 出块后不泄漏
+        assert block.find("T").ctype is DOUBLE  # 块内遮蔽
+        assert file_scope.find("T").ctype is INT  # 出块后不泄漏
 
     def test_contract_2_sibling_functions_have_independent_tags(self, file_scope):
         """实证 2：两个函数各自定义 `struct P` 必须互不干扰。
@@ -214,15 +214,19 @@ class TestRegressionAnchors:
         assert f1.find_tag("P").ctype is p1
         assert f2.find_tag("P").ctype is p2
         assert f1.find_tag("P").ctype.sizeof() + f2.find_tag("P").ctype.sizeof() == 16
-        assert file_scope.find_tag("P") is None       # 函数内标签不上升
+        assert file_scope.find_tag("P") is None  # 函数内标签不上升
 
-    def test_contract_3_function_local_tag_invisible_outside(self, file_scope, function_scope):
+    def test_contract_3_function_local_tag_invisible_outside(
+        self, file_scope, function_scope
+    ):
         """实证 3：函数内定义的标签不该出现在文件作用域。"""
         function_scope.declare(TagSymbol("Inner", TagKind.STRUCT))
         assert function_scope.find_tag("Inner") is not None
         assert file_scope.find_tag("Inner") is None
 
-    def test_contract_4_local_variable_invisible_after_block(self, file_scope, block_scope):
+    def test_contract_4_local_variable_invisible_after_block(
+        self, file_scope, block_scope
+    ):
         """实证 4：块内变量出块即不可见（旧实现这条本来是对的，作为回归保护）。"""
         block_scope.declare(_var("inner", 3, 0))
         assert block_scope.find("inner") is not None
@@ -234,7 +238,9 @@ class TestRegressionAnchors:
 
 
 class TestChain:
-    def test_chain_order_is_inner_to_root(self, file_scope, function_scope, block_scope):
+    def test_chain_order_is_inner_to_root(
+        self, file_scope, function_scope, block_scope
+    ):
         assert block_scope.chain() == (block_scope, function_scope, file_scope)
 
     def test_depth(self, file_scope, function_scope, block_scope):

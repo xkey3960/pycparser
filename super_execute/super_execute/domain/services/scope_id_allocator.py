@@ -41,7 +41,8 @@ class ScopeIdAllocator:
         else:
             raise ScopeExhaustedError(
                 f"作用域 id 已用尽（{SCOPE_ID_MIN}..{SCOPE_ID_MAX}，"
-                f"当前活跃 {len(self._active)} 个）")
+                f"当前活跃 {len(self._active)} 个）"
+            )
         self._active.add(scope_id)
         return scope_id
 
@@ -51,7 +52,8 @@ class ScopeIdAllocator:
         """归还一个 id，进入可复用池。"""
         if scope_id not in self._active:
             raise InvalidScopeError(
-                f"作用域 id {scope_id} 未被分配或已归还，不能重复归还")
+                f"作用域 id {scope_id} 未被分配或已归还，不能重复归还"
+            )
         self._active.discard(scope_id)
         self._retired.add(scope_id)
 
@@ -67,7 +69,7 @@ class ScopeIdAllocator:
         try:
             return Scope(scope_id, kind, parent)
         except Exception:
-            self.release(scope_id)          # 构造失败（如父子关系非法）要退回 id
+            self.release(scope_id)  # 构造失败（如父子关系非法）要退回 id
             raise
 
     def close(self, scope: Scope) -> None:
@@ -93,5 +95,7 @@ class ScopeIdAllocator:
         return len(self._active)
 
     def __repr__(self) -> str:
-        return (f"ScopeIdAllocator(active={len(self._active)}, "
-                f"retired={len(self._retired)}, next={self._next})")
+        return (
+            f"ScopeIdAllocator(active={len(self._active)}, "
+            f"retired={len(self._retired)}, next={self._next})"
+        )

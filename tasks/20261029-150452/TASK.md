@@ -1,10 +1,14 @@
 # super_execute · 类型系统（CType + 结构体布局 + 类型名解析）
 
-- STATUS: OPEN
+- STATUS: CLOSED
 - PRIORITY: 100
 - TAGS: super_execute, types, layout
 
 父任务：Task(20261012-144135) 重构execute.py；前置：Task(20261017-122900) Scope 领域层
+
+> **review 后续**：本任务交付后经两轮独立评审，发现的 1 个 P0（布局冻结 vs 类型
+> 可变）与 7 个 P1（非法 C 结构静默通过等）已在 Task(20261029-153619) 修完，
+> 测试从 249 增至 295，变异测试 13/13 全杀。
 
 ## 本步范围
 

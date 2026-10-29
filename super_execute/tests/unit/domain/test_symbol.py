@@ -63,11 +63,14 @@ class TestStorage:
         assert func.has_storage is True
         assert func.address == _func_addr()
 
-    @pytest.mark.parametrize("symbol", [
-        TypedefSymbol("T", ctype=None),
-        ConstantSymbol("N", 3),
-        TagSymbol("S", TagKind.STRUCT),
-    ])
+    @pytest.mark.parametrize(
+        "symbol",
+        [
+            TypedefSymbol("T", ctype=None),
+            ConstantSymbol("N", 3),
+            TagSymbol("S", TagKind.STRUCT),
+        ],
+    )
     def test_type_bindings_have_no_storage(self, symbol):
         """`&T`（typedef）和 `&N`（枚举常量）在 C 里都是非法的。"""
         assert symbol.has_storage is False

@@ -34,18 +34,18 @@ class TestReleaseAndReuse:
         """D3：复用退役 id，否则递归一深 8 位空间就耗尽。"""
         first, second = allocator.acquire(), allocator.acquire()
         allocator.release(first)
-        assert allocator.acquire() == first          # 最小空闲优先
+        assert allocator.acquire() == first  # 最小空闲优先
         assert second == 2
 
     def test_reuse_picks_smallest(self, allocator):
-        ids = [allocator.acquire() for _ in range(3)]      # 1,2,3
+        ids = [allocator.acquire() for _ in range(3)]  # 1,2,3
         allocator.release(ids[2])
         allocator.release(ids[0])
-        assert allocator.acquire() == ids[0]               # 复用 1，而不是 3
+        assert allocator.acquire() == ids[0]  # 复用 1，而不是 3
 
     def test_release_requires_active_id(self, allocator):
         with pytest.raises(InvalidScopeError, match="不能重复归还"):
-            allocator.release(1)                            # 从没发过
+            allocator.release(1)  # 从没发过
 
     def test_double_release_rejected(self, allocator):
         scope_id = allocator.acquire()
@@ -67,7 +67,7 @@ class TestReleaseAndReuse:
         assert isinstance(retired_view, frozenset)
 
         allocator.release(first)
-        allocator.acquire()                      # 内部状态变了
+        allocator.acquire()  # 内部状态变了
         assert active_view == frozenset({first})  # 之前拿到的视图不受影响
         assert retired_view == frozenset()
 
@@ -102,7 +102,7 @@ class TestOpenClose:
         root = allocator.open(ScopeKind.FILE)
         fn = allocator.open(ScopeKind.FUNCTION, root)
         with pytest.raises(InvalidScopeError):
-            allocator.open(ScopeKind.FUNCTION, fn)     # 函数作用域不能挂在函数下
+            allocator.open(ScopeKind.FUNCTION, fn)  # 函数作用域不能挂在函数下
         assert len(allocator) == 2
         assert allocator.idle == SCOPE_ID_MAX - SCOPE_ID_MIN + 1 - 2
 

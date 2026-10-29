@@ -55,10 +55,13 @@ class Scope:
         parent: Scope | None = None,
     ) -> None:
         if not isinstance(scope_id, int) or isinstance(scope_id, bool):
-            raise InvalidScopeError(f"scope_id 必须是整数，收到 {type(scope_id).__name__}")
+            raise InvalidScopeError(
+                f"scope_id 必须是整数，收到 {type(scope_id).__name__}"
+            )
         if not SCOPE_ID_MIN <= scope_id <= SCOPE_ID_MAX:
             raise InvalidScopeError(
-                f"scope_id 越界: {scope_id}（合法范围 {SCOPE_ID_MIN}..{SCOPE_ID_MAX}）")
+                f"scope_id 越界: {scope_id}（合法范围 {SCOPE_ID_MIN}..{SCOPE_ID_MAX}）"
+            )
         try:
             kind = ScopeKind(kind)
         except ValueError as exc:
@@ -135,13 +138,15 @@ class Scope:
             if self._kind is not ScopeKind.FILE:
                 raise InvalidScopeError(
                     f"{symbol.linkage.value} 链接属性只能出现在文件作用域，"
-                    f"当前是 {self._kind.value}#{self._scope_id}")
+                    f"当前是 {self._kind.value}#{self._scope_id}"
+                )
         if isinstance(symbol, VariableSymbol) and symbol.address is not None:
             # 地址里的 scope_id 就是"这块存储属于哪个作用域"，对不上就是错的绑定。
             if symbol.address.scope_id != self._scope_id:
                 raise InvalidScopeError(
                     f"变量 '{symbol.name}' 的地址属于作用域 #{symbol.address.scope_id}，"
-                    f"不能声明进 #{self._scope_id}")
+                    f"不能声明进 #{self._scope_id}"
+                )
 
     def declare_all(self, *symbols: Symbol) -> None:
         for symbol in symbols:
@@ -166,7 +171,8 @@ class Scope:
         symbol = self.find(name)
         if symbol is None:
             raise UndefinedSymbolError(
-                f"未定义的标识符 '{name}'（查找路径 {self.describe()}）")
+                f"未定义的标识符 '{name}'（查找路径 {self.describe()}）"
+            )
         return symbol
 
     def find_tag(self, name: str) -> Symbol | None:
@@ -181,7 +187,8 @@ class Scope:
         symbol = self.find_tag(name)
         if symbol is None:
             raise UndefinedSymbolError(
-                f"未定义的标签 '{name}'（查找路径 {self.describe()}）")
+                f"未定义的标签 '{name}'（查找路径 {self.describe()}）"
+            )
         return symbol
 
     # ---- 容器协议 ----
@@ -194,8 +201,10 @@ class Scope:
         return " -> ".join(f"{s._kind.value}#{s._scope_id}" for s in self.chain())
 
     def __repr__(self) -> str:
-        return (f"Scope({self._kind.value}#{self._scope_id}, "
-                f"ordinary={len(self._ordinary)}, tags={len(self._tags)})")
+        return (
+            f"Scope({self._kind.value}#{self._scope_id}, "
+            f"ordinary={len(self._ordinary)}, tags={len(self._tags)})"
+        )
 
 
 def _validate_parent(kind: ScopeKind, parent: Scope | None) -> None:
@@ -214,7 +223,8 @@ def _validate_parent(kind: ScopeKind, parent: Scope | None) -> None:
         if parent.kind is not ScopeKind.FILE:
             raise InvalidScopeError(
                 f"函数作用域只能挂在文件作用域下，收到 {parent.kind.value}"
-                f"#{parent.scope_id}")
+                f"#{parent.scope_id}"
+            )
         return
 
     # BLOCK / PROTOTYPE：允许挂任意层；也允许作根（便于单元测试与语句表达式）。

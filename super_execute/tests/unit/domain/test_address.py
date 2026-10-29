@@ -27,20 +27,23 @@ class TestEncoding:
 
     def test_heap_address_uses_wide_offset(self):
         """D1：heap 区把次高字节并入偏移，因此能寻址 16 MiB 而不只是 64 KiB。"""
-        addr = Address(AddressRegion.HEAP, 0, 0xFFFFF)   # 1 MiB - 1，旧实现的堆容量
+        addr = Address(AddressRegion.HEAP, 0, 0xFFFFF)  # 1 MiB - 1，旧实现的堆容量
         assert addr.packed == (1 << 24) | 0xFFFFF
 
     def test_function_region_is_wide_too(self):
         addr = Address(AddressRegion.FUNCTION, 0, 1234)
         assert addr.packed == (2 << 24) | 1234
 
-    @pytest.mark.parametrize("region,scope_id,offset", [
-        (AddressRegion.SCOPE, 1, 0),
-        (AddressRegion.SCOPE, 255, 0xFFFF),
-        (AddressRegion.HEAP, 0, 0),
-        (AddressRegion.HEAP, 0, 0xFFFFFF),
-        (AddressRegion.FUNCTION, 0, 0xFFFFFF),
-    ])
+    @pytest.mark.parametrize(
+        "region,scope_id,offset",
+        [
+            (AddressRegion.SCOPE, 1, 0),
+            (AddressRegion.SCOPE, 255, 0xFFFF),
+            (AddressRegion.HEAP, 0, 0),
+            (AddressRegion.HEAP, 0, 0xFFFFFF),
+            (AddressRegion.FUNCTION, 0, 0xFFFFFF),
+        ],
+    )
     def test_pack_unpack_roundtrip(self, region, scope_id, offset):
         addr = Address(region, scope_id, offset)
         assert Address.from_packed(addr.packed) == addr
@@ -84,7 +87,7 @@ class TestBounds:
     """越界必须在构造时就被挡住，而不是等到解引用。"""
 
     def test_scope_offset_limit(self):
-        Address(AddressRegion.SCOPE, 1, 0xFFFF)          # 边界允许
+        Address(AddressRegion.SCOPE, 1, 0xFFFF)  # 边界允许
         with pytest.raises(AddressError, match="偏移越界"):
             Address(AddressRegion.SCOPE, 1, 0x10000)
 
@@ -139,7 +142,7 @@ class TestArithmetic:
     def test_advanced_beyond_limit_raises(self):
         base = Address(AddressRegion.SCOPE, 2, 0xFFFE)
         with pytest.raises(AddressError):
-            base.advanced(4)          # 越过 64 KiB 边界
+            base.advanced(4)  # 越过 64 KiB 边界
 
     def test_advanced_negative_below_zero_raises(self):
         with pytest.raises(AddressError):

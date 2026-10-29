@@ -161,7 +161,9 @@ class PointerType(CType):
 
     def __init__(self, target: CType) -> None:
         if not isinstance(target, CType):
-            raise InvalidTypeError(f"指针目标必须是 CType，收到 {type(target).__name__}")
+            raise InvalidTypeError(
+                f"指针目标必须是 CType，收到 {type(target).__name__}"
+            )
         self._target = target
 
     @property
@@ -204,7 +206,9 @@ class ArrayType(CType):
 
     def __init__(self, element: CType, count: int | None = None) -> None:
         if not isinstance(element, CType):
-            raise InvalidTypeError(f"数组元素必须是 CType，收到 {type(element).__name__}")
+            raise InvalidTypeError(
+                f"数组元素必须是 CType，收到 {type(element).__name__}"
+            )
         if element.has_flexible_array:
             raise InvalidTypeError("数组元素不能是含弹性数组成员的结构体")
         if count is not None and count <= 0:
@@ -244,9 +248,11 @@ class ArrayType(CType):
         return self._element.alignof()
 
     def __eq__(self, other: object) -> bool:
-        return (isinstance(other, ArrayType)
-                and other.element == self.element
-                and other.count == self.count)
+        return (
+            isinstance(other, ArrayType)
+            and other.element == self.element
+            and other.count == self.count
+        )
 
     def __hash__(self) -> int:
         return hash((ArrayType, self.element, self.count))
@@ -276,7 +282,8 @@ class FunctionType(CType):
         for param in params:
             if not isinstance(param, CType):
                 raise InvalidTypeError(
-                    f"参数类型必须是 CType，收到 {type(param).__name__}")
+                    f"参数类型必须是 CType，收到 {type(param).__name__}"
+                )
         self.ret = ret
         self.param_types = params
         self.variadic = variadic
@@ -295,10 +302,12 @@ class FunctionType(CType):
         raise UnsupportedTypeError("C 不允许对函数类型取对齐")
 
     def __eq__(self, other: object) -> bool:
-        return (isinstance(other, FunctionType)
-                and other.ret == self.ret
-                and other.param_types == self.param_types
-                and other.variadic == self.variadic)
+        return (
+            isinstance(other, FunctionType)
+            and other.ret == self.ret
+            and other.param_types == self.param_types
+            and other.variadic == self.variadic
+        )
 
     def __hash__(self) -> int:
         return hash((FunctionType, self.ret, self.param_types, self.variadic))
@@ -316,8 +325,9 @@ class EnumType(CType):
 
     __slots__ = ("tag", "_constants")
 
-    def __init__(self, tag: str | None = None,
-                 constants: dict[str, int] | None = None) -> None:
+    def __init__(
+        self, tag: str | None = None, constants: dict[str, int] | None = None
+    ) -> None:
         self.tag = tag
         self._constants = dict(constants) if constants is not None else None
 
@@ -366,11 +376,14 @@ class Member:
         if not self.name:
             raise InvalidTypeError("成员名不能为空")
         if not isinstance(self.ctype, CType):
-            raise InvalidTypeError(f"成员类型必须是 CType，收到 {type(self.ctype).__name__}")
+            raise InvalidTypeError(
+                f"成员类型必须是 CType，收到 {type(self.ctype).__name__}"
+            )
         if self.bit_width is not None:
             raise UnsupportedTypeError(
                 "位域（bit-field）尚未实现：请先按普通成员声明，"
-                "或等位域那一轮再做（见 tasks/20261017-122900/TASK.md）")
+                "或等位域那一轮再做（见 tasks/20261017-122900/TASK.md）"
+            )
 
 
 def align_up(value: int, alignment: int) -> int:
@@ -402,23 +415,26 @@ class _CompoundType(CType):
             raise InvalidTypeError(f"{self.name} 已经定义过了")
         members = tuple(members)
         if not members:
-            raise InvalidTypeError(
-                f"{self.name} 至少需要一个具名成员（C99 6.7.2.1p1）")
+            raise InvalidTypeError(f"{self.name} 至少需要一个具名成员（C99 6.7.2.1p1）")
         seen: set[str] = set()
         for member in members:
             if not isinstance(member, Member):
-                raise InvalidTypeError(f"成员必须是 Member，收到 {type(member).__name__}")
+                raise InvalidTypeError(
+                    f"成员必须是 Member，收到 {type(member).__name__}"
+                )
             if member.name in seen:
                 raise InvalidTypeError(f"{self.name} 里成员 '{member.name}' 重复")
             seen.add(member.name)
             if member.ctype.has_flexible_array:
                 raise InvalidTypeError(
                     f"{self.name} 的成员 '{member.name}' 是含弹性数组成员的结构体，"
-                    "不能作成员（它的大小不含弹性部分，会静默少分配）")
+                    "不能作成员（它的大小不含弹性部分，会静默少分配）"
+                )
             if _is_flexible_array(member.ctype) and member is not members[-1]:
                 raise InvalidTypeError(
                     f"{self.name} 的成员 '{member.name}' 是弹性数组，"
-                    "必须是最后一个成员（C99 6.7.2.1p3）")
+                    "必须是最后一个成员（C99 6.7.2.1p3）"
+                )
         size, align, offsets = self._layout(members)
         self._members = members
         self._offsets = offsets
@@ -448,7 +464,7 @@ class _CompoundType(CType):
 
     def offsetof(self, name: str) -> int:
         """成员偏移——`&obj.field` 就是"对象基地址 + 这个数"（裁决 D5）。"""
-        self.members                       # 不完整则先报错
+        self.members  # 不完整则先报错
         try:
             return self._offsets[name]
         except KeyError as exc:
@@ -457,13 +473,15 @@ class _CompoundType(CType):
     def sizeof(self) -> int:
         if self._size is None:
             raise IncompleteTypeError(
-                f"{self.name} 是不完整类型（只有前置声明），不能求大小")
+                f"{self.name} 是不完整类型（只有前置声明），不能求大小"
+            )
         return self._size
 
     def alignof(self) -> int:
         if self._align is None:
             raise IncompleteTypeError(
-                f"{self.name} 是不完整类型（只有前置声明），没有对齐要求")
+                f"{self.name} 是不完整类型（只有前置声明），没有对齐要求"
+            )
         return self._align
 
     def __repr__(self) -> str:
@@ -520,7 +538,8 @@ class UnionType(_CompoundType):
             if _is_flexible_array(member.ctype):
                 raise InvalidTypeError(
                     f"{self.name} 的成员 '{member.name}' 是弹性数组："
-                    "联合体不允许弹性数组成员（C99 6.7.2.1p1）")
+                    "联合体不允许弹性数组成员（C99 6.7.2.1p1）"
+                )
             align = max(align, member.ctype.alignof())
             size = max(size, member.ctype.sizeof())
         return align_up(size, align), align, offsets

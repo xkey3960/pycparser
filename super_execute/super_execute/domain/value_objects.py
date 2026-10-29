@@ -29,8 +29,8 @@ _SCOPE_ID_SHIFT = 16
 ADDRESS_SIZE = 4
 
 SCOPE_ID_MIN = 1
-SCOPE_ID_MAX = 0xFF          # 256 个槽位，0 留给 NULL
-_SCOPE_OFFSET_MAX = 0xFFFF   # 64 KiB
+SCOPE_ID_MAX = 0xFF  # 256 个槽位，0 留给 NULL
+_SCOPE_OFFSET_MAX = 0xFFFF  # 64 KiB
 _WIDE_OFFSET_MAX = 0xFFFFFF  # 16 MiB
 
 
@@ -53,16 +53,16 @@ class NamespaceKind(Enum):
     label 是块内局部的跳转目标，member 由结构体自己拥有（D4/D5）。
     """
 
-    ORDINARY = "ordinary"   # 变量、函数、typedef 名、枚举常量
-    TAGS = "tags"           # struct / union / enum 的标签
+    ORDINARY = "ordinary"  # 变量、函数、typedef 名、枚举常量
+    TAGS = "tags"  # struct / union / enum 的标签
 
 
 class ScopeKind(Enum):
     """C 的四种作用域（C99 6.2.1）。"""
 
-    FILE = "file"           # 文件作用域：唯一能承载 internal/external 链接的一层
-    FUNCTION = "function"   # 函数作用域：形参所在层
-    BLOCK = "block"         # 块作用域：花括号
+    FILE = "file"  # 文件作用域：唯一能承载 internal/external 链接的一层
+    FUNCTION = "function"  # 函数作用域：形参所在层
+    BLOCK = "block"  # 块作用域：花括号
     PROTOTYPE = "prototype"  # 原型作用域：函数原型里的形参名
 
 
@@ -87,9 +87,9 @@ class SymbolKind(Enum):
 class Linkage(Enum):
     """链接属性（C99 6.2.2）。只有文件作用域的符号才可能有非 NONE 的链接。"""
 
-    NONE = "none"           # 无链接：局部变量、形参
-    INTERNAL = "internal"   # 内部链接：static（D6 用它替代旧 g_static_globals 侧表）
-    EXTERNAL = "external"   # 外部链接：普通全局变量/函数
+    NONE = "none"  # 无链接：局部变量、形参
+    INTERNAL = "internal"  # 内部链接：static（D6 用它替代旧 g_static_globals 侧表）
+    EXTERNAL = "external"  # 外部链接：普通全局变量/函数
 
 
 @dataclass(frozen=True, order=True)
@@ -127,29 +127,36 @@ class Address:
         if region is AddressRegion.SCOPE:
             if not 0 <= self.offset <= _SCOPE_OFFSET_MAX:
                 raise AddressError(
-                    f"scope 区偏移越界: {self.offset}（上限 {_SCOPE_OFFSET_MAX}）")
+                    f"scope 区偏移越界: {self.offset}（上限 {_SCOPE_OFFSET_MAX}）"
+                )
             if self.scope_id == 0:
                 # 0 号作用域只代表 NULL；非零偏移 + 0 号作用域是无意义的地址。
                 if self.offset != 0:
-                    raise AddressError("scope 区地址的 scope_id 不能为 0（0 是 NULL 专用）")
+                    raise AddressError(
+                        "scope 区地址的 scope_id 不能为 0（0 是 NULL 专用）"
+                    )
             elif not SCOPE_ID_MIN <= self.scope_id <= SCOPE_ID_MAX:
                 raise AddressError(
-                    f"scope_id 越界: {self.scope_id}（合法范围 {SCOPE_ID_MIN}..{SCOPE_ID_MAX}）")
+                    f"scope_id 越界: {self.scope_id}（合法范围 {SCOPE_ID_MIN}..{SCOPE_ID_MAX}）"
+                )
         else:
             if self.scope_id != 0:
                 raise AddressError(f"{region.name} 区的地址没有 scope_id，必须为 0")
             if not 0 <= self.offset <= _WIDE_OFFSET_MAX:
                 raise AddressError(
-                    f"{region.name} 区偏移越界: {self.offset}（上限 {_WIDE_OFFSET_MAX}）")
+                    f"{region.name} 区偏移越界: {self.offset}（上限 {_WIDE_OFFSET_MAX}）"
+                )
 
     # ---- 查询 ----
 
     @property
     def is_null(self) -> bool:
         """是否 NULL 指针。"""
-        return (self.region is AddressRegion.SCOPE
-                and self.scope_id == 0
-                and self.offset == 0)
+        return (
+            self.region is AddressRegion.SCOPE
+            and self.scope_id == 0
+            and self.offset == 0
+        )
 
     @property
     def packed(self) -> int:
@@ -179,7 +186,8 @@ class Address:
         except ValueError as exc:
             # 高字节是 3..255：保留区，当前没有对应实现
             raise AddressError(
-                f"地址的高字节 {raw >> _REGION_SHIFT} 不是已知的内存区") from exc
+                f"地址的高字节 {raw >> _REGION_SHIFT} 不是已知的内存区"
+            ) from exc
         if region is AddressRegion.SCOPE:
             return cls(region, (raw >> _SCOPE_ID_SHIFT) & 0xFF, raw & _SCOPE_OFFSET_MAX)
         return cls(region, 0, raw & _WIDE_OFFSET_MAX)
@@ -212,8 +220,10 @@ class Address:
     def __repr__(self) -> str:
         if self.is_null:
             return "Address.NULL"
-        return (f"Address({self.region.name}, scope_id={self.scope_id}, "
-                f"offset={self.offset})")
+        return (
+            f"Address({self.region.name}, scope_id={self.scope_id}, "
+            f"offset={self.offset})"
+        )
 
 
 #: C 的 NULL：`(SCOPE, 0, 0)`，packed == 0。

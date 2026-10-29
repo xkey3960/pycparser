@@ -2,13 +2,18 @@
 
 from pycparser.c_ast import (
     # Expressions
-    Assignment, ID, BinaryOp, Constant,
+    Assignment,
+    ID,
+    Constant,
 )
 
+
 def main():
-    stmts = Assignment(op='=',
-                       lvalue=ID('val2'),
-                       rvalue=Constant(type='int', value='20')),
+    stmts = (
+        Assignment(op="=", lvalue=ID("val2"), rvalue=Constant(type="int", value="20")),
+    )
     print(stmts)
+
+
 if __name__ == "__main__":
     main()

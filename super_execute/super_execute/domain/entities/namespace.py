@@ -63,7 +63,8 @@ class Namespace:
             raise DuplicateSymbolError(
                 f"{self._kind.value} 命名空间里已存在 '{symbol.name}'"
                 f"（已有 {type(self._symbols[symbol.name]).__name__}，"
-                f"新来 {type(symbol).__name__}）")
+                f"新来 {type(symbol).__name__}）"
+            )
         self._symbols[symbol.name] = symbol
         return symbol
 
@@ -79,7 +80,8 @@ class Namespace:
             return self._symbols.pop(name)
         except KeyError as exc:
             raise UndefinedSymbolError(
-                f"{self._kind.value} 命名空间里没有 '{name}'") from exc
+                f"{self._kind.value} 命名空间里没有 '{name}'"
+            ) from exc
 
     def clear(self) -> None:
         self._symbols.clear()
@@ -90,7 +92,8 @@ class Namespace:
         if symbol.namespace is not self._kind:
             raise InvalidSymbolError(
                 f"{type(symbol).__name__} 属于 {symbol.namespace.value} 命名空间，"
-                f"不能放进 {self._kind.value} 命名空间")
+                f"不能放进 {self._kind.value} 命名空间"
+            )
 
     # ---- 容器协议 ----
 

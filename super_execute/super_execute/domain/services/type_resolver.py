@@ -79,33 +79,37 @@ class ScopeTypeResolver:
             raise InvalidTypeError(f"'{head}' 缺少标签名")
         if len(words) > 2:
             raise InvalidTypeError(
-                f"'{head} {words[1]}' 后面有多余的词: {' '.join(words[2:])}")
+                f"'{head} {words[1]}' 后面有多余的词: {' '.join(words[2:])}"
+            )
         tag_name = words[1]
         symbol = self._scope.find_tag(tag_name)
         if symbol is None:
             raise UndefinedTypeError(
-                f"未定义的标签 '{tag_name}'（查找路径 {self._scope.describe()}）")
+                f"未定义的标签 '{tag_name}'（查找路径 {self._scope.describe()}）"
+            )
         if not isinstance(symbol, TagSymbol):
             raise InvalidTypeError(f"'{tag_name}' 不是标签")
         if symbol.tag_kind.value != head:
             raise InvalidTypeError(
-                f"'{tag_name}' 是 {symbol.tag_kind.value} 标签，"
-                f"不能用 '{head}' 引用")
+                f"'{tag_name}' 是 {symbol.tag_kind.value} 标签，不能用 '{head}' 引用"
+            )
         return _require_ctype(symbol.ctype, f"标签 '{tag_name}'")
 
     def _resolve_identifier(self, name: str) -> CType:
         symbol = self._scope.find(name)
         if symbol is None:
             raise UndefinedTypeError(
-                f"未定义的类型名 '{name}'（查找路径 {self._scope.describe()}）")
+                f"未定义的类型名 '{name}'（查找路径 {self._scope.describe()}）"
+            )
         if not isinstance(symbol, TypedefSymbol):
-            raise InvalidTypeError(
-                f"'{name}' 是 {type(symbol).__name__}，不是类型名")
+            raise InvalidTypeError(f"'{name}' 是 {type(symbol).__name__}，不是类型名")
         return _require_ctype(symbol.ctype, f"typedef '{name}'")
 
 
 def _require_ctype(value: object, what: str) -> CType:
     """符号里挂的 ctype 必须真的是 CType，而不是占位/字符串。"""
     if not isinstance(value, CType):
-        raise InvalidTypeError(f"{what} 没有绑定有效的 CType（当前 {type(value).__name__}）")
+        raise InvalidTypeError(
+            f"{what} 没有绑定有效的 CType（当前 {type(value).__name__}）"
+        )
     return value

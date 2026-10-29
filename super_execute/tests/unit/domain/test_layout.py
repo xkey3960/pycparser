@@ -115,7 +115,7 @@ class TestEdgeCases:
     def test_array_of_structs_alignment_follows_element(self):
         inner = struct("C", m("a", SHORT), m("b", CHAR))
         arr = ArrayType(inner, 2)
-        assert arr.sizeof() == 8          # 4 * 2
+        assert arr.sizeof() == 8  # 4 * 2
         assert arr.alignof() == 2
 
     def test_flexible_array_member_takes_no_space(self):
@@ -126,18 +126,18 @@ class TestEdgeCases:
         assert t.offsetof("data") == 4
 
     def test_deeply_nested(self):
-        inner = struct("C", m("a", SHORT), m("b", CHAR))          # 4/2
-        mid = struct("Mid", m("x", CHAR), m("c", inner))         # x@0, c@2 → 6/2
+        inner = struct("C", m("a", SHORT), m("b", CHAR))  # 4/2
+        mid = struct("Mid", m("x", CHAR), m("c", inner))  # x@0, c@2 → 6/2
         outer = struct("Out", m("y", CHAR), m("mid", mid), m("z", DOUBLE))
         assert mid.sizeof() == 6 and mid.alignof() == 2
         assert mid.offsetof("c") == 2
-        assert outer.offsetof("mid") == 2                        # 按 2 对齐
-        assert outer.offsetof("z") == 8                          # double 顶到 8
+        assert outer.offsetof("mid") == 2  # 按 2 对齐
+        assert outer.offsetof("z") == 8  # double 顶到 8
         assert outer.sizeof() == 16
 
     def test_union_size_rounds_up_to_alignment(self):
         t = union("U2", m("a", ArrayType(CHAR, 5)), m("b", SHORT))
-        assert (t.sizeof(), t.alignof()) == (6, 2)     # 5 → 补到 6
+        assert (t.sizeof(), t.alignof()) == (6, 2)  # 5 → 补到 6
 
 
 class TestIncomplete:
@@ -196,10 +196,19 @@ class TestValidation:
 
 
 class TestAlignUp:
-    @pytest.mark.parametrize("value,align,expected", [
-        (0, 4, 0), (1, 4, 4), (3, 4, 4), (4, 4, 4), (5, 4, 8),
-        (5, 8, 8), (9, 8, 16), (7, 1, 7),
-    ])
+    @pytest.mark.parametrize(
+        "value,align,expected",
+        [
+            (0, 4, 0),
+            (1, 4, 4),
+            (3, 4, 4),
+            (4, 4, 4),
+            (5, 4, 8),
+            (5, 8, 8),
+            (9, 8, 16),
+            (7, 1, 7),
+        ],
+    )
     def test_align_up(self, value, align, expected):
         assert align_up(value, align) == expected
 

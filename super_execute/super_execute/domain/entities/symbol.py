@@ -42,7 +42,8 @@ def _check_ctype(value: object, owner: str) -> None:
     """
     if value is not None and not isinstance(value, CType):
         raise InvalidSymbolError(
-            f"{owner} 的 ctype 必须是 CType 或 None，收到 {type(value).__name__}")
+            f"{owner} 的 ctype 必须是 CType 或 None，收到 {type(value).__name__}"
+        )
 
 
 class Symbol(ABC):
@@ -113,15 +114,18 @@ class ObjectSymbol(Symbol):
         super().__init__(name)
         if not isinstance(address, Address):
             raise InvalidSymbolError(
-                f"{type(self).__name__} 的地址必须是 Address，收到 {type(address).__name__}")
+                f"{type(self).__name__} 的地址必须是 Address，收到 {type(address).__name__}"
+            )
         expected_region = getattr(type(self), "address_region", None)
         if expected_region is None:
             raise InvalidSymbolError(
-                f"{type(self).__name__} 是中间基类，请用 VariableSymbol / FunctionSymbol")
+                f"{type(self).__name__} 是中间基类，请用 VariableSymbol / FunctionSymbol"
+            )
         if address.region is not expected_region:
             raise InvalidSymbolError(
                 f"{type(self).__name__} 的地址必须落在 {expected_region.name} 区，"
-                f"收到 {address.region.name}")
+                f"收到 {address.region.name}"
+            )
         if not isinstance(linkage, Linkage):
             raise InvalidSymbolError(f"非法链接属性: {linkage!r}")
         _check_ctype(ctype, type(self).__name__)
@@ -229,7 +233,9 @@ class TagSymbol(Symbol):
     __slots__ = ("tag_kind", "ctype")
     kind = SymbolKind.TAG
 
-    def __init__(self, name: str, tag_kind: TagKind, ctype: CType | None = None) -> None:
+    def __init__(
+        self, name: str, tag_kind: TagKind, ctype: CType | None = None
+    ) -> None:
         super().__init__(name)
         if not isinstance(tag_kind, TagKind):
             raise InvalidSymbolError(f"非法标签种类: {tag_kind!r}")

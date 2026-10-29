@@ -1,5 +1,6 @@
 class ReturnException(Exception):
     """Raised to unwind the stack on a return statement."""
+
     def __init__(self, value=None):
         self.value = value
 
@@ -27,6 +28,7 @@ class LongJmpException(Exception):
         self.buf = buf
         self.val = val
         super().__init__(f"longjmp {buf} -> {val}")
+
 
 class InterpreterError(AssertionError):
     """解释器错误基类（QOL-1）。

@@ -51,10 +51,14 @@ class TestBuiltinResolution:
         assert ScopeTypeResolver(file_scope).resolve(["int"]) == INT
 
     def test_multi_specifier(self, file_scope):
-        assert ScopeTypeResolver(file_scope).resolve(["unsigned", "long"]) == UNSIGNED_LONG
+        assert (
+            ScopeTypeResolver(file_scope).resolve(["unsigned", "long"]) == UNSIGNED_LONG
+        )
 
     def test_order_independent(self, file_scope):
-        assert ScopeTypeResolver(file_scope).resolve(["long", "unsigned"]) == UNSIGNED_LONG
+        assert (
+            ScopeTypeResolver(file_scope).resolve(["long", "unsigned"]) == UNSIGNED_LONG
+        )
 
     def test_long_double_is_undefined(self, file_scope):
         """long double 本轮未支持：必须报错，不能悄悄当成 double。"""
@@ -84,7 +88,8 @@ class TestTypedefResolution:
     def test_variable_is_not_a_type(self, function_scope):
         """普通命名空间里同名的是变量时，不能当类型用。"""
         function_scope.declare(
-            VariableSymbol("Foo", Address(AddressRegion.SCOPE, 2, 0)))
+            VariableSymbol("Foo", Address(AddressRegion.SCOPE, 2, 0))
+        )
         with pytest.raises(InvalidTypeError, match="不是类型名"):
             ScopeTypeResolver(function_scope).resolve(["Foo"])
 
@@ -159,8 +164,10 @@ class TestEmpiricalAnchor:
 
         assert ScopeTypeResolver(f1).resolve(["struct", "P"]).sizeof() == 4
         assert ScopeTypeResolver(f2).resolve(["struct", "P"]).sizeof() == 12
-        assert (ScopeTypeResolver(f1).resolve(["struct", "P"]).sizeof()
-                + ScopeTypeResolver(f2).resolve(["struct", "P"]).sizeof()) == 16
+        assert (
+            ScopeTypeResolver(f1).resolve(["struct", "P"]).sizeof()
+            + ScopeTypeResolver(f2).resolve(["struct", "P"]).sizeof()
+        ) == 16
 
     def test_block_typedef_does_not_leak_into_resolution(self):
         """实证 1 的最终出口：出块后 `T` 必须解析回外层的 int。"""
