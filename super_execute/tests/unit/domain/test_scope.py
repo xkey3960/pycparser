@@ -6,6 +6,7 @@
 
 import pytest
 
+from super_execute.domain.entities.c_types import Member, StructType
 from super_execute.domain.entities.namespace import Namespace
 from super_execute.domain.entities.scope import Scope
 from super_execute.domain.entities.symbol import (
@@ -19,6 +20,11 @@ from super_execute.domain.exceptions import (
     DuplicateSymbolError,
     InvalidScopeError,
     UndefinedSymbolError,
+)
+from super_execute.domain.services.builtin_types import (
+    DOUBLE,
+    INT,
+    UNSIGNED_LONG,
 )
 from super_execute.domain.value_objects import (
     Address,
@@ -195,25 +201,31 @@ class TestRegressionAnchors:
 
         旧实现返回 80（块内 typedef 覆盖了全局），正确值是 40。
         """
-        file_scope.declare(TypedefSymbol("T", ctype="int"))
+        file_scope.declare(TypedefSymbol("T", ctype=INT))
         block = Scope(2, ScopeKind.BLOCK, file_scope)
-        block.declare(TypedefSymbol("T", ctype="double"))
+        block.declare(TypedefSymbol("T", ctype=DOUBLE))
 
-        assert block.find("T").ctype == "double"      # 块内遮蔽
-        assert file_scope.find("T").ctype == "int"    # 出块后不泄漏
+        assert block.find("T").ctype is DOUBLE        # 块内遮蔽
+        assert file_scope.find("T").ctype is INT      # 出块后不泄漏
 
     def test_contract_2_sibling_functions_have_independent_tags(self, file_scope):
         """实证 2：两个函数各自定义 `struct P` 必须互不干扰。
 
         旧实现两次 `sizeof(struct P)` 都返回前一个布局（4+4=8），正确是 4+12=16。
         """
+        p1 = StructType("P")
+        p1.define([Member("x", INT)])
+        p2 = StructType("P")
+        p2.define([Member("a", INT), Member("b", INT), Member("c", INT)])
+
         f1 = Scope(2, ScopeKind.FUNCTION, file_scope)
         f2 = Scope(3, ScopeKind.FUNCTION, file_scope)
-        f1.declare(TagSymbol("P", TagKind.STRUCT, ctype="P{int x}"))
-        f2.declare(TagSymbol("P", TagKind.STRUCT, ctype="P{int a,b,c}"))
+        f1.declare(TagSymbol("P", TagKind.STRUCT, ctype=p1))
+        f2.declare(TagSymbol("P", TagKind.STRUCT, ctype=p2))
 
-        assert f1.find_tag("P").ctype == "P{int x}"
-        assert f2.find_tag("P").ctype == "P{int a,b,c}"
+        assert f1.find_tag("P").ctype is p1
+        assert f2.find_tag("P").ctype is p2
+        assert f1.find_tag("P").ctype.sizeof() + f2.find_tag("P").ctype.sizeof() == 16
         assert file_scope.find_tag("P") is None       # 函数内标签不上升
 
     def test_contract_3_function_local_tag_invisible_outside(self, file_scope, function_scope):
@@ -253,6 +265,6 @@ class TestChain:
         """普通命名空间里可以放五种绑定中的四种。"""
         file_scope.declare(_func("main", 0))
         file_scope.declare(ConstantSymbol("MAX", 100))
-        file_scope.declare(TypedefSymbol("size_t", "unsigned long"))
+        file_scope.declare(TypedefSymbol("size_t", UNSIGNED_LONG))
         file_scope.declare(_var("g", 1, 0))
         assert len(file_scope.ordinary) == 4

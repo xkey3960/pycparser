@@ -13,8 +13,9 @@
 
 from __future__ import annotations
 
+from super_execute.domain.entities.scope import Scope
 from super_execute.domain.exceptions import InvalidScopeError, ScopeExhaustedError
-from super_execute.domain.value_objects import SCOPE_ID_MAX, SCOPE_ID_MIN
+from super_execute.domain.value_objects import SCOPE_ID_MAX, SCOPE_ID_MIN, ScopeKind
 
 
 class ScopeIdAllocator:
@@ -53,6 +54,27 @@ class ScopeIdAllocator:
                 f"作用域 id {scope_id} 未被分配或已归还，不能重复归还")
         self._active.discard(scope_id)
         self._retired.add(scope_id)
+
+    # ---- 建 / 销作用域（受控入口）----
+
+    def open(self, kind: ScopeKind, parent: Scope | None = None) -> Scope:
+        """发放 id 并建作用域。
+
+        直接 ``Scope(9, ...)`` 也能建，但那样 id 的唯一性没人管。走这里的话
+        id 一定来自分配器，重复 id（以及随之而来的地址错认）就不会出现。
+        """
+        scope_id = self.acquire()
+        try:
+            return Scope(scope_id, kind, parent)
+        except Exception:
+            self.release(scope_id)          # 构造失败（如父子关系非法）要退回 id
+            raise
+
+    def close(self, scope: Scope) -> None:
+        """弹出一个作用域并归还它的 id。"""
+        if not isinstance(scope, Scope):
+            raise InvalidScopeError(f"只能关闭 Scope，收到 {type(scope).__name__}")
+        self.release(scope.scope_id)
 
     # ---- 观测 ----
 

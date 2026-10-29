@@ -21,8 +21,8 @@ C 里 `&T`（T 是 typedef）和 `&ENUM_CONST` 都是非法的，所以这件事
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING
 
+from super_execute.domain.entities.c_types import CType
 from super_execute.domain.exceptions import InvalidSymbolError
 from super_execute.domain.value_objects import (
     Address,
@@ -33,8 +33,16 @@ from super_execute.domain.value_objects import (
     TagKind,
 )
 
-if TYPE_CHECKING:                      # 只用于标注，避免运行期循环依赖
-    from super_execute.domain.entities.c_types import CType
+
+def _check_ctype(value: object, owner: str) -> None:
+    """ctype 允许 None（尚未解析），但不允许别的类型混进来。
+
+    符号是名字与类型的绑定点；如果这里放进去一个字符串，错误要等到很久以后
+    在别处炸出来（或更糟：静默当成 None 用）。
+    """
+    if value is not None and not isinstance(value, CType):
+        raise InvalidSymbolError(
+            f"{owner} 的 ctype 必须是 CType 或 None，收到 {type(value).__name__}")
 
 
 class Symbol(ABC):
@@ -116,6 +124,7 @@ class ObjectSymbol(Symbol):
                 f"收到 {address.region.name}")
         if not isinstance(linkage, Linkage):
             raise InvalidSymbolError(f"非法链接属性: {linkage!r}")
+        _check_ctype(ctype, type(self).__name__)
         self.ctype = ctype
         self.linkage = linkage
         self._address = address
@@ -174,6 +183,7 @@ class TypedefSymbol(Symbol):
 
     def __init__(self, name: str, ctype: CType | None) -> None:
         super().__init__(name)
+        _check_ctype(ctype, type(self).__name__)
         self.ctype = ctype
 
     @property
@@ -196,6 +206,7 @@ class ConstantSymbol(Symbol):
 
     def __init__(self, name: str, value: int, ctype: CType | None = None) -> None:
         super().__init__(name)
+        _check_ctype(ctype, type(self).__name__)
         self.value = value
         self.ctype = ctype
 
@@ -222,6 +233,7 @@ class TagSymbol(Symbol):
         super().__init__(name)
         if not isinstance(tag_kind, TagKind):
             raise InvalidSymbolError(f"非法标签种类: {tag_kind!r}")
+        _check_ctype(ctype, type(self).__name__)
         self.tag_kind = tag_kind
         self.ctype = ctype
 

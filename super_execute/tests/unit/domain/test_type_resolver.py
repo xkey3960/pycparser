@@ -19,6 +19,7 @@ from super_execute.domain.entities.symbol import (
     VariableSymbol,
 )
 from super_execute.domain.exceptions import (
+    InvalidSymbolError,
     InvalidTypeError,
     UndefinedTypeError,
 )
@@ -94,11 +95,16 @@ class TestTypedefResolution:
         with pytest.raises(InvalidTypeError, match="不是类型名"):
             ScopeTypeResolver(function_scope).resolve(["Foo"])
 
-    def test_placeholder_ctype_rejected(self, file_scope):
-        """符号里挂的不是 CType（如字符串占位）时必须报错，不能带进内存。"""
-        file_scope.declare(TypedefSymbol("Bad", "int"))
+    def test_placeholder_ctype_rejected_at_construction(self):
+        """非 CType 的 ctype 在构造符号时就该被挡住（review 批次 B4）。"""
+        with pytest.raises(InvalidSymbolError, match="ctype"):
+            TypedefSymbol("Bad", "int")
+
+    def test_unresolved_typedef_rejected_by_resolver(self, file_scope):
+        """ctype 为 None（尚未解析）的 typedef 不能被当成类型用。"""
+        file_scope.declare(TypedefSymbol("Pending", None))
         with pytest.raises(InvalidTypeError, match="没有绑定有效的 CType"):
-            ScopeTypeResolver(file_scope).resolve(["Bad"])
+            ScopeTypeResolver(file_scope).resolve(["Pending"])
 
 
 class TestTagResolution:

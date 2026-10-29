@@ -16,7 +16,7 @@
 from __future__ import annotations
 
 from super_execute.domain.entities.namespace import Namespace
-from super_execute.domain.entities.symbol import ObjectSymbol, Symbol
+from super_execute.domain.entities.symbol import ObjectSymbol, Symbol, VariableSymbol
 from super_execute.domain.exceptions import (
     InvalidScopeError,
     UndefinedSymbolError,
@@ -112,13 +112,36 @@ class Scope:
     # ---- 写入 ----
 
     def declare(self, symbol: Symbol) -> Symbol:
-        """把符号绑到**本层**对应的命名空间上（不回溯，块的遮蔽由此而来）。"""
+        """把符号绑到**本层**对应的命名空间上（不回溯，块的遮蔽由此而来）。
+
+        写符号请统一走这里（或 :meth:`redeclare`）：``ordinary`` / ``tags`` 是
+        公开的，直接对它们写入会绕过链接属性与地址归属的校验。
+        """
+        self._validate_binding(symbol)
+        return self._namespace_for(symbol).declare(symbol)
+
+    def redeclare(self, symbol: Symbol) -> Symbol:
+        """覆盖式绑定（extern / 函数原型 / tentative definition 靠它）。
+
+        namespace 层的 ``redeclare`` 不做合法性判断，所以这条路径必须经过
+        Scope，否则同一条不变量会有两个入口、迟早漂开。
+        """
+        self._validate_binding(symbol)
+        return self._namespace_for(symbol).redeclare(symbol)
+
+    def _validate_binding(self, symbol: Symbol) -> None:
+        """绑定前的不变量检查（declare 与 redeclare 共用一份）。"""
         if isinstance(symbol, ObjectSymbol) and symbol.linkage is not Linkage.NONE:
             if self._kind is not ScopeKind.FILE:
                 raise InvalidScopeError(
                     f"{symbol.linkage.value} 链接属性只能出现在文件作用域，"
                     f"当前是 {self._kind.value}#{self._scope_id}")
-        return self._namespace_for(symbol).declare(symbol)
+        if isinstance(symbol, VariableSymbol) and symbol.address is not None:
+            # 地址里的 scope_id 就是"这块存储属于哪个作用域"，对不上就是错的绑定。
+            if symbol.address.scope_id != self._scope_id:
+                raise InvalidScopeError(
+                    f"变量 '{symbol.name}' 的地址属于作用域 #{symbol.address.scope_id}，"
+                    f"不能声明进 #{self._scope_id}")
 
     def declare_all(self, *symbols: Symbol) -> None:
         for symbol in symbols:
