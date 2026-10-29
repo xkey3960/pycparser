@@ -25,6 +25,9 @@ from super_execute.domain.exceptions import AddressError
 _REGION_SHIFT = 24
 _SCOPE_ID_SHIFT = 16
 
+#: 地址宽度（字节）。指针的大小就是它——见 c_types.POINTER_SIZE。
+ADDRESS_SIZE = 4
+
 SCOPE_ID_MIN = 1
 SCOPE_ID_MAX = 0xFF          # 256 个槽位，0 留给 NULL
 _SCOPE_OFFSET_MAX = 0xFFFF   # 64 KiB

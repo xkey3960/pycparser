@@ -95,3 +95,19 @@ class ScopeExhaustedError(DomainError):
 
 class AddressError(DomainError, ValueError):
     """地址编码/解码/算术越界。"""
+
+
+class InvalidTypeError(DomainError, ValueError):
+    """类型构造或类型名使用非法。"""
+
+
+class IncompleteTypeError(DomainError):
+    """对不完整类型求 sizeof/alignof（如只有前置声明的 struct）。"""
+
+
+class UndefinedTypeError(DomainError):
+    """类型名无法解析成任何已知类型。"""
+
+
+class UnsupportedTypeError(DomainError):
+    """语言层面不支持的操作（sizeof 函数类型）或尚未实现的特性（位域）。"""

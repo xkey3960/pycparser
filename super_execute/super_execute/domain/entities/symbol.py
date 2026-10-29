@@ -21,7 +21,7 @@ C 里 `&T`（T 是 typedef）和 `&ENUM_CONST` 都是非法的，所以这件事
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Any
+from typing import TYPE_CHECKING
 
 from super_execute.domain.exceptions import InvalidSymbolError
 from super_execute.domain.value_objects import (
@@ -32,6 +32,9 @@ from super_execute.domain.value_objects import (
     SymbolKind,
     TagKind,
 )
+
+if TYPE_CHECKING:                      # 只用于标注，避免运行期循环依赖
+    from super_execute.domain.entities.c_types import CType
 
 
 class Symbol(ABC):
@@ -96,7 +99,7 @@ class ObjectSymbol(Symbol):
         self,
         name: str,
         address: Address,
-        ctype: Any = None,
+        ctype: CType | None = None,
         linkage: Linkage = Linkage.NONE,
     ) -> None:
         super().__init__(name)
@@ -169,7 +172,7 @@ class TypedefSymbol(Symbol):
     __slots__ = ("ctype",)
     kind = SymbolKind.TYPEDEF
 
-    def __init__(self, name: str, ctype: Any) -> None:
+    def __init__(self, name: str, ctype: CType | None) -> None:
         super().__init__(name)
         self.ctype = ctype
 
@@ -191,7 +194,7 @@ class ConstantSymbol(Symbol):
     __slots__ = ("value", "ctype")
     kind = SymbolKind.ENUM_CONSTANT
 
-    def __init__(self, name: str, value: int, ctype: Any = None) -> None:
+    def __init__(self, name: str, value: int, ctype: CType | None = None) -> None:
         super().__init__(name)
         self.value = value
         self.ctype = ctype
@@ -215,7 +218,7 @@ class TagSymbol(Symbol):
     __slots__ = ("tag_kind", "ctype")
     kind = SymbolKind.TAG
 
-    def __init__(self, name: str, tag_kind: TagKind, ctype: Any = None) -> None:
+    def __init__(self, name: str, tag_kind: TagKind, ctype: CType | None = None) -> None:
         super().__init__(name)
         if not isinstance(tag_kind, TagKind):
             raise InvalidSymbolError(f"非法标签种类: {tag_kind!r}")
