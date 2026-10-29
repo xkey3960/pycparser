@@ -133,3 +133,15 @@ class AllocationError(MemoryAccessError):
 
 class RegionNotImplementedError(MemoryAccessError):
     """该地址区（如 heap）还没有实现。"""
+
+
+class NullPointerError(MemoryAccessError):
+    """解引用 NULL 指针。"""
+
+
+class NotAValueError(DomainError):
+    """名字存在，但它不是一个可以读写值的对象（如 typedef 名、标签、枚举常量）。"""
+
+
+class UnresolvedTypeError(DomainError):
+    """符号上的 ctype 还是 None（类型尚未解析），无法按类型访问。"""

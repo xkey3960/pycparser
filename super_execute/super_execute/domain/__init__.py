@@ -30,8 +30,9 @@ from super_execute.domain.entities.symbol import (
     TypedefSymbol,
     VariableSymbol,
 )
+from super_execute.domain.services.addressing import element_address, member_address
 from super_execute.domain.services.scope_id_allocator import ScopeIdAllocator
-from super_execute.domain.services.type_resolver import ScopeTypeResolver
+from super_execute.domain.services.type_resolver import ScopeTypeResolver, TypeResolver
 from super_execute.domain.value_objects import (
     NULL_ADDRESS,
     Address,
@@ -73,8 +74,11 @@ __all__ = [
     "SymbolKind",
     "TagKind",
     "TagSymbol",
+    "TypeResolver",
     "TypedefSymbol",
     "UnionType",
     "VariableSymbol",
     "align_up",
+    "element_address",
+    "member_address",
 ]

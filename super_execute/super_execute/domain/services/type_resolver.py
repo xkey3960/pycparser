@@ -113,3 +113,18 @@ def _require_ctype(value: object, what: str) -> CType:
             f"{what} 没有绑定有效的 CType（当前 {type(value).__name__}）"
         )
     return value
+
+
+class TypeResolver:
+    """无状态的类型解析器：作用域由调用方每次传入。
+
+    与 :class:`ScopeTypeResolver` 的区别只有"作用域从哪来"：前者在构造时绑定一个
+    视角，适合单点使用；后者满足
+    :class:`~super_execute.application.ports.type_resolver_port.TypeResolverPort`，
+    可以注入用例——因为用例会跨作用域工作（文件 → 函数 → 块），视角是变化的。
+    """
+
+    __slots__ = ()
+
+    def resolve(self, scope: Scope, names: Sequence[str]) -> CType:
+        return ScopeTypeResolver(scope).resolve(names)
