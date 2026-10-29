@@ -25,7 +25,21 @@ application/use_cases/variables.py        DeclareVariable / DeclareVariableOfNam
 application/use_cases/address.py          TakeAddress（&x / &func）
 application/use_cases/memory_access.py    LoadValue / StoreValue（*p / *p = v）
 domain/services/addressing.py             member_address / element_address（D5）
+domain/services/defaults.py               default_value（零初始化）
 ```
+
+## 演示时发现的缺口：默认值
+
+写演示（手写一遍 `struct Point s; s.a = 1;`）时崩了：新分配的槽里是 `None`，
+成员写不进去。C 的自动变量是"不确定值"，但解释器不能真留空洞——否则这段
+完全合法的 C 代码会失败。
+
+补上 `default_value(ctype)`：标量 0、浮点 0.0（**类型也要对**）、指针 NULL、
+数组逐元素、结构体/联合体逐成员；弹性数组成员给空表。
+`DeclareVariable` 现在先铺零值再写初值。
+
+这是**发现于演示而不是测试**的一类问题——测试只覆盖了"整体赋值后再读成员"，
+没覆盖"声明后直接写成员"。
 
 ## 实现中修正的一处划分
 
@@ -48,12 +62,15 @@ C 的**声明符**比类型名丰富——`int x` 的类型来自名字（`Ident
 
 ## 验收
 
-- `pytest super_execute/tests` → **399 passed**（原 355，+44）
-- 仓库根 `pytest` → 663 passed / 6 skipped
+- `pytest super_execute/tests` → **415 passed**（原 355，+60）
+- 仓库根 `pytest` → 679 passed / 6 skipped
 - `ruff check` / `ruff format --check` 全绿
-- **变异测试 12/12 全部杀死**（不查重、先分配后查重、不写初值、不绑作用域、
-  读不校验类别/ctype、取址不查函数表、NULL 不拦、存储失败不退回 id、
-  关作用域不归还 id、成员地址不取 offset、元素地址不乘下标）
+- **变异测试 17/17 全部杀死**
+  - 用例层 12 个：不查重、先分配后查重、不写初值、不绑作用域、读不校验类别/ctype、
+    取址不查函数表、NULL 不拦、存储失败不退回 id、关作用域不归还 id、
+    成员地址不取 offset、元素地址不乘下标
+  - 默认值 5 个：不铺零值、结构体给 None、数组给空表、浮点给 0、
+    指针给 0（后两个靠"断言类型/身份"才杀掉——`0 == 0.0` 在 Python 里为真）
 
 ## 下一步
 

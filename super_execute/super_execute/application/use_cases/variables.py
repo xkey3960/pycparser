@@ -29,6 +29,7 @@ from super_execute.domain.exceptions import (
     NotAValueError,
     UnresolvedTypeError,
 )
+from super_execute.domain.services.defaults import default_value
 
 
 def require_variable(scope: Scope, name: str) -> VariableSymbol:
@@ -68,6 +69,9 @@ class DeclareVariable:
         address = self._memory.allocate(scope.scope_id, ctype)
         symbol = VariableSymbol(name, address, ctype=ctype)
         scope.declare(symbol)
+
+        # 先铺零值再写初值：`struct Point s; s.a = 1;` 需要成员容器已经存在
+        self._memory.write(address, default_value(ctype), ctype)
         if initial is not None:
             self._memory.write(address, initial, ctype)
         return symbol

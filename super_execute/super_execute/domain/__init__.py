@@ -31,6 +31,7 @@ from super_execute.domain.entities.symbol import (
     VariableSymbol,
 )
 from super_execute.domain.services.addressing import element_address, member_address
+from super_execute.domain.services.defaults import default_value
 from super_execute.domain.services.scope_id_allocator import ScopeIdAllocator
 from super_execute.domain.services.type_resolver import ScopeTypeResolver, TypeResolver
 from super_execute.domain.value_objects import (
@@ -79,6 +80,7 @@ __all__ = [
     "UnionType",
     "VariableSymbol",
     "align_up",
+    "default_value",
     "element_address",
     "member_address",
 ]

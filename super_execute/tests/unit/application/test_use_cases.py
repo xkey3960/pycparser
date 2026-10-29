@@ -127,6 +127,29 @@ class TestDeclareVariable:
         symbol = runtime["declare"](runtime["scope"], "p", ["struct", "Point"])
         assert symbol.ctype is point
 
+    def test_uninitialized_aggregate_is_zero_filled(self, runtime):
+        """`struct Point s; s.a = 1;` 必须能跑——成员容器要先存在。"""
+        point = StructType("Point")
+        point.define([Member("a", SHORT), Member("b", INT)])
+        runtime["scope"].declare(TagSymbol("Point", TagKind.STRUCT, point))
+
+        symbol = runtime["declare"](runtime["scope"], "s", ["struct", "Point"])
+        assert runtime["read"](runtime["scope"], "s") == {"a": 0, "b": 0}
+
+        # 直接写成员（不经整体赋值）
+        address = member_address(symbol.address, point, "a")
+        runtime["store"](address, 7, SHORT)
+        assert runtime["read"](runtime["scope"], "s") == {"a": 7, "b": 0}
+
+    def test_uninitialized_array_is_zero_filled(self, runtime):
+        array = ArrayType(INT, 3)
+        runtime["declare_typed"](runtime["scope"], "a", array)
+        assert runtime["read"](runtime["scope"], "a") == [0, 0, 0]
+
+    def test_uninitialized_pointer_is_null(self, runtime):
+        runtime["declare_typed"](runtime["scope"], "p", PointerType(INT))
+        assert runtime["read"](runtime["scope"], "p").is_null
+
     def test_typed_declaration_for_derived_types(self, runtime):
         """指针 / 数组的类型来自声明符，由调用方构造成 CType 后传进来。"""
         pointer = PointerType(INT)
