@@ -113,3 +113,23 @@ class UndefinedTypeError(DomainError):
 
 class UnsupportedTypeError(DomainError):
     """语言层面不支持的操作（sizeof 函数类型）或尚未实现的特性（位域）。"""
+
+
+class MemoryAccessError(DomainError):
+    """内存访问错误基类（注意不能叫 MemoryError，那是 Python 内建异常）。"""
+
+
+class ScopeDestroyedError(MemoryAccessError):
+    """访问已销毁作用域的地址——悬空指针（D3）。"""
+
+
+class OutOfBoundsError(MemoryAccessError):
+    """地址落在任何已分配对象之外，或偏移越过了所在对象。"""
+
+
+class AllocationError(MemoryAccessError):
+    """分配失败：作用域区域已满、对齐或大小非法。"""
+
+
+class RegionNotImplementedError(MemoryAccessError):
+    """该地址区（如 heap）还没有实现。"""
