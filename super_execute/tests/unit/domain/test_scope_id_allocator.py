@@ -59,6 +59,18 @@ class TestReleaseAndReuse:
         assert allocator.active() == frozenset({b})
         assert allocator.retired() == frozenset({a})
 
+    def test_views_are_immutable_snapshots(self, allocator):
+        """返回值必须是 frozenset 快照，不能把内部 set 直接暴露出去。"""
+        first = allocator.acquire()
+        active_view, retired_view = allocator.active(), allocator.retired()
+        assert isinstance(active_view, frozenset)
+        assert isinstance(retired_view, frozenset)
+
+        allocator.release(first)
+        allocator.acquire()                      # 内部状态变了
+        assert active_view == frozenset({first})  # 之前拿到的视图不受影响
+        assert retired_view == frozenset()
+
 
 class TestExhaustion:
     def test_exhausted_when_all_ids_in_use(self, allocator):
@@ -74,6 +86,35 @@ class TestExhaustion:
         ids = [allocator.acquire() for _ in range(capacity)]
         allocator.release(ids[0])
         assert allocator.acquire() == ids[0]
+
+
+class TestOpenClose:
+    """B3：建作用域走受控入口，id 一定来自分配器。"""
+
+    def test_open_allocates_and_builds(self, allocator):
+        root = allocator.open(ScopeKind.FILE)
+        assert (root.scope_id, root.kind) == (1, ScopeKind.FILE)
+        fn = allocator.open(ScopeKind.FUNCTION, root)
+        assert fn.scope_id == 2 and fn.parent is root
+
+    def test_open_returns_id_when_construction_fails(self, allocator):
+        """父子关系非法时不能把 id 吃掉。"""
+        root = allocator.open(ScopeKind.FILE)
+        fn = allocator.open(ScopeKind.FUNCTION, root)
+        with pytest.raises(InvalidScopeError):
+            allocator.open(ScopeKind.FUNCTION, fn)     # 函数作用域不能挂在函数下
+        assert len(allocator) == 2
+        assert allocator.idle == SCOPE_ID_MAX - SCOPE_ID_MIN + 1 - 2
+
+    def test_close_releases_id_for_reuse(self, allocator):
+        root = allocator.open(ScopeKind.FILE)
+        allocator.close(root)
+        assert len(allocator) == 0
+        assert allocator.acquire() == 1
+
+    def test_close_requires_scope(self, allocator):
+        with pytest.raises(InvalidScopeError, match="Scope"):
+            allocator.close(1)
 
 
 class TestWithScope:

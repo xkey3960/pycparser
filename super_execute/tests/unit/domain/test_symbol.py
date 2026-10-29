@@ -11,6 +11,7 @@ from super_execute.domain.entities.symbol import (
     VariableSymbol,
 )
 from super_execute.domain.exceptions import InvalidSymbolError
+from super_execute.domain.services.builtin_types import INT
 from super_execute.domain.value_objects import (
     Address,
     AddressRegion,
@@ -110,6 +111,33 @@ class TestValidation:
     def test_tag_kind_checked(self):
         with pytest.raises(InvalidSymbolError, match="标签种类"):
             TagSymbol("S", "struct")
+
+
+class TestCtypeValidation:
+    """ctype 允许 None（尚未解析），但不允许别的类型混进来（review 批次 B4）。"""
+
+    def test_variable_rejects_non_ctype(self):
+        with pytest.raises(InvalidSymbolError, match="ctype"):
+            VariableSymbol("x", _scope_addr(), ctype="int")
+
+    def test_typedef_rejects_non_ctype(self):
+        with pytest.raises(InvalidSymbolError, match="ctype"):
+            TypedefSymbol("T", "int")
+
+    def test_constant_rejects_non_ctype(self):
+        with pytest.raises(InvalidSymbolError, match="ctype"):
+            ConstantSymbol("N", 0, ctype="int")
+
+    def test_tag_rejects_non_ctype(self):
+        with pytest.raises(InvalidSymbolError, match="ctype"):
+            TagSymbol("S", TagKind.STRUCT, ctype="struct S")
+
+    def test_none_ctype_is_allowed(self):
+        assert TypedefSymbol("T", None).ctype is None
+        assert TagSymbol("S", TagKind.STRUCT, None).ctype is None
+
+    def test_real_ctype_is_accepted(self):
+        assert TypedefSymbol("T", INT).ctype is INT
 
 
 class TestIdentity:

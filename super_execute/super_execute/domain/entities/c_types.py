@@ -415,6 +415,10 @@ class _CompoundType(CType):
                 raise InvalidTypeError(
                     f"{self.name} 的成员 '{member.name}' 是含弹性数组成员的结构体，"
                     "不能作成员（它的大小不含弹性部分，会静默少分配）")
+            if _is_flexible_array(member.ctype) and member is not members[-1]:
+                raise InvalidTypeError(
+                    f"{self.name} 的成员 '{member.name}' 是弹性数组，"
+                    "必须是最后一个成员（C99 6.7.2.1p3）")
         size, align, offsets = self._layout(members)
         self._members = members
         self._offsets = offsets

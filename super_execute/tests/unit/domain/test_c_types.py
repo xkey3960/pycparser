@@ -163,6 +163,22 @@ class TestEnumType:
         assert EnumType().name == "enum <anonymous>"
 
 
+class TestDefensiveCopies:
+    """对外暴露的容器必须是副本——否则调用方能悄悄改掉领域对象。"""
+
+    def test_enum_constants_returns_copy(self):
+        e = EnumType("Color", {"RED": 0})
+        e.constants["BLUE"] = 2                     # 改副本
+        assert e.constants == {"RED": 0}            # 内部不受影响
+
+    def test_basic_type_equality_ignores_size(self):
+        """判等按类型名，不看 size/align——两个 BasicType("int", 8, 8) 仍是 int。"""
+        assert BasicType("int", 4, 4) == BasicType("int", 8, 8)
+
+    def test_pointer_equality_compares_target(self):
+        assert PointerType(INT) != PointerType(CHAR)
+
+
 class TestCompoundIdentity:
     def test_structs_are_compared_by_identity(self):
         """成员完全相同的两个 struct 也是**不同**类型——C 语义如此。"""

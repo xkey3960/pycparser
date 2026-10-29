@@ -43,14 +43,7 @@ def _struct(tag, *names):
     return ctype
 
 
-@pytest.fixture
-def file_scope():
-    return Scope(1, ScopeKind.FILE)
-
-
-@pytest.fixture
-def function_scope(file_scope):
-    return Scope(2, ScopeKind.FUNCTION, file_scope)
+# file_scope / function_scope 夹具见 conftest.py
 
 
 class TestBuiltinResolution:
@@ -133,6 +126,12 @@ class TestTagResolution:
     def test_undefined_tag(self, function_scope):
         with pytest.raises(UndefinedTypeError, match="未定义的标签"):
             ScopeTypeResolver(function_scope).resolve(["struct", "Nope"])
+
+    def test_extra_words_after_tag_rejected(self, function_scope):
+        """["struct","P","junk"] 不能被当成 struct P 放过。"""
+        function_scope.declare(TagSymbol("P", TagKind.STRUCT, _struct("P", "x")))
+        with pytest.raises(InvalidTypeError, match="多余的词"):
+            ScopeTypeResolver(function_scope).resolve(["struct", "P", "junk"])
 
     def test_tag_kind_mismatch(self, function_scope):
         function_scope.declare(TagSymbol("P", TagKind.STRUCT, _struct("P", "x")))

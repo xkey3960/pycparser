@@ -115,3 +115,10 @@ class TestContainerProtocol:
     def test_repr_lists_names(self, ordinary):
         ordinary.declare(_var("x"))
         assert "x" in repr(ordinary)
+
+    def test_contains_guards_non_string(self, ordinary):
+        """`[] in ns` 应该是"不在里面"，而不是 TypeError。"""
+        ordinary.declare(_var("x"))
+        assert [] not in ordinary
+        assert None not in ordinary
+        assert 3 not in ordinary

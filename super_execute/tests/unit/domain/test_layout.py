@@ -207,6 +207,60 @@ class TestAlignUp:
         with pytest.raises(InvalidTypeError):
             align_up(4, 0)
 
+    def test_align_up_rejects_negative_value(self):
+        """负数向下取整会得到 -4，那是静默的错，必须挡掉。"""
+        with pytest.raises(InvalidTypeError, match="不能为负"):
+            align_up(-5, 4)
+
+    def test_align_up_rejects_negative_alignment(self):
+        with pytest.raises(InvalidTypeError):
+            align_up(4, -4)
+
+
+class TestFlexibleArrayRules:
+    """弹性数组成员（FAM）的三条 C99 限制。
+
+    这些点原本是变异测试的漏网之鱼：把实现里"FAM 必须在最后"的判断删掉，
+    249 个测试仍然全绿。
+    """
+
+    def _fam_struct(self):
+        t = StructType("Fam")
+        t.define([m("n", INT), m("data", ArrayType(CHAR))])
+        return t
+
+    def test_fam_struct_sizeof_excludes_flexible_part(self):
+        """6.7.2.1p18：sizeof 不含弹性部分，所以可以直接对结构体求大小。"""
+        t = self._fam_struct()
+        assert t.sizeof() == 4
+        assert t.offsetof("data") == 4
+        assert t.has_flexible_array is True
+
+    def test_fam_must_be_last_member(self):
+        """6.7.2.1p3：弹性数组只能是最后一个成员。"""
+        with pytest.raises(InvalidTypeError, match="最后一个成员"):
+            struct("Bad", m("data", ArrayType(CHAR)), m("n", INT))
+
+    def test_fam_rejected_in_union(self):
+        """6.7.2.1p1：联合体不允许弹性数组成员。"""
+        with pytest.raises(InvalidTypeError, match="联合体不允许弹性数组成员"):
+            union("U", m("n", INT), m("a", ArrayType(INT)))
+
+    def test_fam_struct_cannot_be_a_member(self):
+        """含 FAM 的结构体作成员会静默少分配（sizeof 不含弹性部分）。"""
+        fam = self._fam_struct()
+        with pytest.raises(InvalidTypeError, match="不能作成员"):
+            struct("Outer", m("c", CHAR), m("f", fam))
+
+    def test_fam_struct_cannot_be_array_element(self):
+        fam = self._fam_struct()
+        with pytest.raises(InvalidTypeError, match="数组元素不能是"):
+            ArrayType(fam, 2)
+
+    def test_plain_struct_is_not_fam(self):
+        t = struct("Plain", m("a", INT))
+        assert t.has_flexible_array is False
+
 
 class TestNaming:
     def test_tagged_and_anonymous_names(self):

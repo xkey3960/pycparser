@@ -43,19 +43,7 @@ def _func(name, function_id=0, **kw):
     return FunctionSymbol(name, Address(AddressRegion.FUNCTION, 0, function_id), **kw)
 
 
-@pytest.fixture
-def file_scope():
-    return Scope(1, ScopeKind.FILE)
-
-
-@pytest.fixture
-def function_scope(file_scope):
-    return Scope(2, ScopeKind.FUNCTION, file_scope)
-
-
-@pytest.fixture
-def block_scope(function_scope):
-    return Scope(3, ScopeKind.BLOCK, function_scope)
+# file_scope / function_scope / block_scope 三个夹具见 conftest.py
 
 
 # ==================== 结构不变量 ====================
@@ -268,3 +256,52 @@ class TestChain:
         file_scope.declare(TypedefSymbol("size_t", UNSIGNED_LONG))
         file_scope.declare(_var("g", 1, 0))
         assert len(file_scope.ordinary) == 4
+
+
+# ==================== 地址归属与覆盖式绑定（review 批次 B） ====================
+
+
+class TestAddressOwnership:
+    """地址里的 scope_id 就是"存储属于哪个作用域"，对不上就是错的绑定。"""
+
+    def test_variable_address_must_belong_to_scope(self, block_scope):
+        with pytest.raises(InvalidScopeError, match="属于作用域 #99"):
+            block_scope.declare(_var("x", 99, 0))
+
+    def test_matching_address_is_accepted(self, block_scope):
+        block_scope.declare(_var("x", 3, 0))
+        assert block_scope.find("x") is not None
+
+    def test_redeclare_overwrites(self, block_scope):
+        block_scope.declare(_var("x", 3, 0))
+        block_scope.redeclare(_var("x", 3, 8))
+        assert block_scope.find("x").address.offset == 8
+
+    def test_redeclare_keeps_linkage_check(self, block_scope):
+        """redeclare 不能成为绕过链接属性校验的后门。"""
+        with pytest.raises(InvalidScopeError, match="文件作用域"):
+            block_scope.redeclare(_var("z", 3, 0, linkage=Linkage.INTERNAL))
+
+    def test_redeclare_checks_address_ownership(self, block_scope):
+        with pytest.raises(InvalidScopeError, match="属于作用域"):
+            block_scope.redeclare(_var("z", 42, 0))
+
+    def test_redeclare_on_file_scope_with_linkage(self, file_scope):
+        file_scope.redeclare(_var("g", 1, 0, linkage=Linkage.EXTERNAL))
+        assert file_scope.find("g").linkage is Linkage.EXTERNAL
+
+
+class TestPrototypeScope:
+    """原型作用域是四种 C 作用域里唯一没被测过的一支。"""
+
+    def test_prototype_nests_under_function(self, function_scope):
+        proto = Scope(7, ScopeKind.PROTOTYPE, function_scope)
+        assert proto.parent is function_scope
+        assert proto.depth == 2
+
+    def test_prototype_can_be_root_for_tests(self):
+        assert Scope(8, ScopeKind.PROTOTYPE).is_root
+
+    def test_contains_guards_non_string(self, block_scope):
+        assert [] not in block_scope
+        assert None not in block_scope

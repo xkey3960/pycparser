@@ -150,6 +150,50 @@ class TestArithmetic:
             Address(AddressRegion.SCOPE, 2, 4).advanced(1.5)
 
 
+class TestBoolGuards:
+    """bool 是 int 的子类，不挡住的话 True 会被当成 1 号内存区。"""
+
+    def test_region_rejects_bool(self):
+        with pytest.raises(AddressError, match="bool"):
+            Address(True, 0, 0)
+
+    def test_scope_id_and_offset_reject_bool(self):
+        with pytest.raises(AddressError, match="bool"):
+            Address(AddressRegion.SCOPE, True, 0)
+        with pytest.raises(AddressError, match="bool"):
+            Address(AddressRegion.SCOPE, 1, True)
+
+    def test_from_packed_rejects_bool(self):
+        with pytest.raises(AddressError):
+            Address.from_packed(False)
+
+    def test_advanced_rejects_bool(self):
+        with pytest.raises(AddressError):
+            Address(AddressRegion.SCOPE, 1, 0).advanced(True)
+
+
+class TestPackedDefinedDomain:
+    """from_packed 不是全域映射：0 号作用域只能配 0 偏移（即 NULL）。"""
+
+    @pytest.mark.parametrize("raw", [1, 0x10, 0xFFFF])
+    def test_scope_zero_with_offset_is_rejected(self, raw):
+        with pytest.raises(AddressError):
+            Address.from_packed(raw)
+
+    def test_null_and_above_are_accepted(self):
+        assert Address.from_packed(0).is_null
+        assert Address.from_packed(0x10000) == Address(AddressRegion.SCOPE, 1, 0)
+
+    def test_max_representable_value_roundtrips(self):
+        """最大值不是 0xFFFFFFFF：高字节 0xFF 是保留区，会报错。"""
+        top = Address.from_packed(0x02FFFFFF)
+        assert top.region is AddressRegion.FUNCTION
+        assert top.offset == 0xFFFFFF
+        assert top.packed == 0x02FFFFFF
+        with pytest.raises(AddressError):
+            Address.from_packed(0xFFFFFFFF)
+
+
 class TestValueSemantics:
     def test_equality_by_value(self):
         assert Address(AddressRegion.SCOPE, 1, 4) == Address(AddressRegion.SCOPE, 1, 4)
