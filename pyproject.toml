@@ -31,8 +31,12 @@ packages = ["pycparser"]
 [tool.setuptools.package-data]
 pycparser = ["*.cfg"]
 
+[tool.ruff]
+# archive/ 里是已下线的旧实现与旧测试：留作追溯，不再维护，也不参与 lint
+extend-exclude = ["archive"]
+
 [tool.ruff.lint]
 ignore = ["F403", "F405"]
 
 [tool.ty.src]
-exclude = ["setup.py", "utils/internal/memprofiling.py"]
+exclude = ["setup.py", "utils/internal/memprofiling.py", "archive"]
