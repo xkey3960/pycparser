@@ -38,6 +38,8 @@ from super_execute.domain.exceptions import (
     RegionNotImplementedError,
     ScopeDestroyedError,
 )
+from super_execute.domain.services.builtin_types import CHAR
+from super_execute.domain.services.defaults import default_value
 from super_execute.domain.value_objects import (
     HEAP_REGION_SIZE,
     SCOPE_ID_MAX,
@@ -46,6 +48,32 @@ from super_execute.domain.value_objects import (
     Address,
     AddressRegion,
 )
+
+
+class RawBuffer:
+    """``malloc`` 出来的原始存储：**没有声明类型**。
+
+    普通槽位有声明类型（"这是一块 int"），所以按别的类型读写要报"类型双关"。
+    但 ``malloc`` 返回的是裸内存，调用方随后把它当 ``struct Point *`` 用是天经地义的：
+
+        struct Point *p = malloc(sizeof(struct Point));
+        p->x = 1;          /* 往裸内存里写一个 int */
+
+    所以原始存储按"访问时的类型"存值：``(偏移, 类型名) -> 值``。复合类型会**拆开**
+    存（结构体按成员偏移、数组按下标），这样 ``*p = pt`` 与 ``p->x`` 看到的是同一份
+    数据，而不是两个互不相干的槽。
+
+    这不是字节级存储（Phase A 本来也不做宽度截断），但足以支撑 ``malloc`` 的常见用法。
+    """
+
+    __slots__ = ("size", "values")
+
+    def __init__(self, size: int) -> None:
+        self.size = size
+        self.values: dict[tuple[int, str], Any] = {}
+
+    def __repr__(self) -> str:  # pragma: no cover - 调试用
+        return f"RawBuffer(size={self.size}, {len(self.values)} 个已写槽)"
 
 
 class _Chunk:
@@ -160,10 +188,30 @@ class SlotMemory:
         self._heap_cursor = offset + size
         return Address(AddressRegion.HEAP, 0, offset)
 
+    def allocate_raw(self, size: int) -> Address:
+        """在堆区分配 ``size`` 字节**原始存储**（``malloc`` / ``calloc`` 用）。
+
+        它没有声明类型：调用方随后想当什么用就按什么类型访问（见 ``RawBuffer``）。
+        """
+        if not isinstance(size, int) or isinstance(size, bool) or size < 0:
+            raise AllocationError(f"原始分配需要非负整数大小，收到 {size!r}")
+        payload = max(size, 1)  # 零长度也要占一个可寻址的槽
+        offset = self._heap_cursor
+        if offset + payload > HEAP_REGION_SIZE:
+            raise AllocationError(f"堆区存储不够：需要 {size} 字节")
+
+        chunk = _Chunk(offset, payload, ArrayType(CHAR, payload))
+        chunk.value = RawBuffer(size)
+        self._heap_chunks.append(chunk)
+        self._heap_cursor = offset + payload
+        return Address(AddressRegion.HEAP, 0, offset)
+
     # ==================== 读写 ====================
 
     def read(self, address: Address, ctype: CType) -> Any:
         chunk, delta = self._locate(address)
+        if isinstance(chunk.value, RawBuffer):
+            return _raw_read(chunk.value, delta, ctype)
         if delta == 0 and ctype is chunk.ctype:
             return chunk.value
         _reject_scalar_alias(chunk, delta, ctype)
@@ -176,6 +224,9 @@ class SlotMemory:
 
     def write(self, address: Address, value: Any, ctype: CType) -> None:
         chunk, delta = self._locate(address)
+        if isinstance(chunk.value, RawBuffer):
+            _raw_write(chunk.value, delta, ctype, value)
+            return
         if delta == 0 and ctype is chunk.ctype:
             chunk.value = _detach(value)
             return
@@ -223,6 +274,65 @@ class SlotMemory:
             if chunk.contains(address.offset):
                 return chunk, address.offset - chunk.offset
         raise OutOfBoundsError(f"地址 {address!r} 不在堆区的任何对象里")
+
+
+def _raw_read(raw: RawBuffer, delta: int, ctype: CType) -> Any:
+    """从原始存储里按 ``ctype`` 读。复合类型按成员/元素**拼**出来。"""
+    _check_raw_bounds(raw, delta, ctype)
+
+    if isinstance(ctype, (StructType, UnionType)):
+        return {
+            member.name: _raw_read(
+                raw, delta + ctype.offsetof(member.name), member.ctype
+            )
+            for member in ctype.members
+        }
+    if isinstance(ctype, ArrayType) and ctype.count is not None:
+        step = ctype.element.sizeof()
+        return [
+            _raw_read(raw, delta + index * step, ctype.element)
+            for index in range(ctype.count)
+        ]
+
+    return raw.values.get((delta, ctype.name), default_value(ctype))
+
+
+def _raw_write(raw: RawBuffer, delta: int, ctype: CType, value: Any) -> None:
+    """往原始存储里按 ``ctype`` 写。复合类型**拆开**写，好和逐成员访问对齐。"""
+    _check_raw_bounds(raw, delta, ctype)
+
+    if isinstance(ctype, (StructType, UnionType)):
+        for member in ctype.members:
+            if isinstance(value, dict) and member.name in value:
+                _raw_write(
+                    raw,
+                    delta + ctype.offsetof(member.name),
+                    member.ctype,
+                    value[member.name],
+                )
+        return
+    if isinstance(ctype, ArrayType) and ctype.count is not None:
+        step = ctype.element.sizeof()
+        for index in range(ctype.count):
+            if isinstance(value, (list, tuple)) and index < len(value):
+                _raw_write(raw, delta + index * step, ctype.element, value[index])
+        return
+
+    raw.values[(delta, ctype.name)] = value
+
+
+def _check_raw_bounds(raw: RawBuffer, delta: int, ctype: CType) -> None:
+    if delta < 0:
+        raise OutOfBoundsError(f"原始存储的偏移不能为负: {delta}")
+    try:
+        size = ctype.sizeof()
+    except Exception:  # 不完整类型：交给上层按常规路径报错
+        return
+    if delta + size > raw.size:
+        raise OutOfBoundsError(
+            f"偏移 {delta} 上放不下 {ctype.name}（{size} 字节），"
+            f"这块原始存储只有 {raw.size} 字节"
+        )
 
 
 def _needs_descent(element: CType, want: CType) -> bool:

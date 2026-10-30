@@ -32,5 +32,9 @@ int main(void)
     for (int i = 0; i < 3; i++) {
         total += manhattan(path[i]) + cost(i);
     }
+    struct Point *pstPoint = (struct Point *)malloc(sizeof(struct Point));
+    pstPoint->x = 1;
+    pstPoint->y = 2;
+    printf("%u", pstPoint->x);
     return total;
 }

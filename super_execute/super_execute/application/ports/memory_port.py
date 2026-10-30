@@ -49,8 +49,15 @@ class MemoryPort(Protocol):
     def allocate_heap(self, ctype: CType, value: Any) -> Address:
         """在堆区分配一块并写入初值，返回它的地址。
 
-        字符串字面量（以及将来的 ``malloc``）放这里。堆没有作用域归属，
-        生命周期是整个程序——Phase A 不回收。
+        字符串字面量放这里。堆没有作用域归属，生命周期是整个程序——
+        Phase A 不回收。
+        """
+
+    def allocate_raw(self, size: int) -> Address:
+        """在堆区分配 ``size`` 字节**原始存储**（没有声明类型，``malloc`` 用）。
+
+        和 ``allocate_heap`` 的区别：那个带声明类型（"这是一块 int[4]"），
+        这个不带——调用方随后想当什么用就当什么用。
         """
 
     def read(self, address: Address, ctype: CType) -> Any:

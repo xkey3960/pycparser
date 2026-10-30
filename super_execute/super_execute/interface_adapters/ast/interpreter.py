@@ -17,8 +17,10 @@ from typing import Any, Sequence
 
 from pycparser import c_ast
 
+from super_execute.application.ports.builtin_port import BuiltinPort, ProgramExit
 from super_execute.application.ports.memory_port import MemoryPort
 from super_execute.application.ports.type_resolver_port import TypeResolverPort
+from super_execute.application.use_cases.functions import DeclareFunction
 from super_execute.application.use_cases.scope_session import ScopeSession
 from super_execute.application.use_cases.variables import DeclareVariable
 from super_execute.domain.entities.c_types import BasicType, FunctionType, PointerType
@@ -38,7 +40,13 @@ from super_execute.domain.services.defaults import default_value
 from super_execute.domain.services.conversions import array_to_pointer, convert_value
 from super_execute.domain.services.scope_id_allocator import ScopeIdAllocator
 from super_execute.domain.services.type_resolver import TypeResolver
-from super_execute.domain.value_objects import Address, AddressRegion, ScopeKind
+from super_execute.domain.value_objects import (
+    Address,
+    AddressRegion,
+    Linkage,
+    ScopeKind,
+)
+from super_execute.frameworks.builtins import BuiltinTable
 from super_execute.frameworks.memory import FunctionTable, SlotMemory
 from super_execute.interface_adapters.ast.declaration_loader import DeclarationLoader
 from super_execute.interface_adapters.ast.evaluator import Evaluator
@@ -62,11 +70,16 @@ class Interpreter:
         lazy: bool = False,
         strict: bool = False,
         entry: str = "main",
+        builtins: BuiltinPort | None = None,
     ) -> None:
         self._memory = memory if memory is not None else SlotMemory()
         self._allocator = allocator if allocator is not None else ScopeIdAllocator()
         self._functions = functions if functions is not None else FunctionTable()
         self._resolver = resolver if resolver is not None else TypeResolver()
+        #: 内建函数表（printf / strlen / malloc ...）。默认用 Python 实现的那份。
+        self._builtins = (
+            builtins if builtins is not None else BuiltinTable(self._memory)
+        )
 
         #: 惰性装载：单个声明出错时**记下来但不中断**，等到 `link()`（全量检查）
         #: 或真正用到那个符号时再报。C 编译器对未使用的坏代码也是这样宽容的。
@@ -85,6 +98,8 @@ class Interpreter:
             self._evaluator, self._memory, self._resolver, self._session
         )
         self._declare = DeclareVariable(self._memory)
+        self._declare_func = DeclareFunction(self._functions)
+        self._builtins_declared = False
         self._bodies: dict[str, tuple[c_ast.FuncDef, Scope]] = {}
         self._static_bodies: dict[tuple[int, str], tuple[c_ast.FuncDef, Scope]] = {}
         self._units: dict[str, Scope] = {}
@@ -126,6 +141,7 @@ class Interpreter:
         """
         if self._globals is None:
             self._globals = self._session.open(ScopeKind.FILE)
+        self._declare_builtins()
 
         unit = self._session.open(ScopeKind.UNIT, self._globals)
         produced: list[Any] = []
@@ -249,6 +265,9 @@ class Interpreter:
         """
         try:
             return self.call(entry, ())
+        except ProgramExit as exit_signal:
+            # `exit(n)` 不是错误：把 n 当作程序结果返回
+            return exit_signal.code
         except DomainError as error:
             self._report(error)
             raise
@@ -278,6 +297,11 @@ class Interpreter:
             recorded = self._bodies.get(name)
 
         if recorded is None:
+            # 没有函数体：可能是内建函数（printf / strlen / malloc ...）
+            if self._is_builtin(name):
+                return convert_value(
+                    self._builtins.call(name, list(args)), symbol.ctype.ret
+                )
             raise LinkError(f"函数 '{name}' 只有声明没有定义")
         body, unit = recorded
 
@@ -328,6 +352,31 @@ class Interpreter:
         return self.call(target.name, args, scope)
 
     # ==================== 内部 ====================
+
+    # ==================== 内建函数 ====================
+
+    def _declare_builtins(self) -> None:
+        """把内建函数**隐式声明**进全局作用域。
+
+        像 C89 那样：写了 ``printf("hi")`` 但没 ``#include <stdio.h>`` 也能用——
+        这里替编译器补上声明。用户自己声明同名函数时，``redeclare`` 会把内建的
+        覆盖掉，所以"自己实现 printf"仍然可行。
+        """
+        if self._builtins_declared or self._globals is None:
+            return
+        self._builtins_declared = True
+        for name in self._builtins.names():
+            self._declare_func(
+                self._globals, name, self._builtins.signature(name), Linkage.EXTERNAL
+            )
+
+    def _is_builtin(self, name: str) -> bool:
+        """这个名字是不是**内建**的（用户没自己定义过）。
+
+        用户如果在 C 代码里定义了同名函数，它会有函数体，走正常调用路径——
+        所以这里还要看 ``_bodies``。
+        """
+        return self._builtins.has(name) and name not in self._bodies
 
     def _initialize_globals(self) -> None:
         """把折不成常量的全局初值算掉（`int g = helper();` 这种）。

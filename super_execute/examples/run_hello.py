@@ -6,8 +6,8 @@
 
     读源码 → pycparser 解析成 AST → Interpreter 装载并运行
 
-约定：解释器**没有输出语句**（``printf`` 还没做），所以 ``main`` 的返回值就是
-程序的结果，由 Python 这边打印出来。
+约定：程序结果取 ``main`` 的返回值。``printf`` 的输出会**直接写到 stdout**，
+所以屏幕上会先看到 C 程序打印的内容，再看到这行 Python 的汇报。
 """
 
 from __future__ import annotations
