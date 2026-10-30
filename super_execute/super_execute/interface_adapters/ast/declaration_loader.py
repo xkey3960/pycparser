@@ -32,13 +32,20 @@ from super_execute.domain.entities.symbol import TypedefSymbol
 from super_execute.domain.exceptions import UnsupportedTypeError
 from super_execute.domain.services.equivalence import types_equivalent
 from super_execute.domain.value_objects import Linkage, ScopeKind
+from super_execute.interface_adapters.ast.const_eval import fold
 from super_execute.interface_adapters.ast.type_builder import TypeBuilder
 
 
 class DeclarationLoader:
     """把 ``FileAST`` 的顶层节点逐条变成用例调用。"""
 
-    __slots__ = ("_memory", "_resolver", "_declare_var", "_declare_func")
+    __slots__ = (
+        "_memory",
+        "_resolver",
+        "_declare_var",
+        "_declare_func",
+        "deferred_initializers",
+    )
 
     def __init__(
         self,
@@ -50,6 +57,10 @@ class DeclarationLoader:
         self._resolver = resolver
         self._declare_var = DeclareVariable(memory)
         self._declare_func = DeclareFunction(functions)
+
+        #: 折不成常量的全局初值：``(变量名, 初值表达式)``，按声明顺序。
+        #: 由解释器在所有翻译单元装载完之后统一求值。
+        self.deferred_initializers: list[tuple[str, Any]] = []
 
     def load(self, scope: Scope, file_ast: c_ast.FileAST) -> list[Any]:
         """装载一个翻译单元，返回逐个声明产生的符号。"""
@@ -109,28 +120,23 @@ class DeclarationLoader:
                 scope, decl.name, ctype, self._linkage(scope, decl)
             )
 
+        # 能折叠的初值当场算掉；折不动（比如 `int g = helper();`）就记下来，
+        # 等所有翻译单元装载完再求值——那时函数表才齐。
+        initial = None
+        if decl.init is not None:
+            initial = fold(decl.init, scope, self._resolver)
+            if initial is None:
+                self.deferred_initializers.append((decl.name, decl.init))
+
         return self._declare_var(
             scope,
             decl.name,
             ctype,
-            initial=self._initializer(decl.init),
+            initial=initial,
             linkage=self._linkage(scope, decl),
         )
 
     # ---- 细节 ----
-
-    def _initializer(self, init: Any) -> Any:
-        """只支持常量初值；``int x = f();`` 那种要等求值器。"""
-        if init is None:
-            return None
-        if isinstance(init, c_ast.Constant) and init.type in ("int", "char"):
-            try:
-                return int(init.value, 0)
-            except ValueError as exc:
-                raise UnsupportedTypeError(f"不认识的常量初值: {init.value}") from exc
-        raise UnsupportedTypeError(
-            f"全局初值目前只支持整型常量，收到 {type(init).__name__}"
-        )
 
     def _linkage(self, scope: Scope, decl: c_ast.Decl) -> Linkage:
         """只有文件作用域的符号才有链接属性；块内 static 暂按普通局部处理。"""

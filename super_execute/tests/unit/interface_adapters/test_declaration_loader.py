@@ -12,7 +12,6 @@ from super_execute.domain.entities.symbol import (
     TypedefSymbol,
     VariableSymbol,
 )
-from super_execute.domain.exceptions import UnsupportedTypeError
 from super_execute.domain.value_objects import Linkage
 
 SOURCE = """
@@ -139,14 +138,37 @@ class TestMultipleTranslationUnits:
             )
 
 
-class TestUnsupported:
-    def test_non_constant_global_initializer(self, runtime, parse):
-        with pytest.raises(UnsupportedTypeError, match="整型常量"):
-            runtime["loader"].load(runtime["scope"], parse("int g = 1 + 2;"))
+class TestInitializers:
+    """能折叠的当场算掉，折不动的推迟到所有翻译单元装载完。"""
 
-    def test_call_initializer(self, runtime, parse):
-        with pytest.raises(UnsupportedTypeError):
-            runtime["loader"].load(runtime["scope"], parse("int f(void); int g = f();"))
+    def test_constant_expression_is_folded(self, runtime, parse):
+        runtime["loader"].load(runtime["scope"], parse("int g = 1 + 2 * 3;"))
+        symbol = runtime["scope"].require("g")
+        assert runtime["memory"].read(symbol.address, symbol.ctype) == 7
+
+    def test_constant_referencing_enum(self, runtime, parse):
+        runtime["loader"].load(
+            runtime["scope"], parse("enum E { A = 5 }; int g = A * 2;")
+        )
+        symbol = runtime["scope"].require("g")
+        assert runtime["memory"].read(symbol.address, symbol.ctype) == 10
+
+    def test_non_constant_initializer_is_deferred(self, runtime, parse):
+        runtime["loader"].load(runtime["scope"], parse("int f(void); int g = f();"))
+        names = [name for name, _ in runtime["loader"].deferred_initializers]
+        assert names == ["g"]
+
+    def test_zero_value_before_initialization(self, runtime, parse):
+        """推迟的初值在装载阶段只是零值，求值发生在 run()。"""
+        runtime["loader"].load(runtime["scope"], parse("int f(void); int g = f();"))
+        symbol = runtime["scope"].require("g")
+        assert runtime["memory"].read(symbol.address, symbol.ctype) == 0
+
+    def test_initializer_list_still_unsupported(self, runtime, parse):
+        runtime["loader"].load(runtime["scope"], parse("int a[2] = {1, 2};"))
+        interpreter_symbol = runtime["scope"].require("a")
+        assert interpreter_symbol is not None  # 声明成功，初值推迟
+        assert len(runtime["loader"].deferred_initializers) == 1
 
 
 class TestSkipped:

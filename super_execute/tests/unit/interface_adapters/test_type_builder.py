@@ -189,9 +189,19 @@ class TestEnums:
         ctype = builder.build(decl_type("enum E { A } e;"))
         assert (ctype.sizeof(), ctype.alignof()) == (4, 4)
 
-    def test_non_constant_enumerator_rejected(self, builder, decl_type):
+    def test_constant_expression_values(self, builder, decl_type):
+        """枚举值可以是常量表达式，并且能引用前面的枚举常量。"""
+        ctype = builder.build(decl_type("enum E { A = 1 + 1, B = A * 3 } e;"))
+        assert ctype.constants == {"A": 2, "B": 6}
+
+    def test_sizeof_enumerator(self, builder, decl_type):
+        ctype = builder.build(decl_type("enum E { A = sizeof(int) } e;"))
+        assert ctype.constants == {"A": 4}
+
+    def test_truly_non_constant_enumerator_rejected(self, builder, decl_type):
+        """枚举值引用了变量 → 折不动 → 明确报错（不是悄悄当 0）。"""
         with pytest.raises(UnsupportedTypeError, match="整型常量"):
-            builder.build(decl_type("enum E { A = sizeof(int) } e;"))
+            builder.build(decl_type("int x; enum E { A = x } e;", 1))
 
 
 class TestTagScope:

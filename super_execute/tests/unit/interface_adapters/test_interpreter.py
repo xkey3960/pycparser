@@ -15,10 +15,60 @@ from super_execute.domain.exceptions import (
 from super_execute.interface_adapters.ast.interpreter import Interpreter
 
 
+def parse(source: str):
+    return CParser().parse(source, "<test>")
+
+
 def run(source: str, entry: str = "main"):
     interpreter = Interpreter()
-    interpreter.load(CParser().parse(source, "<test>"))
+    interpreter.load(parse(source))
     return interpreter.run(entry)
+
+
+class TestGlobalInitialization:
+    """全局初值可以是常量表达式，也可以调用函数（推迟到装载完之后求值）。"""
+
+    def test_constant_expression(self):
+        assert run("int g = 3 * 4; int main(void) { return g; }") == 12
+
+    def test_initializer_calls_function(self):
+        source = """
+            int helper(void) { return 40; }
+            int g = helper() + 2;
+            int main(void) { return g; }
+        """
+        assert run(source) == 42
+
+    def test_initializer_across_translation_units(self):
+        """初值里的函数定义在**另一个**文件里——这才是推迟求值的原因。"""
+        interpreter = Interpreter()
+        interpreter.load(parse("int helper(void) { return 41; }"))
+        interpreter.load(
+            parse(
+                "int helper(void); int g = helper() + 1; int main(void) { return g; }"
+            )
+        )
+        assert interpreter.run() == 42
+
+    def test_global_initialization_runs_once(self):
+        source = """
+            int count = 0;
+            int bump(void) { count++; return count; }
+            int g = bump();
+            int main(void) { return g + count * 10; }
+        """
+        # g 只算一次：g=1、count=1 → 1 + 10 = 11
+        assert run(source) == 11
+
+    def test_array_dimension_constant_expression(self):
+        assert run("int main(void) { int a[2 + 1]; return sizeof(a); }") == 12
+
+    def test_array_dimension_using_enum(self):
+        source = """
+            enum { N = 4 };
+            int main(void) { int a[N]; return sizeof(a) / sizeof(a[0]); }
+        """
+        assert run(source) == 4
 
 
 class TestBasics:
@@ -229,6 +279,31 @@ class TestStructsAndPointers:
             }
         """
         assert run(source) == 30
+
+    def test_struct_assignment_copies(self):
+        """`q = p` 之后改 q 不能影响 p（C 的值语义）。"""
+        source = """
+            struct Point { int x; int y; };
+            int main(void) {
+                struct Point p; p.x = 10; p.y = 5;
+                struct Point q = p;
+                q.x = 100;
+                return p.x + q.x;
+            }
+        """
+        assert run(source) == 110  # 10 + 100；若共享则是 200
+
+    def test_struct_parameter_mutation_does_not_leak(self):
+        source = """
+            struct Point { int x; int y; };
+            int bump(struct Point p) { p.x = 999; return p.x; }
+            int main(void) {
+                struct Point p; p.x = 1; p.y = 2;
+                bump(p);
+                return p.x;
+            }
+        """
+        assert run(source) == 1
 
     def test_pointer_and_arrow(self):
         """对应仓库里 test/multi/ptr_main.c 的同款程序：99 + 37 = 136。"""

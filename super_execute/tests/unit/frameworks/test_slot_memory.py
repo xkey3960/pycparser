@@ -295,6 +295,51 @@ class TestOutOfBounds:
             memory.read(Address(AddressRegion.FUNCTION, 0, 0), INT)
 
 
+class TestValueSemantics:
+    """C 的赋值是值语义：复合值必须拷贝，不能引用共享。"""
+
+    def test_struct_value_is_copied_on_write(self, memory):
+        s = _struct("S", Member("a", INT), Member("b", INT))
+        first = memory.allocate(SCOPE, s)
+        second = memory.allocate(SCOPE, s)
+
+        value = {"a": 1, "b": 2}
+        memory.write(first, value, s)
+        memory.write(second, value, s)  # 同一个 dict 写两次
+
+        memory.write(second + s.offsetof("a"), 99, INT)
+        assert memory.read(first, s) == {"a": 1, "b": 2}
+        assert memory.read(second, s) == {"a": 99, "b": 2}
+
+    def test_array_value_is_copied_on_write(self, memory):
+        array = ArrayType(INT, 3)
+        first = memory.allocate(SCOPE, array)
+        second = memory.allocate(SCOPE, array)
+
+        value = [1, 2, 3]
+        memory.write(first, value, array)
+        memory.write(second, value, array)
+        memory.write(second, 9, array)
+        assert memory.read(first, array) == [1, 2, 3]
+
+    def test_member_container_write_also_copies(self, memory):
+        """经成员地址写复合值时也要拷贝（走的是另一条写入路径）。"""
+        inner = _struct("In", Member("x", INT))
+        outer = _struct("Out", Member("head", INT), Member("in", inner))
+        address = memory.allocate(SCOPE, outer)
+        memory.write(address, {"head": 0, "in": {"x": 1}}, outer)
+
+        shared = {"x": 5}
+        memory.write(address + outer.offsetof("in"), shared, inner)
+        shared["x"] = 777  # 改调用方手里的 dict
+        assert memory.read(address, outer)["in"]["x"] == 5
+
+    def test_scalars_are_not_copied_or_boxed(self, memory):
+        address = memory.allocate(SCOPE, INT)
+        memory.write(address, 42, INT)
+        assert memory.read(address, INT) == 42
+
+
 class TestDestroyedScope:
     """D3：作用域销毁后，属于它的地址必须报错，而不是静默读到脏数据。"""
 

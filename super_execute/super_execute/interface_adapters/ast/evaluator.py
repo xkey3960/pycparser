@@ -44,7 +44,6 @@ from super_execute.domain.entities.symbol import (
     VariableSymbol,
 )
 from super_execute.domain.exceptions import (
-    DivisionByZeroError,
     InvalidTypeError,
     NotAValueError,
     UndefinedSymbolError,
@@ -52,6 +51,7 @@ from super_execute.domain.exceptions import (
     UnsupportedTypeError,
 )
 from super_execute.domain.services.addressing import element_address, member_address
+from super_execute.domain.services.arithmetic import c_div, c_mod
 from super_execute.domain.value_objects import Address
 from super_execute.interface_adapters.ast.inference import TypeInferencer
 
@@ -337,20 +337,6 @@ def _step_of(ctype: CType) -> int | None:
     return None
 
 
-def _c_div(a: int, b: int) -> int:
-    """C 的整数除法：向零截断（Python 的 // 是向下取整）。"""
-    if b == 0:
-        raise DivisionByZeroError("除数为 0")
-    quotient = abs(a) // abs(b)
-    return quotient if (a >= 0) == (b >= 0) else -quotient
-
-
-def _c_mod(a: int, b: int) -> int:
-    if b == 0:
-        raise DivisionByZeroError("除数为 0")
-    return a - _c_div(a, b) * b
-
-
 def _equal(a: Any, b: Any) -> bool:
     if isinstance(a, Address) and isinstance(b, Address):
         return a == b
@@ -398,10 +384,10 @@ def _apply(op: str, a: Any, b: Any, step: int | None) -> Any:
         return a * b
     if op == "/":
         if isinstance(a, int) and isinstance(b, int):
-            return _c_div(a, b)
+            return c_div(a, b)
         return a / b
     if op == "%":
-        return _c_mod(int(a), int(b))
+        return c_mod(int(a), int(b))
     if op == "<<":
         return int(a) << int(b)
     if op == ">>":

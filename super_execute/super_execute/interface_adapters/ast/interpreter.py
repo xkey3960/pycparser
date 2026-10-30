@@ -23,7 +23,7 @@ from super_execute.application.use_cases.scope_session import ScopeSession
 from super_execute.application.use_cases.variables import DeclareVariable
 from super_execute.domain.entities.c_types import FunctionType
 from super_execute.domain.entities.scope import Scope
-from super_execute.domain.entities.symbol import FunctionSymbol
+from super_execute.domain.entities.symbol import FunctionSymbol, VariableSymbol
 from super_execute.domain.exceptions import (
     LinkError,
     UndefinedSymbolError,
@@ -68,6 +68,7 @@ class Interpreter:
         self._declare = DeclareVariable(self._memory)
         self._bodies: dict[str, c_ast.FuncDef] = {}
         self._globals: Scope | None = None
+        self._globals_initialized = False
 
         # 函数调用要回到这里，用回填避免求值器与解释器互相依赖
         self._evaluator.set_call_handler(self._handle_call)
@@ -95,7 +96,8 @@ class Interpreter:
 
         for node in file_ast.ext:
             if isinstance(node, c_ast.FuncDef):
-                self._bodies[node.decl.name] = node
+                # 同名函数定义多份时**保第一份**：旧实现也是这样（入口取第一个 main）
+                self._bodies.setdefault(node.decl.name, node)
 
         self._loader.load(self._globals, file_ast)
         return self._globals
@@ -107,6 +109,7 @@ class Interpreter:
         return self.call(entry, ())
 
     def call(self, name: str, args: Sequence[Any], scope: Scope | None = None) -> Any:
+        self._initialize_globals()
         lookup = scope if scope is not None else self.globals
         symbol = lookup.find(name)
         if symbol is None:
@@ -132,6 +135,24 @@ class Interpreter:
             self._session.close(scope)
 
     # ==================== 内部 ====================
+
+    def _initialize_globals(self) -> None:
+        """把折不成常量的全局初值算掉（`int g = helper();` 这种）。
+
+        必须在**所有**翻译单元装载完之后做：初值里可能调用另一个文件里的函数，
+        那时函数表和函数体才齐。只做一次，并且先把标志置上——初始化过程中
+        调用的函数会再进 ``call()``，不该递归触发初始化。
+        """
+        if self._globals_initialized or self._globals is None:
+            return
+        self._globals_initialized = True
+
+        for name, expression in self._loader.deferred_initializers:
+            symbol = self._globals.find(name)
+            if not isinstance(symbol, VariableSymbol) or symbol.ctype is None:
+                raise LinkError(f"全局初值的目标 '{name}' 不是变量")
+            value = self._evaluator.eval(expression, self._globals)
+            self._memory.write(symbol.address, value, symbol.ctype)
 
     def _bind_parameters(
         self,

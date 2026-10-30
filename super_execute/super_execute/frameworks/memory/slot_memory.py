@@ -19,6 +19,8 @@ Phase A 的两处约定（Phase B 换成字节后自然消失）：
 
 from __future__ import annotations
 
+import copy
+
 from typing import Any
 
 from super_execute.domain.entities.c_types import (
@@ -151,13 +153,13 @@ class SlotMemory:
     def write(self, address: Address, value: Any, ctype: CType) -> None:
         chunk, delta = self._locate(address)
         if delta == 0 and ctype is chunk.ctype:
-            chunk.value = value
+            chunk.value = _detach(value)
             return
         _reject_scalar_alias(chunk, delta, ctype)
         container, key, actual = _resolve(chunk.value, chunk.ctype, delta, ctype)
         _check_access_type(actual, ctype, delta)
         try:
-            container[key] = value
+            container[key] = _detach(value)
         except (IndexError, TypeError) as exc:
             raise OutOfBoundsError(f"偏移 {delta} 上不能写入: {exc!r}") from exc
 
@@ -249,6 +251,18 @@ def _resolve(
         return _resolve(value[member.name], member.ctype, rest, want)
 
     raise OutOfBoundsError(f"{ctype.name} 是标量，偏移 {delta} 已经越过它自身")
+
+
+def _detach(value: Any) -> Any:
+    """写入前把复合值**拷贝**一份。
+
+    C 的赋值是值语义：``Point q = p;`` 之后 ``q.x = 100`` 不能影响 ``p``。
+    Phase A 的复合值是 dict/list，直接存进去就成了引用共享——这正是最早那次
+    review 里发现的 P0（"struct 赋值不拷贝，产生别名"）。
+    """
+    if isinstance(value, (dict, list)):
+        return copy.deepcopy(value)
+    return value
 
 
 def _reject_scalar_alias(chunk: _Chunk, delta: int, want: CType) -> None:

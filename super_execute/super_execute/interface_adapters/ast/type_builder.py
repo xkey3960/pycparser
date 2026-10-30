@@ -43,6 +43,7 @@ from super_execute.domain.services.builtin_types import INT
 from super_execute.domain.services.conversions import array_to_pointer
 from super_execute.domain.services.equivalence import members_equivalent
 from super_execute.domain.value_objects import TagKind
+from super_execute.interface_adapters.ast.const_eval import fold
 
 _TAG_KINDS = {
     c_ast.Struct: TagKind.STRUCT,
@@ -98,10 +99,11 @@ class TypeBuilder:
         """数组长度。``None`` = 长度未定（弹性数组成员）。"""
         if dim is None:
             return None
-        value = _const_int(dim)
-        if value is None:
+        value = fold(dim, self._scope, self._resolver)
+        if not isinstance(value, int):
             raise UnsupportedTypeError(
-                f"数组长度必须是整型常量（常量折叠还没做）: {type(dim).__name__}"
+                f"数组长度必须是整型常量表达式：{type(dim).__name__} 折不成常量"
+                "（引用了变量、或用了未定义的标识符）"
             )
         return value
 
@@ -174,16 +176,25 @@ class TypeBuilder:
             next_value = 0
             for enumerator in node.values.enumerators:
                 if enumerator.value is not None:
-                    value = _const_int(enumerator.value)
-                    if value is None:
+                    value = fold(enumerator.value, self._scope, self._resolver)
+                    if not isinstance(value, int):
                         raise UnsupportedTypeError(
-                            f"枚举值必须是整型常量: {enumerator.name}"
+                            f"枚举值必须是整型常量表达式: {enumerator.name}"
                         )
                 else:
                     value = next_value
                 constants[enumerator.name] = value
-                # C 的枚举常量进**外围**作用域，不另开一层
-                self._scope.declare(ConstantSymbol(enumerator.name, value, INT))
+                # C 的枚举常量进**外围**作用域，不另开一层；
+                # 先登记才能让后面的枚举值引用它（B = A + 1）
+                existing = self._scope.ordinary.local(enumerator.name)
+                if isinstance(existing, ConstantSymbol):
+                    # 跨文件重复定义同一份 enum：值相同就静默去重
+                    if existing.value != value:
+                        raise InvalidTypeError(
+                            f"枚举常量 '{enumerator.name}' 重复定义，且值不同"
+                        )
+                else:
+                    self._scope.declare(ConstantSymbol(enumerator.name, value, INT))
                 next_value = value + 1
             if ctype.is_complete:
                 if dict(ctype.constants) == constants:
@@ -232,20 +243,3 @@ def _bit_width(decl: c_ast.Decl) -> int | None:
     if getattr(decl, "bitsize", None) is None:
         return None
     raise UnsupportedTypeError("位域（bit-field）尚未实现")
-
-
-def _const_int(node: Any) -> int | None:
-    """极简常量求值：只认整数常量与它的一元负号。"""
-    if isinstance(node, c_ast.Constant) and node.type in (
-        "int",
-        "long",
-        "unsigned int",
-    ):
-        try:
-            return int(node.value, 0)
-        except ValueError:
-            return None
-    if isinstance(node, c_ast.UnaryOp) and node.op == "-":
-        inner = _const_int(node.expr)
-        return None if inner is None else -inner
-    return None
