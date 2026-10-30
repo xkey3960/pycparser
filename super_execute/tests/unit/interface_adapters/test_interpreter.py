@@ -71,6 +71,71 @@ class TestGlobalInitialization:
         assert run(source) == 4
 
 
+class TestImplicitConversion:
+    """TYPE-2：值流入某个类型时的隐式转换。"""
+
+    def test_int_initializer_truncates(self):
+        assert run("int main(void) { int x = 3.7; return x; }") == 3
+
+    def test_return_value_truncates(self):
+        assert run("int f(void) { return 3.7; } int main(void) { return f(); }") == 3
+
+    def test_compound_assignment_truncates(self):
+        assert run("int main(void) { int y = 5; y += 2.7; return y; }") == 7
+
+    def test_argument_converted_to_parameter_type(self):
+        source = """
+            int half_of(double x) { return x / 2; }
+            int main(void) { return half_of(5); }
+        """
+        assert run(source) == 2  # 5 → 5.0 / 2 = 2.5 → int 2
+
+    def test_int_to_double_promotion(self):
+        source = """
+            double twice(double x) { return x * 2; }
+            int main(void) { return (int)twice(3); }
+        """
+        assert run(source) == 6
+
+    def test_pointer_initialized_with_zero(self):
+        assert run("int main(void) { int *p = 0; return p == 0; }") == 1
+
+
+class TestErrorReporting:
+    """QOL-1：错误要带源码位置与调用链。"""
+
+    def _failing(self, source):
+        interpreter = Interpreter()
+        interpreter.load(parse(source))
+        return interpreter
+
+    def test_error_carries_source_location(self):
+        source = (
+            "int inner(int a) { return a + zz; }\nint main(void) { return inner(5); }"
+        )
+        with pytest.raises(UndefinedSymbolError) as info:
+            self._failing(source).run()
+        assert "<test>:1" in str(info.value)
+
+    def test_error_reports_call_chain(self, capsys):
+        source = (
+            "int inner(int a) { return a + zz; }\n"
+            "int helper(int x) { return inner(x); }\n"
+            "int main(void) { return helper(5); }"
+        )
+        with pytest.raises(UndefinedSymbolError):
+            self._failing(source).run()
+
+        out = capsys.readouterr().out
+        assert "[error]" in out
+        assert "调用链" in out
+        assert "main" in out and "helper" in out and "inner" in out
+
+    def test_success_prints_nothing(self, capsys):
+        assert run("int main(void) { return 7; }") == 7
+        assert capsys.readouterr().out == ""
+
+
 class TestBasics:
     def test_arithmetic_precedence(self):
         assert run("int main(void) { return 1 + 2 * 3; }") == 7

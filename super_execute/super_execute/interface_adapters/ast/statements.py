@@ -25,6 +25,7 @@ from super_execute.application.use_cases.variables import DeclareVariable
 from super_execute.domain.entities.c_types import BasicType
 from super_execute.domain.entities.scope import Scope
 from super_execute.domain.entities.symbol import TypedefSymbol
+from super_execute.domain.exceptions import DomainError
 from super_execute.domain.value_objects import ScopeKind
 from super_execute.interface_adapters.ast.evaluator import Evaluator
 from super_execute.interface_adapters.ast.type_builder import TypeBuilder
@@ -66,6 +67,13 @@ class StatementExecutor:
     # ==================== 入口 ====================
 
     def execute(self, node: Any, scope: Scope) -> None:
+        """语句执行入口：顺带把出错位置记到异常上（与求值器同一套）。"""
+        try:
+            self._execute(node, scope)
+        except DomainError as error:
+            raise error.with_coord(getattr(node, "coord", None)) from None
+
+    def _execute(self, node: Any, scope: Scope) -> None:
         if node is None or isinstance(node, c_ast.EmptyStatement):
             return
         if isinstance(node, c_ast.Compound):

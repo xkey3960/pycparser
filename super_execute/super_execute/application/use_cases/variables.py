@@ -29,6 +29,7 @@ from super_execute.domain.exceptions import (
     NotAValueError,
     UnresolvedTypeError,
 )
+from super_execute.domain.services.conversions import convert_value
 from super_execute.domain.services.defaults import default_value
 from super_execute.domain.value_objects import Linkage
 
@@ -75,7 +76,8 @@ class DeclareVariable:
         # 先铺零值再写初值：`struct Point s; s.a = 1;` 需要成员容器已经存在
         self._memory.write(address, default_value(ctype), ctype)
         if initial is not None:
-            self._memory.write(address, initial, ctype)
+            # `int x = 3.7;` 要截断成 3——初值也是"值流入某类型"的一处
+            self._memory.write(address, convert_value(initial, ctype), ctype)
         return symbol
 
 

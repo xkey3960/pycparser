@@ -15,6 +15,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from super_execute.domain.entities.c_types import (
     ArrayType,
     BasicType,
@@ -24,6 +26,7 @@ from super_execute.domain.entities.c_types import (
 )
 from super_execute.domain.exceptions import InvalidTypeError
 from super_execute.domain.services.builtin_types import DOUBLE, FLOAT, INT
+from super_execute.domain.value_objects import NULL_ADDRESS, Address
 
 
 def array_to_pointer(ctype: CType) -> CType:
@@ -78,3 +81,38 @@ def usual_arithmetic_convert(left: CType, right: CType) -> CType:
     if not right.is_signed:
         return right
     return left
+
+
+def convert_value(value: Any, ctype: CType) -> Any:
+    """把值转成 ``ctype`` 应该存的样子（赋值 / 初始化 / 传参 / 返回共用）。
+
+    C 里几乎每一处"值流入某个类型"的地方都会做隐式转换，最容易漏的是这三处：
+
+        int x = 3.7;      → 3    （浮点转整型向零截断）
+        int f(void){ return 3.7; }   → 3
+        int y = 5; y += 2.7;         → 7（先算 7.7 再转回 int）
+
+    本项目 Phase A 用 Python 整数存值，所以**窄化截断没有做**（`char c = 300`
+    不会回绕成 44）——那是 Phase B 换成字节存储之后自然发生的事。这里只处理
+    浮点↔整型、整数↔指针（0 变 NULL）、以及枚举按 int 存。
+    """
+    if isinstance(ctype, BasicType):
+        if not ctype.is_complete:  # void
+            return None
+        if isinstance(value, Address):
+            return float(value.packed) if ctype.is_float else value.packed
+        return float(value) if ctype.is_float else int(value)
+
+    if isinstance(ctype, EnumType):
+        return int(value)
+
+    if isinstance(ctype, PointerType):
+        if isinstance(value, Address):
+            return value
+        if value in (0, None):
+            return NULL_ADDRESS  # 整数 0 就是空指针
+        if isinstance(value, (int, float)):
+            return value  # 其它整数当地址用（不常见，但 C 允许）
+
+    # 复合值（struct/union/array）按值传递，转换没有额外动作（拷贝在写入时做）
+    return value

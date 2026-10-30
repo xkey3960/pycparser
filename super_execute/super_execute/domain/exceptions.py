@@ -11,7 +11,31 @@ strangler 迁移完成前不动它。）
 
 
 class DomainError(Exception):
-    """新领域（super_execute）的错误基类。"""
+    """新领域（super_execute）的错误基类。
+
+    带上"首次出错的位置"（``coord``）与调用链（``call_chain``），这样报错能指出
+    源文件第几行、以及是怎么一路调过来的——旧实现把这件事叫 QOL-1。
+    位置由**最内层**的适配器先附上，外层看到已有值就不再覆盖。
+    """
+
+    coord: object = None
+    call_chain: list[str] | None = None
+
+    def with_coord(self, coord: object) -> "DomainError":
+        if self.coord is None and coord is not None:
+            self.coord = coord
+        return self
+
+    def with_call_chain(self, chain: list[str] | None) -> "DomainError":
+        if self.call_chain is None and chain:
+            self.call_chain = list(chain)
+        return self
+
+    def __str__(self) -> str:
+        message = super().__str__()
+        if self.coord is not None:
+            return f"{self.coord}: {message}"
+        return message
 
 
 # ==================== 名字与作用域 ====================

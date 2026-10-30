@@ -25,12 +25,13 @@ from super_execute.domain.entities.c_types import FunctionType
 from super_execute.domain.entities.scope import Scope
 from super_execute.domain.entities.symbol import FunctionSymbol, VariableSymbol
 from super_execute.domain.exceptions import (
+    DomainError,
     LinkError,
     UndefinedSymbolError,
     UnsupportedTypeError,
 )
 from super_execute.domain.services.defaults import default_value
-from super_execute.domain.services.conversions import array_to_pointer
+from super_execute.domain.services.conversions import array_to_pointer, convert_value
 from super_execute.domain.services.scope_id_allocator import ScopeIdAllocator
 from super_execute.domain.services.type_resolver import TypeResolver
 from super_execute.domain.value_objects import ScopeKind
@@ -69,6 +70,7 @@ class Interpreter:
         self._bodies: dict[str, c_ast.FuncDef] = {}
         self._globals: Scope | None = None
         self._globals_initialized = False
+        self._call_stack: list[str] = []
 
         # 函数调用要回到这里，用回填避免求值器与解释器互相依赖
         self._evaluator.set_call_handler(self._handle_call)
@@ -105,8 +107,22 @@ class Interpreter:
     # ==================== 运行 ====================
 
     def run(self, entry: str = "main") -> Any:
-        """执行入口函数，返回它的返回值。"""
-        return self.call(entry, ())
+        """执行入口函数，返回它的返回值。
+
+        出错时按旧实现的习惯打一份报告到 stdout（``[error] 位置: 消息`` +
+        调用链），再把异常抛出去——调用方既能看报告，也能按类型捕获。
+        """
+        try:
+            return self.call(entry, ())
+        except DomainError as error:
+            self._report(error)
+            raise
+
+    def _report(self, error: DomainError) -> None:
+        print(f"[error] {error}")
+        chain = error.call_chain
+        if chain:
+            print("调用链: " + " → ".join(chain))
 
     def call(self, name: str, args: Sequence[Any], scope: Scope | None = None) -> Any:
         self._initialize_globals()
@@ -124,15 +140,20 @@ class Interpreter:
             raise LinkError(f"函数 '{name}' 只有声明没有定义")
 
         scope = self._session.open(ScopeKind.FUNCTION, self.globals)
+        self._call_stack.append(name)
         try:
             self._bind_parameters(scope, body, symbol.ctype, args)
             try:
                 self._executor.execute(body.body, scope)
             except ReturnSignal as signal:
-                return signal.value
+                return convert_value(signal.value, symbol.ctype.ret)
             return None
+        except DomainError as error:
+            # 最内层先记下调用链；外层发现已有值就不再覆盖
+            raise error.with_call_chain(list(self._call_stack)) from None
         finally:
             self._session.close(scope)
+            self._call_stack.pop()
 
     # ==================== 内部 ====================
 
@@ -167,7 +188,8 @@ class Interpreter:
         for index, decl in enumerate(params):
             ctype = array_to_pointer(builder.build(decl.type))
             if index < len(args):
-                value = args[index]
+                # 实参按形参类型转换：`f(5)` 传给 `double` 形参要变成 5.0
+                value = convert_value(args[index], ctype)
             else:
                 value = default_value(ctype)  # 少传的参数按零值补
             self._declare(scope, decl.name, ctype, value)

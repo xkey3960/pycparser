@@ -44,6 +44,7 @@ from super_execute.domain.entities.symbol import (
     VariableSymbol,
 )
 from super_execute.domain.exceptions import (
+    DomainError,
     InvalidTypeError,
     NotAValueError,
     UndefinedSymbolError,
@@ -52,6 +53,7 @@ from super_execute.domain.exceptions import (
 )
 from super_execute.domain.services.addressing import element_address, member_address
 from super_execute.domain.services.arithmetic import c_div, c_mod
+from super_execute.domain.services.conversions import convert_value
 from super_execute.domain.value_objects import Address
 from super_execute.interface_adapters.ast.inference import TypeInferencer
 
@@ -97,6 +99,17 @@ class Evaluator:
     # ==================== 值 ====================
 
     def eval(self, node: Any, scope: Scope) -> Any:
+        """求值入口：顺带把"最先出错的位置"记到异常上（QOL-1）。
+
+        因为递归调用也走这里，**最内层**的节点会先附上 coord；外层看到已有值
+        就不再覆盖，所以报出来的是真正的出错点，而不是最外层的调用语句。
+        """
+        try:
+            return self._eval(node, scope)
+        except DomainError as error:
+            raise error.with_coord(getattr(node, "coord", None)) from None
+
+    def _eval(self, node: Any, scope: Scope) -> Any:
         if isinstance(node, c_ast.Constant):
             return _constant_value(node)
         if isinstance(node, c_ast.ID):
@@ -214,6 +227,8 @@ class Evaluator:
             left = self._load(target, ctype)
             right = self.eval(node.rvalue, scope)
             value = _apply(op, left, right, _step_of(ctype))
+        # 赋值的最后一步是隐式转换：`int y = 5; y += 2.7;` 结果是 7
+        value = convert_value(value, ctype)
         self._store(target, value, ctype)
         return value
 
