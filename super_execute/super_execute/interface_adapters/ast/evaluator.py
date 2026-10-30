@@ -342,6 +342,11 @@ class Evaluator:
         raise UnsupportedTypeError(f"还不能作为赋值目标: {type(node).__name__}")
 
     def _struct_ref_address(self, node: c_ast.StructRef, scope: Scope) -> Address:
+        base, owner = self._struct_base(node, scope)
+        return member_address(base, owner, node.field.name)
+
+    def _struct_base(self, node: c_ast.StructRef, scope: Scope) -> tuple[Address, Any]:
+        """成员访问的基底：``(对象地址, 结构体类型)``。"""
         base_type = self.infer(node.name, scope)
         if node.type == "->":
             if not isinstance(base_type, PointerType):
@@ -353,7 +358,24 @@ class Evaluator:
             owner = base_type
         if not isinstance(base, Address):
             raise InvalidTypeError("成员访问的基地址不是指针")
-        return member_address(base, owner, node.field.name)
+        return base, owner
+
+    def _bitfield_target(
+        self, node: Any, scope: Scope
+    ) -> tuple[Address, Any, Any] | None:
+        """如果这个成员访问指向位域，返回 ``(对象地址, 结构体类型, 成员)``。
+
+        位域**没有字节偏移**（它和别的位域共享存储单元），所以不能算出一个地址
+        再按偏移读写——只能带着成员名字走 ``read_member`` / ``write_member``。
+        """
+        if not isinstance(node, c_ast.StructRef):
+            return None
+        base, owner = self._struct_base(node, scope)
+        if not isinstance(owner, (StructType, UnionType)) or not owner.is_complete:
+            return None
+        if not owner.is_bitfield(node.field.name):
+            return None
+        return base, owner, owner.member(node.field.name)
 
     def _array_ref_address(self, node: c_ast.ArrayRef, scope: Scope) -> Address:
         base_type = self.infer(node.name, scope)
@@ -371,6 +393,13 @@ class Evaluator:
         raise InvalidTypeError(f"'{base_type.name}' 不能取下标")
 
     def _load_lvalue(self, node: Any, scope: Scope) -> Any:
+        # 位域：按名字读（没有字节偏移可用）
+        bitfield = self._bitfield_target(node, scope)
+        if bitfield is not None:
+            base, owner, member = bitfield
+            value = self._memory.read_member(base, owner, member.name)
+            return _fit_to_bitfield(value, member)
+
         value = self._load(self.lvalue(node, scope), self.infer(node, scope))
         # 读位域时按宽度掩码：防止存储里出现越界的旧值被原样读出来
         member = _bitfield_member(node, scope, self)
@@ -379,20 +408,36 @@ class Evaluator:
     # ==================== 赋值 ====================
 
     def _eval_assignment(self, node: c_ast.Assignment, scope: Scope) -> Any:
-        target = self.lvalue(node.lvalue, scope)
+        bitfield = self._bitfield_target(node.lvalue, scope)
         ctype = self.infer(node.lvalue, scope)
+
+        if bitfield is not None:
+            base, owner, member = bitfield
+            existing = _fit_to_bitfield(
+                self._memory.read_member(base, owner, member.name), member
+            )
+        else:
+            target = self.lvalue(node.lvalue, scope)
+            existing = None
 
         if node.op == "=":
             value = self.eval(node.rvalue, scope)
         else:
             op = node.op[:-1]  # "+=" → "+"
-            left = self._load(target, ctype)
+            left = existing if bitfield is not None else self._load(target, ctype)
             right = self.eval(node.rvalue, scope)
             value = _apply(op, left, right, _step_of(ctype))
         # 赋值的最后一步是隐式转换：`int y = 5; y += 2.7;` 结果是 7
         value = convert_value(value, ctype)
 
-        # 位域还要**再按宽度截断**一次：`unsigned a : 3` 赋 9 存进去是 1
+        if bitfield is not None:
+            base, owner, member = bitfield
+            # 位域再按宽度截断一次：`unsigned a : 3` 赋 9 存进去是 1
+            value = _fit_to_bitfield(value, member)
+            self._memory.write_member(base, owner, member.name, value)
+            return value
+
+        # 位域以外的成员也走这里：位域成员没有字节偏移，但普通成员有
         member = _bitfield_member(node.lvalue, scope, self)
         if member is not None:
             value = _fit_to_bitfield(value, member)

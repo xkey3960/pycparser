@@ -445,14 +445,15 @@ class TestCharArrayInitialization:
 
 
 class TestBitFields:
-    """位域：宽度必须是常量表达式；Phase A 不打包，每个位域占满声明类型。"""
+    """位域：宽度是常量表达式；布局按 gcc 规则**打包**。"""
 
-    def test_sizeof_counts_each_bitfield_as_a_member(self):
+    def test_sizeof_packs_into_one_unit(self):
+        """`int a:8; int b:3` 共 11 位，装得进一个 32 位单元 → 4 字节（gcc 同）。"""
         source = """
             struct Bits { int a : 4 + 4; int b : 3; };
             int main(void) { return sizeof(struct Bits); }
         """
-        assert run(source) == 8
+        assert run(source) == 4
 
     def test_read_write_like_ordinary_members(self):
         source = """

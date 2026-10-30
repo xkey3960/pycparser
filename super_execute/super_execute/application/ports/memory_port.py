@@ -60,6 +60,19 @@ class MemoryPort(Protocol):
         这个不带——调用方随后想当什么用就当什么用。
         """
 
+    def read_member(self, address: Address, compound: CType, member_name: str) -> Any:
+        """读复合对象在某地址处的成员。
+
+        为什么不能只靠 ``read(address + offset, ctype)``：**位域没有字节偏移**。
+        ``struct { unsigned a:3; unsigned b:5; }`` 里 a 和 b 落在同一片字节上，
+        只有成员名字能区分它们。
+        """
+
+    def write_member(
+        self, address: Address, compound: CType, member_name: str, value: Any
+    ) -> None:
+        """写复合对象的成员（位域会按宽度收窄，见 ``Member.bit_width``）。"""
+
     def read(self, address: Address, ctype: CType) -> Any:
         """按 ``ctype`` 读地址上的值。
 

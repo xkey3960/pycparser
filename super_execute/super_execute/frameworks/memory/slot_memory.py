@@ -208,6 +208,39 @@ class SlotMemory:
 
     # ==================== 读写 ====================
 
+    def read_member(self, address: Address, compound: CType, member_name: str) -> Any:
+        chunk, delta = self._locate(address)
+        member = compound.member(member_name)
+        if isinstance(chunk.value, RawBuffer):
+            return _raw_read_member(chunk.value, delta, compound, member_name)
+        container = self._member_container(chunk, delta, compound)
+        return container.get(member_name, default_value(member.ctype))
+
+    def write_member(
+        self, address: Address, compound: CType, member_name: str, value: Any
+    ) -> None:
+        chunk, delta = self._locate(address)
+        if isinstance(chunk.value, RawBuffer):
+            _raw_write_member(chunk.value, delta, compound, member_name, value)
+            return
+        container = self._member_container(chunk, delta, compound)
+        container[member_name] = _detach(value)
+
+    def _member_container(self, chunk: _Chunk, delta: int, compound: CType) -> dict:
+        """拿到某个复合对象的成员字典（复合对象可能在数组元素里）。"""
+        if delta == 0:
+            value = chunk.value
+        else:
+            container, key, _actual = _resolve(
+                chunk.value, chunk.ctype, delta, compound
+            )
+            value = container[key]
+        if not isinstance(value, dict):
+            raise OutOfBoundsError(
+                f"偏移 {delta} 上不是复合对象，取不到成员（值为 {type(value).__name__}）"
+            )
+        return value
+
     def read(self, address: Address, ctype: CType) -> Any:
         chunk, delta = self._locate(address)
         if isinstance(chunk.value, RawBuffer):
@@ -282,9 +315,7 @@ def _raw_read(raw: RawBuffer, delta: int, ctype: CType) -> Any:
 
     if isinstance(ctype, (StructType, UnionType)):
         return {
-            member.name: _raw_read(
-                raw, delta + ctype.offsetof(member.name), member.ctype
-            )
+            member.name: _raw_read_member(raw, delta, ctype, member.name)
             for member in ctype.members
         }
     if isinstance(ctype, ArrayType) and ctype.count is not None:
@@ -297,6 +328,50 @@ def _raw_read(raw: RawBuffer, delta: int, ctype: CType) -> Any:
     return raw.values.get((delta, ctype.name), default_value(ctype))
 
 
+def _raw_read_member(
+    raw: RawBuffer, delta: int, compound: Any, member_name: str
+) -> Any:
+    """读单个成员。位域从打包的单元里取位（**不能**按字节偏移取）。"""
+    member = compound.member(member_name)
+    if not compound.is_bitfield(member_name):
+        return _raw_read(raw, delta + compound.offsetof(member_name), member.ctype)
+
+    unit, bit, width = compound.bit_layout(member_name)
+    packed = raw.values.get((delta + unit, _BIT_UNIT_KEY), 0)
+    return _fit_bits(packed >> bit, width, member.ctype.is_signed)
+
+
+def _raw_write_member(
+    raw: RawBuffer,
+    delta: int,
+    compound: Any,
+    member_name: str,
+    value: Any,
+) -> None:
+    """写单个成员。位域做"读单元 → 清位 → 写位"的读改写。"""
+    member = compound.member(member_name)
+    if not compound.is_bitfield(member_name):
+        _raw_write(raw, delta + compound.offsetof(member_name), member.ctype, value)
+        return
+
+    unit, bit, width = compound.bit_layout(member_name)
+    key = (delta + unit, _BIT_UNIT_KEY)
+    packed = raw.values.get(key, 0)
+    mask = ((1 << width) - 1) << bit
+    raw.values[key] = (packed & ~mask) | ((int(value) << bit) & mask)
+
+
+_BIT_UNIT_KEY = "bits"  # 原始存储里，位域单元的键名
+
+
+def _fit_bits(bits: int, width: int, signed: bool) -> int:
+    """把一段位收进宽度里，按需做符号扩展。"""
+    bits &= (1 << width) - 1
+    if signed and bits >> (width - 1):
+        bits -= 1 << width
+    return bits
+
+
 def _raw_write(raw: RawBuffer, delta: int, ctype: CType, value: Any) -> None:
     """往原始存储里按 ``ctype`` 写。复合类型**拆开**写，好和逐成员访问对齐。"""
     _check_raw_bounds(raw, delta, ctype)
@@ -304,12 +379,7 @@ def _raw_write(raw: RawBuffer, delta: int, ctype: CType, value: Any) -> None:
     if isinstance(ctype, (StructType, UnionType)):
         for member in ctype.members:
             if isinstance(value, dict) and member.name in value:
-                _raw_write(
-                    raw,
-                    delta + ctype.offsetof(member.name),
-                    member.ctype,
-                    value[member.name],
-                )
+                _raw_write_member(raw, delta, ctype, member.name, value[member.name])
         return
     if isinstance(ctype, ArrayType) and ctype.count is not None:
         step = ctype.element.sizeof()
@@ -376,6 +446,10 @@ def _resolve(
     if isinstance(ctype, (StructType, UnionType)):
         candidates: list[tuple[Any, int]] = []
         for member in ctype.members:
+            if member.bit_width is not None:
+                # 位域**没有字节偏移**：它和别的位域共享存储单元，按字节偏移
+                # 找成员会撞在一起。它只能按名字访问（read_member/write_member）。
+                continue
             base = ctype.offsetof(member.name)
             try:
                 size = member.ctype.sizeof()
