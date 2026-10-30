@@ -134,6 +134,9 @@ class Evaluator:
         if isinstance(symbol, VariableSymbol):
             if symbol.ctype is None:
                 raise UnresolvedTypeError(f"变量 '{name}' 的类型尚未解析")
+            if isinstance(symbol.ctype, ArrayType):
+                # 数组名退化成指向首元素的指针（C99 6.3.2.1）
+                return symbol.address
             return self._memory.read(symbol.address, symbol.ctype)
         if isinstance(symbol, ConstantSymbol):
             return symbol.value

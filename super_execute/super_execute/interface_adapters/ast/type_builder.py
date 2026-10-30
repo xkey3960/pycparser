@@ -39,6 +39,7 @@ from super_execute.domain.exceptions import (
     UnsupportedTypeError,
 )
 from super_execute.domain.services.builtin_types import INT
+from super_execute.domain.services.conversions import array_to_pointer
 from super_execute.domain.value_objects import TagKind
 
 _TAG_KINDS = {
@@ -125,7 +126,7 @@ class TypeBuilder:
                 # f(void) 的形参是"不完整的 void"，不算真的参数
                 if isinstance(ctype, BasicType) and not ctype.is_complete:
                     continue
-                params.append(ctype)
+                params.append(array_to_pointer(ctype))
         return FunctionType(ret, params, variadic)
 
     # ---- 标签：struct / union / enum ----

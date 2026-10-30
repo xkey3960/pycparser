@@ -15,9 +15,25 @@
 
 from __future__ import annotations
 
-from super_execute.domain.entities.c_types import BasicType, CType
+from super_execute.domain.entities.c_types import (
+    ArrayType,
+    BasicType,
+    CType,
+    PointerType,
+)
 from super_execute.domain.exceptions import InvalidTypeError
 from super_execute.domain.services.builtin_types import DOUBLE, FLOAT, INT
+
+
+def array_to_pointer(ctype: CType) -> CType:
+    """数组在多数表达式里退化成指向首元素的指针（C99 6.3.2.1）。
+
+    两个地方要用：函数形参（``int f(int a[3])`` 实际上是 ``int *``），
+    以及拿数组名当值用（``int *p = a;``）。
+    """
+    if isinstance(ctype, ArrayType):
+        return PointerType(ctype.element)
+    return ctype
 
 
 def integer_promote(ctype: CType) -> CType:
