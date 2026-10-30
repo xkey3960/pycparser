@@ -158,9 +158,15 @@ class TestRecords:
         assert outer.offsetof("inner") == 4
         assert outer.sizeof() == 8
 
-    def test_bitfield_rejected(self, builder, decl_type):
-        with pytest.raises(UnsupportedTypeError, match="位域"):
-            builder.build(decl_type("struct B { int a : 3; } b;"))
+    def test_bitfield_width_is_folded(self, builder, decl_type):
+        """`int a : 4 + 4` 的宽度要折成 8（宽度必须是常量表达式）。"""
+        ctype = builder.build(decl_type("struct B { int a : 4 + 4; int b : 3; } e;"))
+        assert [member.bit_width for member in ctype.members] == [8, 3]
+        assert ctype.sizeof() == 8  # Phase A 不打包：两位域各占一个 int
+
+    def test_non_constant_bitfield_width_rejected(self, builder, decl_type):
+        with pytest.raises(UnsupportedTypeError, match="常量"):
+            builder.build(decl_type("int n; struct B { int a : n; } b;", 1))
 
     def test_empty_struct_rejected(self, builder, decl_type):
         with pytest.raises(InvalidTypeError, match="至少需要一个具名成员"):

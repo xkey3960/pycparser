@@ -23,7 +23,6 @@ from super_execute.domain.entities.c_types import (
 from super_execute.domain.exceptions import (
     IncompleteTypeError,
     InvalidTypeError,
-    UnsupportedTypeError,
 )
 from super_execute.domain.services.builtin_types import CHAR, DOUBLE, INT, SHORT
 
@@ -185,14 +184,30 @@ class TestValidation:
         with pytest.raises(InvalidTypeError):
             Member("", INT)
 
-    def test_bitfield_not_implemented(self):
-        """位域是刻意没做的（见 tasks/20261017-122900/TASK.md），必须显式报错。"""
-        with pytest.raises(UnsupportedTypeError, match="位域"):
-            Member("flag", INT, bit_width=3)
+    def test_bitfield_occupies_full_member(self):
+        """Phase A **不打包位域**：每个位域仍按声明类型占满一个成员。
 
-    def test_union_with_bitfield_also_rejected(self):
-        with pytest.raises(UnsupportedTypeError):
-            union("U", Member("flag", INT, bit_width=1))
+        这和旧实现一致——``int a : 8`` 占 4 字节而不是 1 字节。真正的位打包
+        要改槽位存储，留给 Phase B。位宽本身仍然记下来并做范围校验。
+        """
+        bits = struct(
+            "Bits", Member("a", INT, bit_width=8), Member("b", INT, bit_width=3)
+        )
+        assert bits.sizeof() == 8
+        assert [member.bit_width for member in bits.members] == [8, 3]
+
+    def test_bitfield_width_must_fit_the_type(self):
+        with pytest.raises(InvalidTypeError, match="超过"):
+            Member("flag", INT, bit_width=33)
+
+    def test_negative_bit_width_rejected(self):
+        with pytest.raises(InvalidTypeError, match="不能为负"):
+            Member("flag", INT, bit_width=-1)
+
+    def test_union_with_bitfield_uses_max_size(self):
+        """联合体里每个成员都在偏移 0，大小取最大者。"""
+        combined = union("U", Member("flag", INT, bit_width=1), Member("value", INT))
+        assert combined.sizeof() == 4
 
 
 class TestAlignUp:
