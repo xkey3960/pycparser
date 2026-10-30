@@ -162,7 +162,7 @@ class TestRecords:
         """`int a : 4 + 4` 的宽度要折成 8（宽度必须是常量表达式）。"""
         ctype = builder.build(decl_type("struct B { int a : 4 + 4; int b : 3; } e;"))
         assert [member.bit_width for member in ctype.members] == [8, 3]
-        assert ctype.sizeof() == 8  # Phase A 不打包：两位域各占一个 int
+        assert ctype.sizeof() == 4  # 打包进同一个 32 位单元（gcc 同）
 
     def test_non_constant_bitfield_width_rejected(self, builder, decl_type):
         with pytest.raises(UnsupportedTypeError, match="常量"):

@@ -184,17 +184,19 @@ class TestValidation:
         with pytest.raises(InvalidTypeError):
             Member("", INT)
 
-    def test_bitfield_occupies_full_member(self):
-        """Phase A **不打包位域**：每个位域仍按声明类型占满一个成员。
+    def test_bitfields_pack_into_one_unit(self):
+        """位域按 gcc 规则**打包**：同类型的连续位域共用一个存储单元。
 
-        这和旧实现一致——``int a : 8`` 占 4 字节而不是 1 字节。真正的位打包
-        要改槽位存储，留给 Phase B。位宽本身仍然记下来并做范围校验。
+        ``int a:8; int b:3`` 共 11 位，装得进一个 32 位单元 → 4 字节（gcc 同）。
+        完整布局见 ``test_bitfield_layout.py``。
         """
         bits = struct(
             "Bits", Member("a", INT, bit_width=8), Member("b", INT, bit_width=3)
         )
-        assert bits.sizeof() == 8
+        assert bits.sizeof() == 4
         assert [member.bit_width for member in bits.members] == [8, 3]
+        assert bits.bit_layout("a") == (0, 0, 8)
+        assert bits.bit_layout("b") == (0, 8, 3)
 
     def test_bitfield_width_must_fit_the_type(self):
         with pytest.raises(InvalidTypeError, match="超过"):

@@ -371,10 +371,13 @@ class EnumType(CType):
 class Member:
     """结构体/联合体的一个成员：名字 + 类型（+ 位宽）。
 
-    ``bit_width`` 记下声明里的位宽（``int a : 8``），但**Phase A 不打包位域**：
-    每个位域仍然按它的声明类型占满一个成员，``int a : 8`` 就是 4 字节。
-    这和旧实现一致——``struct { int a : 8; int b : 3; }`` 的 ``sizeof`` 是 8。
-    真正的位打包要改槽位存储，留给 Phase B。
+    ``bit_width`` 记下声明里的位宽（``int a : 8``）。位域按 **gcc 的规则打包**：
+    同类型的连续位域共用一个存储单元，``struct { unsigned a:3; unsigned b:5; }``
+    的 ``sizeof`` 是 4。布局细节见 ``_CompoundType._layout`` 与
+    ``tests/unit/domain/test_bitfield_layout.py``（那组期望值是 gcc 实测的）。
+
+    位域**没有字节偏移**——它不一定从字节边界开始，所以 C 禁止对它取地址；
+    读写只能按成员名字走（``MemoryPort.read_member`` / ``write_member``）。
     """
 
     name: str
@@ -415,12 +418,13 @@ def align_up(value: int, alignment: int) -> int:
 class _CompoundType(CType):
     """struct / union 的公共部分：定义前不完整、定义后冻结布局。"""
 
-    __slots__ = ("tag", "_members", "_offsets", "_size", "_align")
+    __slots__ = ("tag", "_members", "_offsets", "_bit_layout", "_size", "_align")
 
     def __init__(self, tag: str | None = None) -> None:
         self.tag = tag
         self._members: tuple[Member, ...] | None = None
         self._offsets: dict[str, int] = {}
+        self._bit_layout: dict[str, tuple[int, int, int]] = {}
         self._size: int | None = None
         self._align: int | None = None
 
@@ -451,13 +455,17 @@ class _CompoundType(CType):
                     f"{self.name} 的成员 '{member.name}' 是弹性数组，"
                     "必须是最后一个成员（C99 6.7.2.1p3）"
                 )
-        size, align, offsets = self._layout(members)
+        size, align, offsets, bit_layout = self._layout(members)
         self._members = members
         self._offsets = offsets
+        self._bit_layout = bit_layout
         self._size = size
         self._align = align
 
-    def _layout(self, members: tuple[Member, ...]) -> tuple[int, int, dict[str, int]]:
+    def _layout(
+        self, members: tuple[Member, ...]
+    ) -> tuple[int, int, dict[str, int], dict[str, tuple[int, int, int]]]:
+        """返回 ``(大小, 对齐, {成员: 字节偏移}, {成员: (单元偏移, 位偏移, 位宽)})``。"""
         raise NotImplementedError
 
     # ---- 查询 ----
@@ -479,12 +487,30 @@ class _CompoundType(CType):
         raise InvalidTypeError(f"{self.name} 没有成员 '{name}'")
 
     def offsetof(self, name: str) -> int:
-        """成员偏移——`&obj.field` 就是"对象基地址 + 这个数"（裁决 D5）。"""
+        """成员偏移——`&obj.field` 就是"对象基地址 + 这个数"（裁决 D5）。
+
+        **位域没有字节偏移**：它不一定从字节边界开始，C 明令禁止对它取地址
+        （gcc 对 ``offsetof(struct S, bitfield)`` 直接编译报错）。
+        """
         self.members  # 不完整则先报错
+        if self.is_bitfield(name):
+            raise InvalidTypeError(
+                f"不能对位域 '{name}' 取字节偏移（C99 6.7.2.1 禁止对位域取地址）"
+            )
         try:
             return self._offsets[name]
         except KeyError as exc:
             raise InvalidTypeError(f"{self.name} 没有成员 '{name}'") from exc
+
+    def is_bitfield(self, name: str) -> bool:
+        return name in self._bit_layout
+
+    def bit_layout(self, name: str) -> tuple[int, int, int]:
+        """位域的三元组：``(存储单元字节偏移, 单元内的位偏移, 位宽)``。"""
+        try:
+            return self._bit_layout[name]
+        except KeyError as exc:
+            raise InvalidTypeError(f"{self.name} 的成员 '{name}' 不是位域") from exc
 
     def sizeof(self) -> int:
         if self._size is None:
@@ -520,21 +546,61 @@ class StructType(_CompoundType):
             return False
         return bool(self._members) and _is_flexible_array(self._members[-1].ctype)
 
-    def _layout(self, members: tuple[Member, ...]) -> tuple[int, int, dict[str, int]]:
+    def _layout(
+        self, members: tuple[Member, ...]
+    ) -> tuple[int, int, dict[str, int], dict[str, tuple[int, int, int]]]:
+        """布局：普通成员按字节对齐依次落位，位域按**存储单元**打包。
+
+        位域规则对齐 gcc（12 个用例实测过，见测试里的黄金值）：
+
+        * 每个位域属于一个"声明类型大小"的存储单元，单元按该类型的对齐要求放置；
+        * 连续的同类型位域**共用一个单元**，直到放不下为止；
+        * 放不下（或类型变了）就另起一个单元；
+        * 单元之后的普通成员从单元的**末尾**开始。
+
+        所以 ``struct { unsigned a:3; unsigned b:5; }`` 是 4 字节，而
+        ``struct { unsigned a:3; char c; }`` 是 8 字节（c 被挤到单元之后）。
+        """
         offsets: dict[str, int] = {}
-        cursor = 0
+        bit_layout: dict[str, tuple[int, int, int]] = {}
+        cursor = 0  # 字节游标
         align = 1
+        unit_offset: int | None = None
+        unit_bits = 0
+        used_bits = 0
+
         last = len(members) - 1
         for index, member in enumerate(members):
             member_align = member.ctype.alignof()
             align = max(align, member_align)
-            cursor = align_up(cursor, member_align)
-            offsets[member.name] = cursor
-            # 弹性数组成员不占 sizeof（C99 6.7.2.1p18）
-            if index == last and _is_flexible_array(member.ctype):
+
+            if member.bit_width is None:
+                cursor = align_up(cursor, member_align)
+                offsets[member.name] = cursor
+                unit_offset = None  # 普通成员打断位域单元
+                # 弹性数组成员不占 sizeof（C99 6.7.2.1p18）
+                if index == last and _is_flexible_array(member.ctype):
+                    continue
+                cursor += member.ctype.sizeof()
                 continue
-            cursor += member.ctype.sizeof()
-        return align_up(cursor, align), align, offsets
+
+            bits = member.ctype.sizeof() * 8
+            if (
+                unit_offset is None
+                or unit_bits != bits
+                or used_bits + member.bit_width > unit_bits
+            ):
+                cursor = align_up(cursor, member_align)
+                unit_offset = cursor
+                unit_bits = bits
+                used_bits = 0
+                cursor += member.ctype.sizeof()  # 单元占满整个类型宽度
+
+            bit_layout[member.name] = (unit_offset, used_bits, member.bit_width)
+            offsets[member.name] = unit_offset
+            used_bits += member.bit_width
+
+        return align_up(cursor, align), align, offsets, bit_layout
 
 
 class UnionType(_CompoundType):
@@ -546,8 +612,15 @@ class UnionType(_CompoundType):
     def name(self) -> str:
         return f"union {self.tag}" if self.tag else "union <anonymous>"
 
-    def _layout(self, members: tuple[Member, ...]) -> tuple[int, int, dict[str, int]]:
+    def _layout(
+        self, members: tuple[Member, ...]
+    ) -> tuple[int, int, dict[str, int], dict[str, tuple[int, int, int]]]:
         offsets = {member.name: 0 for member in members}
+        bit_layout = {
+            member.name: (0, 0, member.bit_width)
+            for member in members
+            if member.bit_width is not None
+        }
         align = 1
         size = 0
         for member in members:
@@ -558,7 +631,7 @@ class UnionType(_CompoundType):
                 )
             align = max(align, member.ctype.alignof())
             size = max(size, member.ctype.sizeof())
-        return align_up(size, align), align, offsets
+        return align_up(size, align), align, offsets, bit_layout
 
 
 def _is_flexible_array(ctype: CType) -> bool:
