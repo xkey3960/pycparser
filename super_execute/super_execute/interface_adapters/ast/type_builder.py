@@ -36,10 +36,12 @@ from super_execute.domain.entities.c_types import (
 from super_execute.domain.entities.scope import Scope
 from super_execute.domain.entities.symbol import ConstantSymbol, TagSymbol
 from super_execute.domain.exceptions import (
+    InvalidTypeError,
     UnsupportedTypeError,
 )
 from super_execute.domain.services.builtin_types import INT
 from super_execute.domain.services.conversions import array_to_pointer
+from super_execute.domain.services.equivalence import members_equivalent
 from super_execute.domain.value_objects import TagKind
 
 _TAG_KINDS = {
@@ -155,6 +157,11 @@ class TypeBuilder:
                 members.append(
                     Member(decl.name, self.build(decl.type), _bit_width(decl))
                 )
+            if ctype.is_complete:
+                # 跨文件重复定义：内容一样就静默去重，不一样才是冲突
+                if members_equivalent(ctype, members):
+                    return ctype
+                raise InvalidTypeError(f"{ctype.name} 重复定义，且成员不同")
             ctype.define(members)  # 重复定义 / 空结构体会在这里报错
         return ctype
 
@@ -178,6 +185,10 @@ class TypeBuilder:
                 # C 的枚举常量进**外围**作用域，不另开一层
                 self._scope.declare(ConstantSymbol(enumerator.name, value, INT))
                 next_value = value + 1
+            if ctype.is_complete:
+                if dict(ctype.constants) == constants:
+                    return ctype  # 跨文件同一份枚举定义：静默去重
+                raise InvalidTypeError(f"{ctype.name} 重复定义，且枚举值不同")
             ctype.define(constants)
         return ctype
 

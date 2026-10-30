@@ -100,3 +100,11 @@ class UnsupportedTypeError(DomainError):
 
 class LinkError(DomainError):
     """链接错误：函数只有声明没有定义、参数个数不符、找不到入口等。"""
+
+
+class DivisionByZeroError(DomainError):
+    """整数除零。
+
+    C 里这是未定义行为，但让 Python 的 ``ZeroDivisionError`` 漏到调用方是错的：
+    它既不是 ``DomainError``，也没法被解释器的错误体系分类。
+    """

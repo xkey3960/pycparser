@@ -19,6 +19,7 @@ from super_execute.domain.entities.c_types import (
     ArrayType,
     BasicType,
     CType,
+    EnumType,
     PointerType,
 )
 from super_execute.domain.exceptions import InvalidTypeError
@@ -37,7 +38,13 @@ def array_to_pointer(ctype: CType) -> CType:
 
 
 def integer_promote(ctype: CType) -> CType:
-    """比 int 窄的整型提升为 int（``char``、``short``、``_Bool``）。"""
+    """比 int 窄的整型提升为 int（``char``、``short``、``_Bool``）。
+
+    枚举也在这里提升：C 说枚举常量是 int，枚举类型的值参与算术时同样按 int 处理
+    （C99 6.7.2.2p3）。少了这一条，`enum E e; e + 1` 会被判成非法运算。
+    """
+    if isinstance(ctype, EnumType):
+        return INT
     if isinstance(ctype, BasicType) and ctype.is_complete and not ctype.is_float:
         if ctype.sizeof() < INT.sizeof():
             return INT

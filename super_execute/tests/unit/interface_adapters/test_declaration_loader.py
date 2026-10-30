@@ -120,6 +120,24 @@ class TestMultipleTranslationUnits:
         with pytest.raises(DuplicateSymbolError):
             runtime["loader"].load(runtime["scope"], parse("int g;"))
 
+    def test_identical_typedef_across_units_is_deduped(self, runtime, parse):
+        """头文件内容被两个文件各自展开 → 同一份 typedef 出现两次，应静默去重。"""
+        source = "typedef struct Pt { int x; int y; } Pt;"
+        first = runtime["loader"].load(runtime["scope"], parse(source))[0]
+        second = runtime["loader"].load(runtime["scope"], parse(source))[0]
+
+        assert first is second
+        assert runtime["scope"].require("Pt").ctype.sizeof() == 8
+
+    def test_conflicting_struct_definition(self, runtime, parse):
+        from super_execute.domain.exceptions import InvalidTypeError
+
+        runtime["loader"].load(runtime["scope"], parse("struct P { int a; };"))
+        with pytest.raises(InvalidTypeError, match="重复定义"):
+            runtime["loader"].load(
+                runtime["scope"], parse("struct P { int a; int b; };")
+            )
+
 
 class TestUnsupported:
     def test_non_constant_global_initializer(self, runtime, parse):

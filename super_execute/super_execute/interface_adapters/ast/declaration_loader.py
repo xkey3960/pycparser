@@ -30,6 +30,7 @@ from super_execute.domain.entities.c_types import FunctionType
 from super_execute.domain.entities.scope import Scope
 from super_execute.domain.entities.symbol import TypedefSymbol
 from super_execute.domain.exceptions import UnsupportedTypeError
+from super_execute.domain.services.equivalence import types_equivalent
 from super_execute.domain.value_objects import Linkage, ScopeKind
 from super_execute.interface_adapters.ast.type_builder import TypeBuilder
 
@@ -74,7 +75,16 @@ class DeclarationLoader:
 
     def _typedef(self, scope: Scope, node: c_ast.Typedef) -> TypedefSymbol:
         builder = TypeBuilder(self._resolver, scope)
-        symbol = TypedefSymbol(node.name, builder.build(node.type))
+        ctype = builder.build(node.type)
+
+        # 跨文件重复 typedef（头文件内容被各文件展开）→ 相同就静默去重
+        existing = scope.ordinary.local(node.name)
+        if isinstance(existing, TypedefSymbol) and types_equivalent(
+            existing.ctype, ctype
+        ):
+            return existing
+
+        symbol = TypedefSymbol(node.name, ctype)
         scope.declare(symbol)
         return symbol
 

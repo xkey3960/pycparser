@@ -8,6 +8,7 @@
 import pytest
 
 from super_execute.domain.exceptions import (
+    DivisionByZeroError,
     InvalidTypeError,
     OutOfBoundsError,
     UndefinedSymbolError,
@@ -224,7 +225,7 @@ class TestErrors:
             ev(world, expr, "*i")
 
     def test_division_by_zero(self, world, expr):
-        with pytest.raises(ZeroDivisionError):
+        with pytest.raises(DivisionByZeroError):
             ev(world, expr, "i / 0")
 
     def test_string_literal_unsupported(self, world, expr):

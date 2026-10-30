@@ -44,6 +44,7 @@ from super_execute.domain.entities.symbol import (
     VariableSymbol,
 )
 from super_execute.domain.exceptions import (
+    DivisionByZeroError,
     InvalidTypeError,
     NotAValueError,
     UndefinedSymbolError,
@@ -339,14 +340,14 @@ def _step_of(ctype: CType) -> int | None:
 def _c_div(a: int, b: int) -> int:
     """C 的整数除法：向零截断（Python 的 // 是向下取整）。"""
     if b == 0:
-        raise ZeroDivisionError("除数不能为 0")
+        raise DivisionByZeroError("除数为 0")
     quotient = abs(a) // abs(b)
     return quotient if (a >= 0) == (b >= 0) else -quotient
 
 
 def _c_mod(a: int, b: int) -> int:
     if b == 0:
-        raise ZeroDivisionError("除数不能为 0")
+        raise DivisionByZeroError("除数为 0")
     return a - _c_div(a, b) * b
 
 
