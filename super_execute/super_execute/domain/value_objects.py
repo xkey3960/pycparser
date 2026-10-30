@@ -61,9 +61,22 @@ class NamespaceKind(Enum):
 
 
 class ScopeKind(Enum):
-    """C 的四种作用域（C99 6.2.1）。"""
+    """C 的作用域种类（C99 6.2.1），外加一层本项目的"翻译单元"。
 
-    FILE = "file"  # 文件作用域：唯一能承载 internal/external 链接的一层
+    为什么多一个 ``UNIT``：C 的 ``static`` 是**文件级**的——两个 .c 各自写
+    ``static int g;`` 是两个互不相干的变量。要让这件事成立，就得有一个比
+    "全程序"细、比"函数"粗的作用域层：
+
+        FILE   全程序作用域（根）：外部符号（非 static 的全局/函数）
+         └ UNIT 翻译单元作用域：该文件的 static 符号
+            └ FUNCTION / BLOCK / PROTOTYPE
+
+    于是 `static` 隔离不需要任何特殊判断——把 static 符号声明进 UNIT 层，
+    名字自然只在那条链上可见。
+    """
+
+    FILE = "file"  # 全程序作用域（根）：承载 external 链接
+    UNIT = "unit"  # 翻译单元作用域：承载 internal（static）链接
     FUNCTION = "function"  # 函数作用域：形参所在层
     BLOCK = "block"  # 块作用域：花括号
     PROTOTYPE = "prototype"  # 原型作用域：函数原型里的形参名

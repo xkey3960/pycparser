@@ -70,8 +70,10 @@ class CProgram:
             compat_state.remember_ast(path, ast)
 
         try:
-            for ast in self.asts:
-                self.interpreter.load(ast)
+            # 注意要和文件名一起遍历：只写 `for ast in self.asts` 会让 `path`
+            # 停留在上一个循环的最后一个值，于是所有单元登记成同一个文件名
+            for path, ast in zip(self.files, self.asts):
+                self.interpreter.load(ast, path)
         except DomainError as error:
             raise translate(error) from None
 

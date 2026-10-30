@@ -155,7 +155,7 @@ class TestInitializers:
 
     def test_non_constant_initializer_is_deferred(self, runtime, parse):
         runtime["loader"].load(runtime["scope"], parse("int f(void); int g = f();"))
-        names = [name for name, _ in runtime["loader"].deferred_initializers]
+        names = [name for _, name, _ in runtime["loader"].deferred_initializers]
         assert names == ["g"]
 
     def test_zero_value_before_initialization(self, runtime, parse):

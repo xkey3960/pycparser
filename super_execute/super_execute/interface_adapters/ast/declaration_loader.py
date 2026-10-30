@@ -28,7 +28,7 @@ from super_execute.application.use_cases.functions import DeclareFunction
 from super_execute.application.use_cases.variables import DeclareVariable
 from super_execute.domain.entities.c_types import FunctionType
 from super_execute.domain.entities.scope import Scope
-from super_execute.domain.entities.symbol import TypedefSymbol
+from super_execute.domain.entities.symbol import TypedefSymbol, VariableSymbol
 from super_execute.domain.exceptions import UnsupportedTypeError
 from super_execute.domain.services.equivalence import types_equivalent
 from super_execute.domain.value_objects import Linkage, ScopeKind
@@ -58,26 +58,34 @@ class DeclarationLoader:
         self._declare_var = DeclareVariable(memory)
         self._declare_func = DeclareFunction(functions)
 
-        #: 折不成常量的全局初值：``(变量名, 初值表达式)``，按声明顺序。
+        #: 折不成常量的全局初值：``(目标作用域, 变量名, 初值表达式)``，按声明顺序。
         #: 由解释器在所有翻译单元装载完之后统一求值。
-        self.deferred_initializers: list[tuple[str, Any]] = []
+        self.deferred_initializers: list[tuple[Scope, str, Any]] = []
 
-    def load(self, scope: Scope, file_ast: c_ast.FileAST) -> list[Any]:
-        """装载一个翻译单元，返回逐个声明产生的符号。"""
+    def load(
+        self, scope: Scope, file_ast: c_ast.FileAST, unit: Scope | None = None
+    ) -> list[Any]:
+        """装载一个翻译单元，返回逐个声明产生的符号。
+
+        ``scope`` 是**共享**作用域（外部符号、typedef、标签都进这里）；
+        ``unit`` 是该文件自己的那一层，只用来放 ``static`` 符号。
+        不传 ``unit`` 时退化成"全部进共享作用域"——旧的单作用域行为，
+        单测与简单场景仍然按这个走。
+        """
         produced: list[Any] = []
         for node in file_ast.ext:
-            symbol = self.load_node(scope, node)
+            symbol = self.load_node(scope, node, unit)
             if symbol is not None:
                 produced.append(symbol)
         return produced
 
-    def load_node(self, scope: Scope, node: Any) -> Any:
+    def load_node(self, scope: Scope, node: Any, unit: Scope | None = None) -> Any:
         if isinstance(node, c_ast.Typedef):
             return self._typedef(scope, node)
         if isinstance(node, c_ast.FuncDef):
-            return self._function(scope, node.decl)
+            return self._function(scope, node.decl, unit)
         if isinstance(node, c_ast.Decl):
-            return self._decl(scope, node)
+            return self._decl(scope, node, unit)
         if isinstance(node, (c_ast.Pragma, c_ast.StaticAssert)):
             return None  # pragma 无运行时语义；_Static_assert 留给编译期检查
         raise UnsupportedTypeError(f"还没支持的顶层节点: {type(node).__name__}")
@@ -99,14 +107,18 @@ class DeclarationLoader:
         scope.declare(symbol)
         return symbol
 
-    def _function(self, scope: Scope, decl: c_ast.Decl) -> Any:
+    def _function(
+        self, scope: Scope, decl: c_ast.Decl, unit: Scope | None = None
+    ) -> Any:
         builder = TypeBuilder(self._resolver, scope)
         ctype = builder.build(decl.type)
         if not isinstance(ctype, FunctionType):
             raise UnsupportedTypeError(f"'{decl.name}' 不是函数声明")
-        return self._declare_func(scope, decl.name, ctype, self._linkage(scope, decl))
+        linkage = self._linkage(scope, decl)
+        target = _binding_scope(scope, unit, linkage)
+        return self._declare_func(target, decl.name, ctype, linkage)
 
-    def _decl(self, scope: Scope, decl: c_ast.Decl) -> Any:
+    def _decl(self, scope: Scope, decl: c_ast.Decl, unit: Scope | None = None) -> Any:
         builder = TypeBuilder(self._resolver, scope)
 
         if not decl.name:
@@ -115,10 +127,17 @@ class DeclarationLoader:
             return None
 
         ctype = builder.build(decl.type)
+        linkage = self._linkage(scope, decl)
+        target = _binding_scope(scope, unit, linkage)
+
         if isinstance(ctype, FunctionType):
-            return self._declare_func(
-                scope, decl.name, ctype, self._linkage(scope, decl)
-            )
+            return self._declare_func(target, decl.name, ctype, linkage)
+
+        # `extern int g;`（不带初值）只是**引用**已有全局，不是又定义了一个
+        if "extern" in (decl.storage or []) and decl.init is None:
+            existing = target.find(decl.name)
+            if isinstance(existing, VariableSymbol):
+                return existing
 
         # 能折叠的初值当场算掉；折不动（比如 `int g = helper();`）就记下来，
         # 等所有翻译单元装载完再求值——那时函数表才齐。
@@ -126,14 +145,14 @@ class DeclarationLoader:
         if decl.init is not None:
             initial = fold(decl.init, scope, self._resolver)
             if initial is None:
-                self.deferred_initializers.append((decl.name, decl.init))
+                self.deferred_initializers.append((target, decl.name, decl.init))
 
         return self._declare_var(
-            scope,
+            target,
             decl.name,
             ctype,
             initial=initial,
-            linkage=self._linkage(scope, decl),
+            linkage=linkage,
         )
 
     # ---- 细节 ----
@@ -144,3 +163,10 @@ class DeclarationLoader:
             return Linkage.NONE
         storage = decl.storage or []
         return Linkage.INTERNAL if "static" in storage else Linkage.EXTERNAL
+
+
+def _binding_scope(scope: Scope, unit: Scope | None, linkage: Linkage) -> Scope:
+    """这个符号该绑到哪一层：static 进翻译单元，其余进共享作用域。"""
+    if unit is None:
+        return scope
+    return unit if linkage is Linkage.INTERNAL else scope

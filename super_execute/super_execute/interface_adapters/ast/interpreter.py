@@ -67,7 +67,10 @@ class Interpreter:
             self._evaluator, self._memory, self._resolver, self._session
         )
         self._declare = DeclareVariable(self._memory)
-        self._bodies: dict[str, c_ast.FuncDef] = {}
+        self._bodies: dict[str, tuple[c_ast.FuncDef, Scope]] = {}
+        self._static_bodies: dict[tuple[int, str], tuple[c_ast.FuncDef, Scope]] = {}
+        self._units: dict[str, Scope] = {}
+        self._unit_symbols: dict[int, list[Any]] = {}
         self._globals: Scope | None = None
         self._globals_initialized = False
         self._call_stack: list[str] = []
@@ -91,18 +94,55 @@ class Interpreter:
     def functions(self) -> FunctionTable:
         return self._functions
 
-    def load(self, file_ast: c_ast.FileAST) -> Scope:
-        """装载一个翻译单元（可多次调用以支持多文件）。"""
+    def load(self, file_ast: c_ast.FileAST, name: str | None = None) -> Scope:
+        """装载一个翻译单元（可多次调用以支持多文件）。
+
+        每个文件开一层 ``UNIT`` 作用域挂在全程序作用域下：``static`` 符号进这一层，
+        外部符号进共享的全程序层。于是两个文件各自的 ``static int g;`` 天然互不
+        相干（D6），而外部符号照旧互相可见。
+
+        ``name`` 记住"这个单元对应哪个源文件"——兼容层要靠它把 static 符号按
+        文件名投影出来（旧 API 的 ``g_static_funcs`` / ``g_static_globals``）。
+        """
         if self._globals is None:
             self._globals = self._session.open(ScopeKind.FILE)
 
+        unit = self._session.open(ScopeKind.UNIT, self._globals)
+        produced: list[Any] = []
         for node in file_ast.ext:
-            if isinstance(node, c_ast.FuncDef):
-                # 同名函数定义多份时**保第一份**：旧实现也是这样（入口取第一个 main）
-                self._bodies.setdefault(node.decl.name, node)
+            symbol = self._loader.load_node(self._globals, node, unit)
+            if symbol is not None:
+                produced.append(symbol)
+            if not isinstance(node, c_ast.FuncDef) or symbol is None:
+                continue
+            # 函数体按"它属于哪个翻译单元"归档：
+            #   外部函数——全程序唯一，名字就是键（同名取第一份，入口取第一个 main）
+            #   static 函数——每个文件各有一份，用 (单元, 名字) 区分（D6）
+            if _is_static(node):
+                self._static_bodies[(unit.scope_id, node.decl.name)] = (node, unit)
+            else:
+                self._bodies.setdefault(node.decl.name, (node, unit))
 
-        self._loader.load(self._globals, file_ast)
+        # 即便调用方没给文件名，也登记一个键——兼容层要靠它按单元投影 static 符号
+        self._units[name if name is not None else f"unit#{unit.scope_id}"] = unit
+        self._unit_symbols[unit.scope_id] = produced
         return self._globals
+
+    # ---- 供兼容层投影用（只读） ----
+
+    def unit_symbols(self, name: str) -> list[Any]:
+        """某个源文件装载时产生的符号（不含跨文件共享的那些）。"""
+        unit = self._units.get(name)
+        if unit is None:
+            return []
+        return list(self._unit_symbols.get(unit.scope_id, []))
+
+    def all_unit_symbols(self) -> dict[str, list[Any]]:
+        """``{源文件名: 该文件产生的符号}``，按装载顺序。"""
+        return {
+            name: list(self._unit_symbols.get(unit.scope_id, []))
+            for name, unit in self._units.items()
+        }
 
     # ==================== 运行 ====================
 
@@ -135,11 +175,20 @@ class Interpreter:
         if not isinstance(symbol.ctype, FunctionType):
             raise LinkError(f"'{name}' 没有函数类型")
 
-        body = self._bodies.get(name)
-        if body is None:
-            raise LinkError(f"函数 '{name}' 只有声明没有定义")
+        # 先看这个名字是不是**本翻译单元的 static**：是就用这个单元的那份函数体
+        unit = _unit_owning(lookup, symbol)
+        if unit is not None:
+            recorded = self._static_bodies.get((unit.scope_id, name))
+        else:
+            recorded = self._bodies.get(name)
 
-        scope = self._session.open(ScopeKind.FUNCTION, self.globals)
+        if recorded is None:
+            raise LinkError(f"函数 '{name}' 只有声明没有定义")
+        body, unit = recorded
+
+        # 函数作用域挂在**它自己那个翻译单元**下：这样函数体能看见本文件的 static，
+        # 也能沿链看到外部符号——正是 C 的作用域规则
+        scope = self._session.open(ScopeKind.FUNCTION, unit)
         self._call_stack.append(name)
         try:
             self._bind_parameters(scope, body, symbol.ctype, args)
@@ -168,11 +217,12 @@ class Interpreter:
             return
         self._globals_initialized = True
 
-        for name, expression in self._loader.deferred_initializers:
-            symbol = self._globals.find(name)
+        for target, name, expression in self._loader.deferred_initializers:
+            symbol = target.find(name)
             if not isinstance(symbol, VariableSymbol) or symbol.ctype is None:
                 raise LinkError(f"全局初值的目标 '{name}' 不是变量")
-            value = self._evaluator.eval(expression, self._globals)
+            # 在**它所属的那一层**求值：static 全局的初值要能看见本文件的符号
+            value = self._evaluator.eval(expression, target)
             self._memory.write(symbol.address, value, symbol.ctype)
 
     def _bind_parameters(
@@ -205,6 +255,21 @@ class Interpreter:
                 "暂时只支持直接用函数名调用（函数指针调用还没接）"
             )
         return self.call(node.name.name, args, scope)
+
+
+def _is_static(node: c_ast.FuncDef) -> bool:
+    return "static" in (node.decl.storage or [])
+
+
+def _unit_owning(scope: Scope, symbol: Any) -> Scope | None:
+    """符号如果是某个翻译单元的 static，返回那一层；外部符号返回 None。"""
+    for candidate in scope.chain():
+        if (
+            candidate.kind is ScopeKind.UNIT
+            and candidate.ordinary.local(getattr(symbol, "name", "")) is symbol
+        ):
+            return candidate
+    return None
 
 
 def _parameter_decls(body: c_ast.FuncDef) -> list[c_ast.Decl]:

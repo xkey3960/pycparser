@@ -60,12 +60,22 @@ class TestStructure:
 
     def test_function_scope_requires_file_parent(self, file_scope):
         assert Scope(2, ScopeKind.FUNCTION, file_scope).parent is file_scope
-        with pytest.raises(InvalidScopeError, match="文件作用域"):
+        with pytest.raises(InvalidScopeError, match="文件作用域或翻译单元作用域"):
             Scope(2, ScopeKind.FUNCTION)
+
+    def test_function_scope_accepts_unit_parent(self, file_scope):
+        """函数挂在翻译单元下：这样本文件的 static 对该函数可见（D6）。"""
+        unit = Scope(2, ScopeKind.UNIT, file_scope)
+        assert Scope(3, ScopeKind.FUNCTION, unit).parent is unit
+
+    def test_unit_scope_requires_file_parent(self, file_scope):
+        assert Scope(2, ScopeKind.UNIT, file_scope).parent is file_scope
+        with pytest.raises(InvalidScopeError, match="翻译单元作用域必须"):
+            Scope(2, ScopeKind.UNIT)
 
     def test_function_scope_rejects_block_parent(self, block_scope):
         """C 的函数不嵌套：函数体看到的外部名字只能来自文件作用域。"""
-        with pytest.raises(InvalidScopeError, match="文件作用域"):
+        with pytest.raises(InvalidScopeError, match="文件/翻译单元作用域"):
             Scope(4, ScopeKind.FUNCTION, block_scope)
 
     def test_block_scope_nests_freely_and_can_be_root(self, function_scope):
@@ -122,7 +132,7 @@ class TestDeclaration:
     @pytest.mark.parametrize("linkage", [Linkage.INTERNAL, Linkage.EXTERNAL])
     def test_linkage_only_on_file_scope(self, block_scope, linkage):
         """D6：internal/external 链接只能出现在文件作用域，替代旧的 g_static_* 侧表。"""
-        with pytest.raises(InvalidScopeError, match="文件作用域"):
+        with pytest.raises(InvalidScopeError, match="文件/翻译单元作用域"):
             block_scope.declare(_var("x", 3, 0, linkage=linkage))
 
     @pytest.mark.parametrize("linkage", [Linkage.INTERNAL, Linkage.EXTERNAL])
@@ -285,7 +295,7 @@ class TestAddressOwnership:
 
     def test_redeclare_keeps_linkage_check(self, block_scope):
         """redeclare 不能成为绕过链接属性校验的后门。"""
-        with pytest.raises(InvalidScopeError, match="文件作用域"):
+        with pytest.raises(InvalidScopeError, match="文件/翻译单元作用域"):
             block_scope.redeclare(_var("z", 3, 0, linkage=Linkage.INTERNAL))
 
     def test_redeclare_checks_address_ownership(self, block_scope):

@@ -135,9 +135,10 @@ class Scope:
     def _validate_binding(self, symbol: Symbol) -> None:
         """绑定前的不变量检查（declare 与 redeclare 共用一份）。"""
         if isinstance(symbol, ObjectSymbol) and symbol.linkage is not Linkage.NONE:
-            if self._kind is not ScopeKind.FILE:
+            # internal / external 只可能落在"全程序"或"翻译单元"这两层
+            if self._kind not in (ScopeKind.FILE, ScopeKind.UNIT):
                 raise InvalidScopeError(
-                    f"{symbol.linkage.value} 链接属性只能出现在文件作用域，"
+                    f"{symbol.linkage.value} 链接属性只能出现在文件/翻译单元作用域，"
                     f"当前是 {self._kind.value}#{self._scope_id}"
                 )
         if isinstance(symbol, VariableSymbol) and symbol.address is not None:
@@ -217,12 +218,24 @@ def _validate_parent(kind: ScopeKind, parent: Scope | None) -> None:
             raise InvalidScopeError("文件作用域是根，不能再有父作用域")
         return
 
-    if kind is ScopeKind.FUNCTION:
+    if kind is ScopeKind.UNIT:
+        # 一个翻译单元挂在全程序作用域下：static 符号在这一层，
+        # 外部符号在父层——于是"两个文件各自的 static g"天然不冲突（D6）
         if parent is None:
-            raise InvalidScopeError("函数作用域必须挂在文件作用域下")
+            raise InvalidScopeError("翻译单元作用域必须挂在全程序作用域下")
         if parent.kind is not ScopeKind.FILE:
             raise InvalidScopeError(
-                f"函数作用域只能挂在文件作用域下，收到 {parent.kind.value}"
+                f"翻译单元作用域只能挂在文件作用域下，收到 {parent.kind.value}"
+                f"#{parent.scope_id}"
+            )
+        return
+
+    if kind is ScopeKind.FUNCTION:
+        if parent is None:
+            raise InvalidScopeError("函数作用域必须挂在文件作用域或翻译单元作用域下")
+        if parent.kind not in (ScopeKind.FILE, ScopeKind.UNIT):
+            raise InvalidScopeError(
+                f"函数作用域只能挂在文件/翻译单元作用域下，收到 {parent.kind.value}"
                 f"#{parent.scope_id}"
             )
         return

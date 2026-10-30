@@ -136,6 +136,67 @@ class TestErrorReporting:
         assert capsys.readouterr().out == ""
 
 
+class TestStaticIsolation:
+    """D6：``static`` 是文件级的，两个文件的同名 static 互不相干。"""
+
+    def _load(self, *sources):
+        interpreter = Interpreter()
+        for source in sources:
+            interpreter.load(parse(source))
+        return interpreter
+
+    def test_static_globals_are_per_translation_unit(self):
+        interpreter = self._load(
+            "static int g = 100; int use_a(void) { g += 1; return g; }",
+            "static int g = 200; int use_b(void) { g += 5; return g; }",
+            "int use_a(void); int use_b(void);"
+            "int main(void) { return use_a() + use_b(); }",
+        )
+        assert interpreter.run() == 101 + 205
+
+    def test_static_functions_are_per_translation_unit(self):
+        interpreter = self._load(
+            "static int helper(void) { return 10; }"
+            "int use_a(void) { return helper(); }",
+            "static int helper(void) { return 20; }"
+            "int use_b(void) { return helper(); }",
+            "int use_a(void); int use_b(void);"
+            "int main(void) { return use_a() + use_b(); }",
+        )
+        assert interpreter.run() == 10 + 20
+
+    def test_static_is_invisible_from_another_unit(self):
+        interpreter = self._load(
+            "static int secret(void) { return 1; } int pub(void) { return secret(); }",
+            "int pub(void); int main(void) { return secret(); }",
+        )
+        with pytest.raises(UndefinedSymbolError):
+            interpreter.run()
+
+    def test_external_symbols_still_shared(self):
+        interpreter = self._load(
+            "int shared = 7;",
+            "extern int shared; int main(void) { return shared; }",
+        )
+        assert interpreter.run() == 7
+
+    def test_two_statics_with_same_name_do_not_collide(self):
+        """这正是重构前的 bug：同名的 static 全局会在同一个作用域里撞车。"""
+        interpreter = self._load(
+            "static int counter = 1; int a(void) { return counter; }",
+            "static int counter = 2; int b(void) { return counter; }",
+        )
+        assert interpreter.run("a") == 1
+        assert interpreter.run("b") == 2
+
+    def test_static_initializer_sees_its_own_unit(self):
+        interpreter = self._load(
+            "static int base(void) { return 5; } static int value = base();"
+            "int get(void) { return value; }",
+        )
+        assert interpreter.run("get") == 5
+
+
 class TestBasics:
     def test_arithmetic_precedence(self):
         assert run("int main(void) { return 1 + 2 * 3; }") == 7
