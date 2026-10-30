@@ -128,6 +128,51 @@ class TestAttributes:
         assert run(source) == 7
 
 
+class TestCaseRange:
+    """GNU ``case 1 ... 5:`` —— 闭区间匹配。"""
+
+    def test_inside_range(self):
+        source = """
+            int rng(int x) {
+                switch (x) { case 1 ... 5: return 1; default: return 0; }
+            }
+            int main(void) { return rng(3); }
+        """
+        assert run(source) == 1
+
+    def test_at_both_bounds(self):
+        source = """
+            int rng(int x) {
+                switch (x) { case 1 ... 5: return 1; default: return 0; }
+            }
+            int main(void) { return rng(1) * 10 + rng(5); }
+        """
+        assert run(source) == 11
+
+    def test_outside_range(self):
+        source = """
+            int rng(int x) {
+                switch (x) { case 1 ... 5: return 1; default: return 0; }
+            }
+            int main(void) { return rng(6); }
+        """
+        assert run(source) == 0
+
+    def test_mixed_with_plain_cases(self):
+        source = """
+            int f(int x) {
+                switch (x) {
+                    case 0: return 100;
+                    case 1 ... 3: return 10;
+                    case 9: return 1;
+                    default: return 0;
+                }
+            }
+            int main(void) { return f(0) + f(2) + f(9) + f(7); }
+        """
+        assert run(source) == 111
+
+
 class TestDeclaratorShapes:
     def test_array_of_struct(self, builder):
         ctype = builder.build(parse("struct P { int x; } arr[3];").ext[0].type)

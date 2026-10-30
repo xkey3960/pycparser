@@ -25,8 +25,9 @@ from super_execute.application.use_cases.variables import DeclareVariable
 from super_execute.domain.entities.c_types import ArrayType, BasicType
 from super_execute.domain.entities.scope import Scope
 from super_execute.domain.entities.symbol import TypedefSymbol
-from super_execute.domain.exceptions import DomainError
+from super_execute.domain.exceptions import DomainError, UnsupportedTypeError
 from super_execute.domain.value_objects import ScopeKind
+from super_execute.interface_adapters.ast.const_eval import fold
 from super_execute.interface_adapters.ast.declaration_loader import check_static_assert
 from super_execute.interface_adapters.ast.evaluator import Evaluator
 from super_execute.interface_adapters.ast.type_builder import TypeBuilder
@@ -87,6 +88,41 @@ def _produces_value(node: Any) -> bool:
     return not isinstance(node, _STATEMENT_TYPES)
 
 
+def _switch_items(stmt: Any) -> list[Any]:
+    """switch 体内的一串项（``case``/``default``/普通语句平铺在一起）。"""
+    if isinstance(stmt, c_ast.Compound):
+        return list(stmt.block_items or [])
+    return [stmt] if stmt is not None else []
+
+
+def _case_body(item: Any) -> list[Any]:
+    """``case``/``default`` 标签挂的那几条语句；普通语句就是它自己。"""
+    if isinstance(item, (c_ast.Case, c_ast.Default)):
+        return list(item.stmts or [])
+    return [item]
+
+
+def _case_matches(expr: Any, value: Any, scope: Scope, resolver: Any) -> bool:
+    """这个 case 标签是否匹配。
+
+    两种形状：普通常量（``case 3:``）和 GNU 的**范围**（``case 1 ... 5:``，
+    解析成 ``RangeExpression``）。范围按闭区间判断。
+    """
+    if type(expr).__name__ == "RangeExpression":
+        low = fold(expr.first, scope, resolver)
+        high = fold(expr.last, scope, resolver)
+        if not isinstance(low, int) or not isinstance(high, int):
+            raise UnsupportedTypeError("case 范围的端点必须是整型常量表达式")
+        return low <= value <= high
+
+    label = fold(expr, scope, resolver)
+    if not isinstance(label, int):
+        raise UnsupportedTypeError(
+            f"case 标签必须是整型常量表达式: {type(expr).__name__}"
+        )
+    return label == value
+
+
 class StatementExecutor:
     """语句执行器。"""
 
@@ -130,6 +166,9 @@ class StatementExecutor:
         if isinstance(node, c_ast.StaticAssert):
             # 函数体里的 _Static_assert 同样是编译期检查
             check_static_assert(node, scope, self._resolver)
+            return
+        if isinstance(node, c_ast.Switch):
+            self._switch(node, scope)
             return
         if isinstance(node, c_ast.If):
             self._if(node, scope)
@@ -244,6 +283,44 @@ class StatementExecutor:
         """函数体内的 typedef（旧的扁平类型表正是漏在这里）。"""
         builder = TypeBuilder(self._resolver, scope)
         scope.declare(TypedefSymbol(node.name, builder.build(node.type)))
+
+    def _switch(self, node: c_ast.Switch, scope: Scope) -> None:
+        """``switch``：跳到匹配的 ``case``，然后**顺序往下执行**（fall-through）。
+
+        C 的 switch 不是"分支表"，本质是"goto 到某个标签"。所以这里：
+        1. 先算出该从哪一条 ``case`` 开始（没有匹配的就去 ``default``）；
+        2. 从那里开始**一路执行后面的语句**，直到 ``break`` 或走完。
+        中间那些 ``case`` 标签没有额外作用——它们只是标记位置。
+        """
+        value = self._evaluator.eval(node.cond, scope)
+        items = _switch_items(node.stmt)
+        start = self._switch_start(items, value, scope)
+        if start is None:
+            return  # 既没匹配也没有 default：整段跳过
+
+        block = self._session.open(ScopeKind.BLOCK, scope)
+        try:
+            for item in items[start:]:
+                for statement in _case_body(item):
+                    self.execute(statement, block)
+        except BreakSignal:
+            return  # break 只跳出 switch；continue/goto 继续往外传
+        finally:
+            self._session.close(block)
+
+    def _switch_start(self, items: list[Any], value: Any, scope: Scope) -> int | None:
+        """找到该从哪一项开始执行：先看匹配的 case，再看 default。"""
+        default_index: int | None = None
+        for index, item in enumerate(items):
+            if isinstance(item, c_ast.Default):
+                if default_index is None:
+                    default_index = index
+                continue
+            if not isinstance(item, c_ast.Case):
+                continue
+            if _case_matches(item.expr, value, scope, self._resolver):
+                return index
+        return default_index
 
     def _if(self, node: c_ast.If, scope: Scope) -> None:
         if self._evaluator.eval(node.cond, scope):

@@ -739,16 +739,135 @@ class TestMultiUnit:
         assert interpreter.run() == 42
 
 
-class TestUnsupported:
-    def test_switch_not_supported(self):
+class TestSwitch:
+    """``switch`` 本质是"跳到某个标签，然后顺序往下执行"。"""
+
+    def test_matching_case(self):
         source = """
             int main(void) {
-                int x = 1;
-                switch (x) { case 1: return 1; }
+                int x = 2;
+                switch (x) { case 1: return 10; case 2: return 20; }
                 return 0;
             }
         """
-        with pytest.raises(UnsupportedTypeError):
+        assert run(source) == 20
+
+    def test_no_match_falls_to_default(self):
+        source = """
+            int main(void) {
+                switch (9) { case 1: return 10; default: return 99; }
+                return 0;
+            }
+        """
+        assert run(source) == 99
+
+    def test_no_match_and_no_default(self):
+        source = """
+            int main(void) {
+                int x = 0;
+                switch (9) { case 1: x = 10; }
+                return x;
+            }
+        """
+        assert run(source) == 0
+
+    def test_fall_through(self):
+        """没有 break 就继续往下执行——这是 C 的语义，不是 bug。"""
+        source = """
+            int main(void) {
+                int total = 0;
+                switch (1) {
+                    case 1: total += 1;
+                    case 2: total += 10;
+                    case 3: total += 100;
+                }
+                return total;
+            }
+        """
+        assert run(source) == 111
+
+    def test_break_exits_switch(self):
+        source = """
+            int main(void) {
+                int total = 0;
+                switch (1) {
+                    case 1: total += 1; break;
+                    case 2: total += 10; break;
+                }
+                return total;
+            }
+        """
+        assert run(source) == 1
+
+    def test_empty_case_falls_through(self):
+        """`case 2:` 后面什么都没有，就直接落到 case 3。"""
+        source = """
+            int main(void) {
+                switch (2) {
+                    case 1: return 1;
+                    case 2:
+                    case 3: return 3;
+                }
+                return 0;
+            }
+        """
+        assert run(source) == 3
+
+    def test_break_inside_loop_targets_the_loop(self):
+        """switch 里的循环：break 属于内层循环，不是 switch。"""
+        source = """
+            int main(void) {
+                int sum = 0;
+                switch (1) {
+                    case 1:
+                        for (int i = 0; i < 5; i++) {
+                            if (i == 3) break;
+                            sum += i;
+                        }
+                        break;
+                    default: sum = -1;
+                }
+                return sum;
+            }
+        """
+        assert run(source) == 3
+
+    def test_continue_reaches_enclosing_loop(self):
+        """switch 在循环里：case 里的 continue 属于外层循环。"""
+        source = """
+            int main(void) {
+                int sum = 0;
+                for (int i = 0; i < 4; i++) {
+                    switch (i) {
+                        case 1: continue;
+                        default: sum += i;
+                    }
+                    sum += 100;
+                }
+                return sum;
+            }
+        """
+        assert run(source) == 0 + 100 + 2 + 100 + 3 + 100
+
+    def test_case_label_is_constant_expression(self):
+        source = """
+            enum { TWO = 2 };
+            int main(void) {
+                switch (TWO + 1) { case TWO: return 1; case 3: return 3; }
+                return 0;
+            }
+        """
+        assert run(source) == 3
+
+    def test_non_constant_case_rejected(self):
+        source = """
+            int main(void) {
+                int y = 1;
+                switch (1) { case y: return 1; }
+                return 0;
+            }
+        """
+        with pytest.raises(UnsupportedTypeError, match="常量"):
             run(source)
 
 
