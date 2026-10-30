@@ -13,7 +13,6 @@ from super_execute.domain.entities.c_types import (
 from super_execute.domain.exceptions import (
     InvalidTypeError,
     UndefinedSymbolError,
-    UnsupportedTypeError,
 )
 from super_execute.domain.services.builtin_types import (
     CHAR,
@@ -133,6 +132,6 @@ class TestOtherForms:
     def test_increment(self, world, expr):
         assert infer(world, expr, "++i") is INT
 
-    def test_unsupported_expression(self, world, expr):
-        with pytest.raises(UnsupportedTypeError, match="字符串"):
-            infer(world, expr, '"hello"')
+    def test_string_literal_is_char_array(self, world, expr):
+        """``"hello"`` 的类型是 ``char[6]``——含结尾 NUL。"""
+        assert infer(world, expr, '"hello"').name == "char[6]"

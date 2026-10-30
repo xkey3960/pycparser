@@ -286,13 +286,42 @@ class TestOutOfBounds:
         with pytest.raises(MemoryAccessError, match="Address"):
             memory.read(0, INT)
 
-    def test_heap_region_not_implemented(self, memory):
-        with pytest.raises(RegionNotImplementedError, match="HEAP"):
+    def test_read_before_allocating_in_heap(self, memory):
+        """堆区已支持，但没分配过的偏移仍然是越界。"""
+        with pytest.raises(OutOfBoundsError, match="堆区"):
             memory.read(Address(AddressRegion.HEAP, 0, 0), INT)
 
     def test_function_region_not_implemented(self, memory):
         with pytest.raises(RegionNotImplementedError):
             memory.read(Address(AddressRegion.FUNCTION, 0, 0), INT)
+
+
+class TestHeap:
+    """堆区：字符串字面量（以及将来的 malloc）放这里。"""
+
+    def test_allocate_and_read_back(self, memory):
+        address = memory.allocate_heap(INT, 42)
+        assert address.region is AddressRegion.HEAP
+        assert memory.read(address, INT) == 42
+
+    def test_allocations_do_not_overlap(self, memory):
+        first = memory.allocate_heap(INT, 1)
+        second = memory.allocate_heap(INT, 2)
+        assert first != second
+        assert memory.read(first, INT) == 1
+        assert memory.read(second, INT) == 2
+
+    def test_char_array_readable_element_by_element(self, memory):
+        array = ArrayType(CHAR, 4)
+        address = memory.allocate_heap(array, [104, 105, 33, 0])
+        assert memory.read(address, CHAR) == 104
+        assert memory.read(address + 1, CHAR) == 105
+        assert memory.read(address, array) == [104, 105, 33, 0]
+
+    def test_heap_addresses_have_zero_scope_id(self, memory):
+        address = memory.allocate_heap(INT, 7)
+        assert address.scope_id == 0
+        assert not address.is_null
 
 
 class TestValueSemantics:

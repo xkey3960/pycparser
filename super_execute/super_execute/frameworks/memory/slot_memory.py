@@ -39,6 +39,7 @@ from super_execute.domain.exceptions import (
     ScopeDestroyedError,
 )
 from super_execute.domain.value_objects import (
+    HEAP_REGION_SIZE,
     SCOPE_ID_MAX,
     SCOPE_ID_MIN,
     SCOPE_REGION_SIZE,
@@ -90,6 +91,9 @@ class SlotMemory:
     def __init__(self) -> None:
         self._regions: dict[int, _ScopeRegion] = {}
         self._destroyed: set[int] = set()
+        # 堆区：没有 scope_id，一条单调向前的游标 + 若干块
+        self._heap_chunks: list[_Chunk] = []
+        self._heap_cursor = 0
 
     # ==================== 生命周期 ====================
 
@@ -136,6 +140,26 @@ class SlotMemory:
         region.cursor = offset + size
         return Address(AddressRegion.SCOPE, scope_id, offset)
 
+    def allocate_heap(self, ctype: CType, value: Any) -> Address:
+        """在堆区分配一块并写入初值（字符串字面量、后续的 malloc 都走这里）。
+
+        堆区没有 ``scope_id``——地址是 ``region:8 | offset:24``，所以整个程序
+        共用一条单调向前的游标。Phase A 不回收（没有 free 语义）。
+        """
+        if not isinstance(ctype, CType):
+            raise AllocationError(f"分配需要 CType，收到 {type(ctype).__name__}")
+        size = ctype.sizeof()
+        align = ctype.alignof()
+        offset = align_up(self._heap_cursor, align)
+        if offset + size > HEAP_REGION_SIZE:
+            raise AllocationError(f"堆区存储不够：需要 {size} 字节")
+
+        chunk = _Chunk(offset, size, ctype)
+        chunk.value = value
+        self._heap_chunks.append(chunk)
+        self._heap_cursor = offset + size
+        return Address(AddressRegion.HEAP, 0, offset)
+
     # ==================== 读写 ====================
 
     def read(self, address: Address, ctype: CType) -> Any:
@@ -180,9 +204,11 @@ class SlotMemory:
     def _locate(self, address: Address) -> tuple[_Chunk, int]:
         if not isinstance(address, Address):
             raise MemoryAccessError(f"需要 Address，收到 {type(address).__name__}")
+        if address.region is AddressRegion.HEAP:
+            return self._locate_heap(address)
         if address.region is not AddressRegion.SCOPE:
             raise RegionNotImplementedError(
-                f"{address.region.name} 区本轮尚未实现（heap 留给下一轮）"
+                f"{address.region.name} 区尚未实现（只做 scope 与 heap）"
             )
         region = self._require_region(address.scope_id)
         chunk = region.find(address.offset)
@@ -191,6 +217,12 @@ class SlotMemory:
                 f"地址 {address!r} 不在作用域 #{address.scope_id} 的任何对象里"
             )
         return chunk, address.offset - chunk.offset
+
+    def _locate_heap(self, address: Address) -> tuple[_Chunk, int]:
+        for chunk in self._heap_chunks:
+            if chunk.contains(address.offset):
+                return chunk, address.offset - chunk.offset
+        raise OutOfBoundsError(f"地址 {address!r} 不在堆区的任何对象里")
 
 
 def _needs_descent(element: CType, want: CType) -> bool:

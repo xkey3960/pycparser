@@ -7,12 +7,12 @@
 
 import pytest
 
+from super_execute.domain.value_objects import Address, AddressRegion
 from super_execute.domain.exceptions import (
     DivisionByZeroError,
     InvalidTypeError,
     OutOfBoundsError,
     UndefinedSymbolError,
-    UnsupportedTypeError,
 )
 
 
@@ -228,9 +228,11 @@ class TestErrors:
         with pytest.raises(DivisionByZeroError):
             ev(world, expr, "i / 0")
 
-    def test_string_literal_unsupported(self, world, expr):
-        with pytest.raises(UnsupportedTypeError):
-            ev(world, expr, '"hi"')
+    def test_string_literal_is_an_address(self, world, expr):
+        """字符串字面量的值是它在堆区的地址（不再是"不支持"）。"""
+        value = ev(world, expr, '"hi"')
+        assert isinstance(value, Address)
+        assert value.region is AddressRegion.HEAP
 
     def test_array_arithmetic_type_error(self, world, expr):
         with pytest.raises(InvalidTypeError):
