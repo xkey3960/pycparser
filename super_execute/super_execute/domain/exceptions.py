@@ -41,6 +41,14 @@ class DomainError(Exception):
 # ==================== 名字与作用域 ====================
 
 
+class StaticAssertError(DomainError):
+    """``_Static_assert`` 的条件在编译期为假。
+
+    这类错误和"重复定义"一样，是**装载期就能判定**的硬错误——不受惰性模式影响，
+    ``link()`` / ``run()`` 时一定会报。
+    """
+
+
 class InvalidSymbolError(DomainError, ValueError):
     """符号构造参数非法：空名字、地址落在错误的区、字段组合不合法等。"""
 

@@ -29,7 +29,7 @@ from super_execute.application.use_cases.variables import DeclareVariable
 from super_execute.domain.entities.c_types import FunctionType
 from super_execute.domain.entities.scope import Scope
 from super_execute.domain.entities.symbol import TypedefSymbol, VariableSymbol
-from super_execute.domain.exceptions import UnsupportedTypeError
+from super_execute.domain.exceptions import StaticAssertError, UnsupportedTypeError
 from super_execute.domain.services.equivalence import types_equivalent
 from super_execute.domain.value_objects import Linkage, ScopeKind
 from super_execute.interface_adapters.ast.const_eval import fold
@@ -96,8 +96,11 @@ class DeclarationLoader:
             return self._function(scope, node.decl, unit)
         if isinstance(node, c_ast.Decl):
             return self._decl(scope, node, unit)
-        if isinstance(node, (c_ast.Pragma, c_ast.StaticAssert)):
-            return None  # pragma 无运行时语义；_Static_assert 留给编译期检查
+        if isinstance(node, c_ast.StaticAssert):
+            check_static_assert(node, scope, self._resolver)
+            return None
+        if isinstance(node, c_ast.Pragma):
+            return None  # pragma 无运行时语义
         raise UnsupportedTypeError(f"还没支持的顶层节点: {type(node).__name__}")
 
     # ---- 各类声明 ----
@@ -187,3 +190,25 @@ def _binding_scope(scope: Scope, unit: Scope | None, linkage: Linkage) -> Scope:
     if unit is None:
         return scope
     return unit if linkage is Linkage.INTERNAL else scope
+
+
+def check_static_assert(node: Any, scope: Scope, resolver: TypeResolverPort) -> None:
+    """``_Static_assert(cond, "msg")``：条件必须在编译期为真。
+
+    条件是**常量表达式**，所以直接用 ``fold``（数组维度、枚举值用的是同一个折叠器）。
+    折不动就说明写错了——不能默默放过。
+    """
+    value = fold(node.cond, scope, resolver)
+    if value is None:
+        raise UnsupportedTypeError(
+            f"_Static_assert 的条件必须是常量表达式: {type(node.cond).__name__}"
+        )
+    if not value:
+        message = _assert_message(node)
+        raise StaticAssertError(f"static_assert failed: {message}")
+
+
+def _assert_message(node: Any) -> str:
+    """取出断言里的说明文字（去掉字符串字面量的引号）。"""
+    raw = getattr(getattr(node, "message", None), "value", "")
+    return raw.strip("\"'") if isinstance(raw, str) else ""

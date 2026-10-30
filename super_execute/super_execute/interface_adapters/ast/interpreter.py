@@ -29,6 +29,7 @@ from super_execute.domain.exceptions import (
     DuplicateSymbolError,
     LinkError,
     NotAValueError,
+    StaticAssertError,
     UndefinedLabelError,
     UndefinedSymbolError,
     UnsupportedTypeError,
@@ -75,7 +76,7 @@ class Interpreter:
         self._entry = entry
         self.pending_errors: list[DomainError] = []
         #: 重复定义的函数是**硬错误**：lazy 模式下也要在 link()/run() 时报出来。
-        self.pending_conflicts: list[DomainError] = []
+        self.hard_errors: list[DomainError] = []
 
         self._session = ScopeSession(self._allocator, self._memory)
         self._loader = DeclarationLoader(self._memory, self._resolver, self._functions)
@@ -136,7 +137,11 @@ class Interpreter:
                     raise
                 # 惰性模式：记下来，继续装载下一个声明。标签在这一步之前已经
                 # 登记过（只是没布局），所以"用了才报"能正常触发。
-                self.pending_errors.append(error)
+                if isinstance(error, (DuplicateSymbolError, StaticAssertError)):
+                    # 装载期就能定论的硬错误：lazy 也要在 link()/run() 报出来
+                    self.hard_errors.append(error)
+                else:
+                    self.pending_errors.append(error)
                 continue
             if symbol is not None:
                 produced.append(symbol)
@@ -157,7 +162,7 @@ class Interpreter:
                         f"多个文件定义入口函数 '{name_key}'，取第一个"
                     )
                 else:
-                    self.pending_conflicts.append(
+                    self.hard_errors.append(
                         DuplicateSymbolError(
                             f"函数 '{name_key}' 重复定义"
                             f"（{self._file_of(name_key)} 与 "
@@ -201,10 +206,10 @@ class Interpreter:
         for message in messages:
             print(f"[warn] {message}")
 
-    def raise_definition_conflicts(self) -> None:
+    def raise_hard_errors(self) -> None:
         """重复定义的函数：无论 lazy 还是 strict 都是硬错误。"""
-        if self.pending_conflicts:
-            raise self.pending_conflicts[0]
+        if self.hard_errors:
+            raise self.hard_errors[0]
 
     @property
     def tag_registry(self) -> dict[tuple[str, str], Any]:

@@ -11,6 +11,7 @@ from super_execute.domain.exceptions import (
     DomainError,
     LinkError,
     NullPointerError,
+    StaticAssertError,
     UndefinedLabelError,
     UndefinedSymbolError,
     UnsupportedTypeError,
@@ -324,6 +325,47 @@ class TestNullDereference:
         """本实现把未初始化的指针当 NULL（有意偏差，C 里是未定义值）。"""
         with pytest.raises(NullPointerError):
             run("int main(void) { int *p; return *p; }")
+
+
+class TestStaticAssert:
+    """``_Static_assert``：条件是常量表达式，装载/执行时折叠检查。"""
+
+    def test_arithmetic_condition_passes(self):
+        source = '_Static_assert(1 + 1 == 2, "ok"); int main(void){ return 7; }'
+        assert run(source) == 7
+
+    def test_sizeof_condition_passes(self):
+        source = '_Static_assert(sizeof(int) == 4, "int"); int main(void){ return 3; }'
+        assert run(source) == 3
+
+    def test_failure_reports_message(self):
+        with pytest.raises(StaticAssertError, match="fails here"):
+            run('_Static_assert(1 == 2, "fails here"); int main(void){ return 7; }')
+
+    def test_failure_message_mentions_static_assert(self):
+        with pytest.raises(StaticAssertError, match="static_assert"):
+            run('_Static_assert(0, "boom"); int main(void){ return 0; }')
+
+    def test_non_constant_condition_rejected(self):
+        """条件必须是常量——折不动要报错，不能默默放过。"""
+        source = 'int x; _Static_assert(x, "no"); int main(void){ return 0; }'
+        with pytest.raises(UnsupportedTypeError, match="常量表达式"):
+            run(source)
+
+    def test_inside_function_body(self):
+        assert run('int main(void){ _Static_assert(1, "ok"); return 5; }') == 5
+
+    def test_inside_function_body_failure(self):
+        with pytest.raises(StaticAssertError, match="body"):
+            run('int main(void){ _Static_assert(0, "body"); return 5; }')
+
+    def test_compares_enum_constant(self):
+        source = """
+            enum { N = 3 };
+            _Static_assert(N == 3, "enum");
+            int main(void) { return N; }
+        """
+        assert run(source) == 3
 
 
 class TestBasics:

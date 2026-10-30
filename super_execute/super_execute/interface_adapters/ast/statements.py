@@ -27,6 +27,7 @@ from super_execute.domain.entities.scope import Scope
 from super_execute.domain.entities.symbol import TypedefSymbol
 from super_execute.domain.exceptions import DomainError
 from super_execute.domain.value_objects import ScopeKind
+from super_execute.interface_adapters.ast.declaration_loader import check_static_assert
 from super_execute.interface_adapters.ast.evaluator import Evaluator
 from super_execute.interface_adapters.ast.type_builder import TypeBuilder
 
@@ -125,6 +126,10 @@ class StatementExecutor:
         if isinstance(node, c_ast.DeclList):
             for decl in node.decls:
                 self._declaration(decl, scope)
+            return
+        if isinstance(node, c_ast.StaticAssert):
+            # 函数体里的 _Static_assert 同样是编译期检查
+            check_static_assert(node, scope, self._resolver)
             return
         if isinstance(node, c_ast.If):
             self._if(node, scope)
