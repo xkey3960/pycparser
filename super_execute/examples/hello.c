@@ -35,6 +35,6 @@ int main(void)
     struct Point *pstPoint = (struct Point *)malloc(sizeof(struct Point));
     pstPoint->x = 1;
     pstPoint->y = 2;
-    printf("%u", pstPoint->x);
+    printf("%u\n", pstPoint->x);
     return total;
 }
