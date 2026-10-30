@@ -210,8 +210,13 @@ class TypeBuilder:
                     )
                 if not decl.name:
                     raise UnsupportedTypeError("不支持匿名成员")
+                member_type = self.build(decl.type)
                 members.append(
-                    Member(decl.name, self.build(decl.type), _bit_width(decl))
+                    Member(
+                        decl.name,
+                        member_type,
+                        _bit_width(decl, self._scope, self._resolver),
+                    )
                 )
             if ctype.is_complete:
                 # 跨文件重复定义：内容一样就静默去重，不一样才是冲突
@@ -297,10 +302,21 @@ class TypeBuilder:
         return ctype
 
 
-def _bit_width(decl: c_ast.Decl) -> int | None:
+def _bit_width(decl: Any, scope: Scope, resolver: Any) -> int | None:
+    """位域宽度：必须是常量表达式（``int a : 4 + 4`` 折成 8）。
+
+    **Phase A 不打包位域**：宽度记在 ``Member`` 上，但布局仍按"每个位域占满
+    它的声明类型"算。这和旧实现一致——``struct { int a : 8; int b : 3; }``
+    的 ``sizeof`` 是 8 而不是 4。真正的位打包要改槽位存储，留给 Phase B。
+    """
     if getattr(decl, "bitsize", None) is None:
         return None
-    raise UnsupportedTypeError("位域（bit-field）尚未实现")
+    width = fold(decl.bitsize, scope, resolver)
+    if not isinstance(width, int):
+        raise UnsupportedTypeError(
+            f"位域宽度必须是整型常量表达式: {type(decl.bitsize).__name__}"
+        )
+    return width
 
 
 def _unknown_names(node: Any, scope: Scope) -> list[str]:

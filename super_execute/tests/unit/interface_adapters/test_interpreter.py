@@ -398,6 +398,46 @@ class TestStringLiterals:
             run('int main(void){ int x; x = x + "abc"; return 0; }')
 
 
+class TestBitFields:
+    """位域：宽度必须是常量表达式；Phase A 不打包，每个位域占满声明类型。"""
+
+    def test_sizeof_counts_each_bitfield_as_a_member(self):
+        source = """
+            struct Bits { int a : 4 + 4; int b : 3; };
+            int main(void) { return sizeof(struct Bits); }
+        """
+        assert run(source) == 8
+
+    def test_read_write_like_ordinary_members(self):
+        source = """
+            struct Flags { int a : 1; int b : 2; };
+            int main(void) {
+                struct Flags f;
+                f.a = 1;
+                f.b = 3;
+                return f.a * 10 + f.b;
+            }
+        """
+        assert run(source) == 13
+
+    def test_width_folding(self):
+        source = """
+            enum { W = 2 };
+            struct B { int x : W * 2; };
+            int main(void) { return sizeof(struct B); }
+        """
+        assert run(source) == 4
+
+    def test_non_constant_width_rejected(self):
+        source = """
+            int n;
+            struct B { int a : n; };
+            int main(void) { return 0; }
+        """
+        with pytest.raises(UnsupportedTypeError, match="常量"):
+            run(source)
+
+
 class TestBasics:
     def test_arithmetic_precedence(self):
         assert run("int main(void) { return 1 + 2 * 3; }") == 7

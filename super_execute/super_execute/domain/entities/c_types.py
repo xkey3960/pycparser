@@ -369,7 +369,13 @@ class EnumType(CType):
 
 @dataclass(frozen=True)
 class Member:
-    """结构体/联合体的一个成员：名字 + 类型（+ 位宽，暂不支持）。"""
+    """结构体/联合体的一个成员：名字 + 类型（+ 位宽）。
+
+    ``bit_width`` 记下声明里的位宽（``int a : 8``），但**Phase A 不打包位域**：
+    每个位域仍然按它的声明类型占满一个成员，``int a : 8`` 就是 4 字节。
+    这和旧实现一致——``struct { int a : 8; int b : 3; }`` 的 ``sizeof`` 是 8。
+    真正的位打包要改槽位存储，留给 Phase B。
+    """
 
     name: str
     ctype: CType
@@ -383,10 +389,17 @@ class Member:
                 f"成员类型必须是 CType，收到 {type(self.ctype).__name__}"
             )
         if self.bit_width is not None:
-            raise UnsupportedTypeError(
-                "位域（bit-field）尚未实现：请先按普通成员声明，"
-                "或等位域那一轮再做（见 tasks/20261017-122900/TASK.md）"
-            )
+            if not isinstance(self.bit_width, int) or isinstance(self.bit_width, bool):
+                raise InvalidTypeError(
+                    f"位宽必须是整数，收到 {type(self.bit_width).__name__}"
+                )
+            if self.bit_width < 0:
+                raise InvalidTypeError(f"位宽不能为负: {self.bit_width}")
+            limit = self.ctype.sizeof() * 8
+            if self.bit_width > limit:
+                raise InvalidTypeError(
+                    f"位宽 {self.bit_width} 超过 {self.ctype.name} 的 {limit} 位"
+                )
 
 
 def align_up(value: int, alignment: int) -> int:
