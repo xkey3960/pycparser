@@ -111,7 +111,7 @@ class CProgram:
         """
         try:
             self.interpreter.raise_conflicts()
-            self.interpreter.raise_definition_conflicts()
+            self.interpreter.raise_hard_errors()
             if not self.lazy:
                 self.interpreter.raise_pending()
         except DomainError as error:
@@ -126,7 +126,7 @@ class CProgram:
         try:
             # 惰性模式下不一定调过 link()，这里补一次诊断
             self.interpreter.raise_conflicts()
-            self.interpreter.raise_definition_conflicts()
+            self.interpreter.raise_hard_errors()
             if args:
                 return self.interpreter.call(self.entry, list(args))
             return self.interpreter.run(self.entry)
