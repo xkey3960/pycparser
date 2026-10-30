@@ -9,14 +9,15 @@
 ```bash
 cd pycparser/super_execute
 py examples/run_hello.py
-# → hello.c 的 main() 返回 25
+# → 1hello.c 的 main() 返回 25
+#   ↑ printf 的输出（example 里 malloc 了一个 struct 并打印它的 x）
 ```
 
 `examples/` 里是一对最小样例：
 
 | 文件 | 内容 |
 |---|---|
-| `examples/hello.c` | 结构体数组、按值传参、循环、`switch`、三目运算 |
+| `examples/hello.c` | 结构体数组、按值传参、循环、`switch`、三目、`malloc`、`printf` |
 | `examples/run_hello.py` | 读文件 → 解析 → 装载 → 运行 → 打印返回值 |
 
 ## 三步跑一个 C 程序
@@ -149,20 +150,52 @@ super_execute/
 | `float` / `double` | 4 / 8 |
 | 指针 | **4** |
 
+## 内建函数
+
+解释器不链接 libc，而是用 Python 复刻了一份常用 C 库函数。**不需要 `#include`**——
+解释器会像 C89 那样替你补上声明：
+
+```c
+int main(void) {
+    printf("%d\n", 42);                       /* 直接用，不用 stdio.h */
+    char *p = malloc(16);                     /* 不用 stdlib.h */
+    struct Point *q = malloc(sizeof(struct Point));
+    q->x = 1;                                 /* 裸内存按 struct 访问 */
+    return strlen("hello");
+}
+```
+
+| 分组 | 函数 |
+|---|---|
+| 输出 | `printf` `puts` `putchar` `exit` `_exit` |
+| 字符串 | `strlen` `strcmp` `strncmp` `strcpy` `strcat` `memcmp` `memcpy` `memset` |
+| 内存 | `malloc` `calloc` `free` |
+| 数值 | `abs` `atoi` `sqrt` `pow` `fabs` `floor` `ceil` `fmod` `sin` `cos` `tan` `exp` `log` |
+| 字符 | `isdigit` `isalpha` `isalnum` `isspace` `isupper` `islower` `toupper` `tolower` |
+
+几条语义说明：
+
+* **自己定义的函数优先**：写了 `int puts(char *s) {...}` 就用你的，内建的让位。
+* `printf` 支持 `%d %i %u %x %X %o %c %s %p %f %e %g %%` 和宽度/精度/对齐，
+  **长度修饰符会被忽略**（`%ld` 当 `%d`）。
+* `malloc` / `calloc` 返回的存储**没有声明类型**，随后按什么类型访问都行
+  （见下面"原始存储"）；`free` 是空操作——Phase A 的堆不回收。
+* `exit(n)` 不是错误：它终止程序，`main` 的结果就是 `n`。
+* 内建函数没有 `va_arg`：能调用，但函数体里拿不到多余实参。
+
 ## 已知限制与刻意的偏差
 
 这些不是 bug，是**当前实现的选择**，写在这里免得当成 bug 追：
 
 | 限制 | 说明 |
 |---|---|
-| **没有输出** | `printf` 等内建函数没做。程序结果 = `main` 的返回值 |
 | **位域不打包** | `struct { int a : 8; int b : 3; }` 的 `sizeof` 是 8（每个位域占满声明类型）。gcc 会给 4。宽度本身会折叠并校验 |
 | **整数宽度不截断** | Phase A 用 Python 整数存值：`char c = 300` 不会回绕成 44，溢出也不回绕 |
 | **未初始化变量按零值** | C 里是未确定值；这里一律零初始化（可复现优先） |
 | **数组越界报错** | C 里是未定义行为；这里检测并报 `OutOfBounds` |
-| **类型双关受限** | 通过指针用另一种类型读同一块存储，只在类型兼容时允许 |
+| **类型双关受限** | 普通变量按另一种类型读同一块存储会被拒绝。**但 `malloc` 的原始存储不在此列**——它本来就没有声明类型 |
 | **没有 `setjmp`/`longjmp`** | 需要跨帧 unwind，未实现 |
-| **没有内建函数** | `printf` / `malloc` 等都没有。可变参数函数能声明、能调用，但函数体里拿不到多余实参（没有 `va_arg`） |
+| **没有 `va_arg`** | 可变参数函数能声明、能调用，但函数体贴不到多余实参 |
 | **switch 不能从外部跳进** | `goto` 跳进 `switch` 内部不支持（跳出去可以） |
 
 另外两条实现细节：字符串字面量放在 HEAP 区，**相同字面量只分配一次**；
