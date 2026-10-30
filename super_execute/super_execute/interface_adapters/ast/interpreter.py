@@ -26,6 +26,7 @@ from super_execute.domain.entities.scope import Scope
 from super_execute.domain.entities.symbol import FunctionSymbol, VariableSymbol
 from super_execute.domain.exceptions import (
     DomainError,
+    DuplicateSymbolError,
     LinkError,
     NotAValueError,
     UndefinedLabelError,
@@ -58,6 +59,8 @@ class Interpreter:
         functions: FunctionTable | None = None,
         resolver: TypeResolverPort | None = None,
         lazy: bool = False,
+        strict: bool = False,
+        entry: str = "main",
     ) -> None:
         self._memory = memory if memory is not None else SlotMemory()
         self._allocator = allocator if allocator is not None else ScopeIdAllocator()
@@ -67,7 +70,12 @@ class Interpreter:
         #: 惰性装载：单个声明出错时**记下来但不中断**，等到 `link()`（全量检查）
         #: 或真正用到那个符号时再报。C 编译器对未使用的坏代码也是这样宽容的。
         self._lazy = lazy
+        #: strict：冲突（同名 typedef 类型不同）直接报错，而不是打印告警。
+        self._strict = strict
+        self._entry = entry
         self.pending_errors: list[DomainError] = []
+        #: 重复定义的函数是**硬错误**：lazy 模式下也要在 link()/run() 时报出来。
+        self.pending_conflicts: list[DomainError] = []
 
         self._session = ScopeSession(self._allocator, self._memory)
         self._loader = DeclarationLoader(self._memory, self._resolver, self._functions)
@@ -133,12 +141,29 @@ class Interpreter:
             if not isinstance(node, c_ast.FuncDef) or symbol is None:
                 continue
             # 函数体按"它属于哪个翻译单元"归档：
-            #   外部函数——全程序唯一，名字就是键（同名取第一份，入口取第一个 main）
+            #   外部函数——全程序唯一，名字就是键
             #   static 函数——每个文件各有一份，用 (单元, 名字) 区分（D6）
             if _is_static(node):
                 self._static_bodies[(unit.scope_id, node.decl.name)] = (node, unit)
-            else:
-                self._bodies.setdefault(node.decl.name, (node, unit))
+                continue
+
+            name_key = node.decl.name
+            if name_key in self._bodies:
+                if name_key == self._entry:
+                    # 多个 main：旧实现告警后取第一个
+                    self.conflicts.append(
+                        f"多个文件定义入口函数 '{name_key}'，取第一个"
+                    )
+                else:
+                    self.pending_conflicts.append(
+                        DuplicateSymbolError(
+                            f"函数 '{name_key}' 重复定义"
+                            f"（{self._file_of(name_key)} 与 "
+                            f"{name or f'unit#{unit.scope_id}'}）"
+                        )
+                    )
+                continue
+            self._bodies[name_key] = (node, unit)
 
         # 即便调用方没给文件名，也登记一个键——兼容层要靠它按单元投影 static 符号
         self._units[name if name is not None else f"unit#{unit.scope_id}"] = unit
@@ -146,6 +171,38 @@ class Interpreter:
         return self._globals
 
     # ---- 供兼容层投影用（只读） ----
+
+    @property
+    def conflicts(self) -> list[str]:
+        """非致命冲突的说明（同名 typedef 类型不同、多个 main 等）。"""
+        return self._loader.conflicts
+
+    def _file_of(self, function_name: str) -> str:
+        """某个函数体属于哪个源文件（用于"重复定义"的错误消息）。"""
+        recorded = self._bodies.get(function_name)
+        if recorded is None:
+            return "?"
+        unit = recorded[1]
+        for path, candidate in self._units.items():
+            if candidate is unit:
+                return path
+        return f"unit#{unit.scope_id}"
+
+    def raise_conflicts(self) -> None:
+        """处理非致命冲突：strict 报错，否则打印告警（只打一次）。"""
+        if not self.conflicts:
+            return
+        messages = list(self.conflicts)
+        self.conflicts.clear()
+        if self._strict:
+            raise DuplicateSymbolError(messages[0])
+        for message in messages:
+            print(f"[warn] {message}")
+
+    def raise_definition_conflicts(self) -> None:
+        """重复定义的函数：无论 lazy 还是 strict 都是硬错误。"""
+        if self.pending_conflicts:
+            raise self.pending_conflicts[0]
 
     @property
     def tag_registry(self) -> dict[tuple[str, str], Any]:

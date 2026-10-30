@@ -46,6 +46,7 @@ class DeclarationLoader:
         "_declare_func",
         "deferred_initializers",
         "tag_registry",
+        "conflicts",
     )
 
     def __init__(
@@ -66,6 +67,10 @@ class DeclarationLoader:
         #: 登记过的标签 ``(kind, 名字) -> CType``。惰性模式下类型可能只注册未布局，
         #: 兼容层要靠它投影 ``g_types.lookup_tag``。
         self.tag_registry: dict[tuple[str, str], Any] = {}
+
+        #: 非致命的冲突（同名 typedef 类型不同等）。旧实现在非 strict 模式下
+        #: 只打印告警并保留先定义的那个。
+        self.conflicts: list[str] = []
 
     def load(
         self, scope: Scope, file_ast: c_ast.FileAST, unit: Scope | None = None
@@ -101,11 +106,18 @@ class DeclarationLoader:
         builder = TypeBuilder(self._resolver, scope, self.tag_registry)
         ctype = builder.build(node.type)
 
-        # 跨文件重复 typedef（头文件内容被各文件展开）→ 相同就静默去重
         existing = scope.ordinary.local(node.name)
-        if isinstance(existing, TypedefSymbol) and types_equivalent(
-            existing.ctype, ctype
-        ):
+        if isinstance(existing, TypedefSymbol):
+            if types_equivalent(existing.ctype, ctype):
+                # 跨文件重复 typedef（头文件内容被各文件展开）→ 静默去重
+                return existing
+            # 同名但类型不同：C 里是错误，但旧实现非 strict 只告警、保留先定义的
+            # 那个。这里记成"冲突"而不是硬错误，由 Interpreter 按 strict 决定
+            # 是报错还是打印告警。
+            self.conflicts.append(
+                f"typedef '{node.name}' 冲突：已有 '{existing.ctype.name}'，"
+                f"新来 '{ctype.name}'（保留先定义的）"
+            )
             return existing
 
         symbol = TypedefSymbol(node.name, ctype)

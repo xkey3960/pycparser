@@ -58,7 +58,7 @@ class CProgram:
         self.asts: list[Any] = []
         # 装载阶段**总是**惰性（出错先记下、不中断）：旧实现的 load() 也只登记，
         # 全量检查发生在 link()。要不要报错由 link() 按 lazy 决定。
-        self.interpreter = Interpreter(lazy=True)
+        self.interpreter = Interpreter(lazy=True, strict=strict, entry=entry)
 
     # ---- 装载 ----
 
@@ -89,16 +89,23 @@ class CProgram:
     # ---- 链接 ----
 
     def link(self) -> "CProgram":
-        """``lazy=False`` 时做全量检查，把惰性装载攒下的错误抛出来。
+        """做链接期的诊断，`lazy=False` 时额外做全量检查。
+
+        顺序有讲究：
+        1. **冲突**（同名 typedef 类型不同 / 多个 main）→ strict 报错，否则告警；
+        2. **重复定义的函数** → 无论 lazy 都是硬错误；
+        3. ``lazy=False`` 才把惰性装载攒下的类型错误抛出来（全量检查）。
 
         旧的 ``link()`` 顺带做了入口定位，但入口检查挪到了 ``run()``——
         否则"故意没有 main、只想验证冲突检测"的用例会先撞上入口错误。
         """
-        if not self.lazy:
-            try:
+        try:
+            self.interpreter.raise_conflicts()
+            self.interpreter.raise_definition_conflicts()
+            if not self.lazy:
                 self.interpreter.raise_pending()
-            except DomainError as error:
-                raise translate(error) from None
+        except DomainError as error:
+            raise translate(error) from None
         return self
 
     # ---- 运行 ----
@@ -107,6 +114,9 @@ class CProgram:
         if self.interpreter.globals.find(self.entry) is None:
             raise LinkError(f"未找到入口函数 '{self.entry}'")
         try:
+            # 惰性模式下不一定调过 link()，这里补一次诊断
+            self.interpreter.raise_conflicts()
+            self.interpreter.raise_definition_conflicts()
             if args:
                 return self.interpreter.call(self.entry, list(args))
             return self.interpreter.run(self.entry)
