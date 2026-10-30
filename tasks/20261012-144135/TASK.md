@@ -1,48 +1,74 @@
 # 重构execute.py
 
-- STATUS: OPEN
+- STATUS: CLOSED
 - PRIORITY: 100
-- TAGS:
+- TAGS: refactor, clean-architecture, strangler
 
-1. 理解现有实现
-2. 最初的设想还是太简单了，仅仅用 python 的 dict 来做 scope 还是不行。C 语言的 地址操作太过灵活了。所以，还是需要利用模拟内存的方式来。
+## 结论
 
-也就是说，指针真的只想一个地址。
+新实现在 `super_execute/`，按 clean architecture 分层：
 
-嗯，利用 clean architecture 来进行分析，将其分为 domain 和 application
+```
+domain ← application ← interface_adapters ← frameworks
+（依赖只向内）
+```
 
-********************************************************************************
+旧实现（`execute.py` / `typesys.py` / `program.py` / `sources.py` / `cbuiltins.py`）
+已**下线并归档**到 `archive/legacy-implementation/`，连同它的 7 个测试文件与 18 篇
+设计文档。
 
-先分析用例
+## 过程：分 12 轮增量推进
 
-Scope: 原本是一个 链式的栈，记录当前上下文的 符号表，查找时，从当前上下文，向上查找，直到找到为止
+每一轮都是「tatr 任务 → 实现 → 测试 → ruff → 提交」，并且**每轮都跑同一个度量**：
+用兼容层把归档的旧测试跑在新实现上，看通过数怎么变。
 
-这个符号表，包含哪些东西？
-- 全局变量
-- 局部变量
-- 函数名
-- 结构体名
-- 结构体类型成员名
-- 联合体名
-- 联合体类型成员名
-- 枚举体名
-- 枚举体类型成员名
-- typedef定义的别名
+| 轮 | 内容 | 旧套件 |
+|---|---|---|
+| 1 | 兼容层 + 等价性度量（先发现"假通过"） | 17/61 |
+| 2 | 常量折叠、全局初值调函数；修 struct 赋值别名 | 20/61 |
+| 3 | TYPE-2 隐式转换、QOL-1 错误定位与调用链 | 22/61 |
+| 4 | 按文件划分作用域（D6：static 隔离） | 23/61 |
+| 5 | 函数指针调用、goto、除零分类 | 26/61 |
+| 6 | 惰性装载语义（只注册不布局） | 31/61 |
+| 7 | 冲突诊断 strict/warn | 37/61 |
+| 8 | GNU 第一批：零长数组/初始化列表/指定初始化/语句表达式 | 43/61 |
+| 9 | GnuCParser 切换 + typeof + offsetof | 46/61 |
+| 10 | A 类 4 个（兼容层 get 返回值、main 返回 0、消息措辞） | 50/61 |
+| 11 | `_Static_assert`、字符串字面量与堆区、`switch` + case 范围、位域 | 53/61 |
+| 12 | 下线旧实现、归档旧测试与文档 | 52/60 |
 
-对于变量，它需要包含：name、value、type。其中 value 应该是一个地址。取值的时候，通过这个地址去内存（scope的内存，或者堆里的内存）去取对应的内容
+（最后一轮 61→60 是因为 `test_ext.py` 只依赖 pycparser 本体，留在现役测试里了。）
 
-对于函数名，它需要到 函数表里查找，找到对应的 node
--- 函数指针怎么办？一个局部变量，或者一个全局变量，的值是函数对应的地址
+## 三个值得记住的判断
 
-地址 是可以保存到内存中的，所以需要为不同类型的内存编址：
-例如，我使用 4 字节地址，最高位字节应该是类型：
-0: scope
-1: heap
-2: funcion
-...
+1. **第一版兼容层测出了假通过**：用 `PYTHONPATH` 影子替换时 61/61 全过，因为
+   pytest 会把自己算出的 rootdir 插到 `sys.path` 最前面。改成 `sys.modules` 注入
+   并断言 `__file__` 之后，数字掉到 1——那才是真实起点。**度量工具本身也要被验证。**
 
-次高字节，给 scope id，目前仅需要对 scope 生效。后续，支持在 scope 里定义函数名，则 对于 function 也生效。但是，对于 heap 应该保持 为 0
+2. **优先级被数据证伪过**：我先按"影响面"排了常量折叠和全局初值，做完只涨 1；
+   而顺手发现的 struct 赋值别名（最早那次 review 的 P0）一次拿下 2 个，其中包括
+   最重的端到端用例。
 
-Task(20261012-144135) : nexthop : 结构体名 符号 的分析
+3. **明确不追的东西**：旧实现的英文消息文案（`Undefined variable: 'zz'`）不做兼容。
+   新实现用中文是有意的选择；让兼容层伪造英文，通过率会涨，但证明的是"翻译对了"
+   而不是"行为等价"。
 
-对于结构体名，要找到对应的Nod，找到其变量分布
+## 剩余差异（8 个，都有归因）
+
+| 类 | 用例 | 性质 |
+|---|---|---|
+| B | `ctrl2_setjmp_longjmp` | setjmp/longjmp 跨帧 unwind，新功能 |
+| C | 惰性激活时机 ×2、tag 未使用不补全 ×1 | 旧实现按文件激活，新实现装载即声明（L4 语义） |
+| C | `plan_c_reachable_prelink` | strict 可达性预链接，独立特性 |
+| D | `qol1_error_traceback`、`err_undefined_variable` | 英文文案，有意不兼容 |
+| E | `proto_decl_and_link_error` | 旧单节点 `execute()` API + 旧类型系统 |
+
+详细的逐条解释见 `tasks/` 下各轮记录与 `archive/README.md`。
+
+## 原始设想（保留）
+
+> 用 python 的 dict 做 scope 不够：C 的地址操作太灵活，必须模拟内存。
+> 指针真的只是一个地址。
+
+地址模型最终落地为 **4 字节 packed**：`region(8) | scope_id 或高位偏移(8) | offset(16)`，
+scope 区每作用域 64 KiB，heap / function 区各 16 MiB。这条设计贯穿始终，没改过。

@@ -1,7 +1,11 @@
-"""用新实现跑旧测试套件（strangler 的等价性验证）。
+"""用新实现跑归档的旧测试套件（strangler 的等价性验证）。
 
     py super_execute/compat/run_legacy_tests.py
-    py super_execute/compat/run_legacy_tests.py test_program.py
+    py super_execute/compat/run_legacy_tests.py archive/legacy-tests/test_program.py
+
+旧解释器（execute.py / typesys.py / program.py / sources.py / cbuiltins.py）已经
+下线，连同它的测试一起归档到 ``archive/``。归档的测试**仍然可以跑**——靠这里的
+兼容壳把它们接到新实现上。
 
 **为什么不用 PYTHONPATH 影子替换**：pytest 在 prepend 导入模式下会把自己算出的
 rootdir 插到 ``sys.path`` **最前面**，压过 ``PYTHONPATH``——于是 ``import program``
@@ -25,12 +29,14 @@ COMPAT_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = COMPAT_DIR.parent  # pycparser/super_execute
 REPO_ROOT = PROJECT_ROOT.parent  # pycparser/
 
+#: 归档目录。旧测试留在那里，靠这一层壳跑在新实现上。
+ARCHIVE_TESTS = "archive/legacy-tests"
+
 DEFAULT_TARGETS = [
-    "test_program.py",
-    "test_exe.py",
-    "test_print_pointer.py",
-    "test_qol2.py",
-    "test_ext.py",
+    f"{ARCHIVE_TESTS}/test_program.py",
+    f"{ARCHIVE_TESTS}/test_exe.py",
+    f"{ARCHIVE_TESTS}/test_print_pointer.py",
+    f"{ARCHIVE_TESTS}/test_qol2.py",
 ]
 
 
@@ -53,6 +59,21 @@ def install_compat() -> None:
         assert location.parent == COMPAT_DIR, f"{name} 没有指向兼容壳: {location}"
 
 
+def _module_label(classname: str) -> str:
+    """从 junit 的 ``classname`` 里挑出源文件名。
+
+    归档后 classname 变成了 ``archive.legacy-tests.test_program``——
+    直接取第一段会得到 ``archive``。所以优先找以 ``test_`` 开头的段。
+    """
+    parts = [part for part in classname.split(".") if part]
+    if not parts:
+        return "?"
+    for part in parts:
+        if part.startswith("test_"):
+            return f"{part}.py"
+    return f"{parts[0]}.py"
+
+
 def summarize(junit: Path) -> int:
     root = ET.parse(junit).getroot()
     suites = root.findall(".//testsuite") or [root]
@@ -65,8 +86,7 @@ def summarize(junit: Path) -> int:
 
     for suite in suites:
         for case in suite.findall("testcase"):
-            classname = case.get("classname", "")
-            filename = classname.split(".")[0] + ".py" if classname else "?"
+            filename = _module_label(case.get("classname", ""))
             label = f"{filename}::{case.get('name', '?')}"
             total[filename] += 1
 
