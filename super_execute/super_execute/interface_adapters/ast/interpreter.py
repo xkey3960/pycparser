@@ -21,7 +21,7 @@ from super_execute.application.ports.memory_port import MemoryPort
 from super_execute.application.ports.type_resolver_port import TypeResolverPort
 from super_execute.application.use_cases.scope_session import ScopeSession
 from super_execute.application.use_cases.variables import DeclareVariable
-from super_execute.domain.entities.c_types import FunctionType, PointerType
+from super_execute.domain.entities.c_types import BasicType, FunctionType, PointerType
 from super_execute.domain.entities.scope import Scope
 from super_execute.domain.entities.symbol import FunctionSymbol, VariableSymbol
 from super_execute.domain.exceptions import (
@@ -286,6 +286,15 @@ class Interpreter:
                 self._executor.execute(body.body, scope)
             except ReturnSignal as signal:
                 return convert_value(signal.value, symbol.ctype.ret)
+            # C99 5.1.2.2.3：main 执行到结尾的 } 等价于 return 0。
+            # 只对入口函数成立——别的非 void 函数落到结尾仍是未定义行为。
+            result_type = symbol.ctype.ret
+            if (
+                name == self._entry
+                and isinstance(result_type, BasicType)
+                and not result_type.is_float
+            ):
+                return convert_value(0, result_type)
             return None
         except DomainError as error:
             # 最内层先记下调用链；外层发现已有值就不再覆盖

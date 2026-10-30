@@ -18,9 +18,11 @@ from super_execute.domain.value_objects import Address
 
 def _require_dereferenceable(address: Address) -> None:
     if not isinstance(address, Address):
-        raise MemoryAccessError(f"需要 Address，收到 {type(address).__name__}")
+        raise MemoryAccessError(f"需要 Address 地址，收到 {type(address).__name__}")
     if address.is_null:
-        raise NullPointerError("解引用 NULL 指针")
+        # 说"地址"而不只是"指针"：消息里要能看出这是**地址**层面的问题
+        # （未初始化的指针在本实现里就是 NULL 地址）
+        raise NullPointerError("解引用 NULL 地址（指针为空或未初始化）")
 
 
 class LoadValue:
