@@ -46,6 +46,13 @@ class MemoryPort(Protocol):
     def allocate(self, scope_id: int, ctype: CType) -> Address:
         """在作用域的存储区里为 ``ctype`` 分配一块，返回它的地址。"""
 
+    def allocate_heap(self, ctype: CType, value: Any) -> Address:
+        """在堆区分配一块并写入初值，返回它的地址。
+
+        字符串字面量（以及将来的 ``malloc``）放这里。堆没有作用域归属，
+        生命周期是整个程序——Phase A 不回收。
+        """
+
     def read(self, address: Address, ctype: CType) -> Any:
         """按 ``ctype`` 读地址上的值。
 

@@ -9,6 +9,7 @@ from pycparser.c_parser import CParser
 
 from super_execute.domain.exceptions import (
     DomainError,
+    InvalidTypeError,
     LinkError,
     NullPointerError,
     StaticAssertError,
@@ -366,6 +367,35 @@ class TestStaticAssert:
             int main(void) { return N; }
         """
         assert run(source) == 3
+
+
+class TestStringLiterals:
+    """字符串字面量：内容放堆区，值是地址，类型是 ``char[N]``。"""
+
+    def test_sizeof_includes_nul(self):
+        assert run('int main(void){ return sizeof("abc"); }') == 4
+
+    def test_read_characters_through_pointer(self):
+        source = 'int main(void){ char *s = "hi"; return s[0] * 10 + s[1]; }'
+        assert run(source) == 1040 + 105
+
+    def test_nul_terminator(self):
+        assert run('int main(void){ char *s = "hi"; return s[2]; }') == 0
+
+    def test_escape_sequences(self):
+        assert run('int main(void){ char *s = "a\\n"; return s[1]; }') == 10
+
+    def test_hex_escape(self):
+        assert run('int main(void){ char *s = "\\x41"; return s[0]; }') == 65
+
+    def test_identical_literals_share_storage(self):
+        source = 'int main(void){ char *a = "x"; char *b = "x"; return a == b; }'
+        assert run(source) == 1
+
+    def test_arithmetic_with_string_is_type_error(self):
+        """`int + char *` 不是合法运算，报错里要指出是哪个二元运算。"""
+        with pytest.raises(InvalidTypeError, match="BinaryOp"):
+            run('int main(void){ int x; x = x + "abc"; return 0; }')
 
 
 class TestBasics:

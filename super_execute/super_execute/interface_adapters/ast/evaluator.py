@@ -56,10 +56,12 @@ from super_execute.domain.exceptions import (
 )
 from super_execute.domain.services.addressing import element_address, member_address
 from super_execute.domain.services.arithmetic import c_div, c_mod
+from super_execute.domain.services.builtin_types import CHAR
 from super_execute.domain.services.defaults import default_value
 from super_execute.domain.services.conversions import convert_value
 from super_execute.domain.value_objects import Address, AddressRegion
 from super_execute.interface_adapters.ast.inference import TypeInferencer
+from super_execute.interface_adapters.ast.string_literal import decode_string_literal
 
 CallHandler = Callable[[c_ast.FuncCall, list[Any], Scope], Any]
 
@@ -116,6 +118,7 @@ class Evaluator:
         "_store",
         "_call",
         "_compound",
+        "_strings",
     )
 
     def __init__(
@@ -131,6 +134,7 @@ class Evaluator:
         self._store = StoreValue(memory)
         self._call: CallHandler = _unsupported_call
         self._compound: CallHandler = _unsupported_compound
+        self._strings: dict[str, Address] = {}
 
     def set_call_handler(self, handler: CallHandler) -> None:
         """函数调用要回到语句执行器/解释器，这里用回填避免双向依赖。"""
@@ -167,6 +171,8 @@ class Evaluator:
 
     def _eval(self, node: Any, scope: Scope) -> Any:
         if isinstance(node, c_ast.Constant):
+            if node.type == "string":
+                return self._string_literal(node)
             return _constant_value(node)
         if isinstance(node, c_ast.ID):
             return self._eval_id(node.name, scope)
@@ -198,6 +204,22 @@ class Evaluator:
             # 值是最后一条表达式语句的值
             return self._compound(node, scope)
         raise UnsupportedTypeError(f"还没支持的表达式: {type(node).__name__}")
+
+    def _string_literal(self, node: c_ast.Constant) -> Address:
+        """字符串字面量：内容放进堆区，值是它的地址。
+
+        相同的字面量**只分配一次**（C99 6.4.5p6 说重复的字面量是否合并是
+        实现定义的），这样循环里反复求值不会把堆撑爆。
+        """
+        text = decode_string_literal(node.value)
+        cached = self._strings.get(text)
+        if cached is not None:
+            return cached
+
+        chars = [ord(char) for char in text] + [0]  # 结尾 NUL
+        address = self._memory.allocate_heap(ArrayType(CHAR, len(chars)), chars)
+        self._strings[text] = address
+        return address
 
     def _eval_id(self, name: str, scope: Scope) -> Any:
         symbol = scope.find(name)
@@ -369,8 +391,14 @@ class Evaluator:
             )
 
         left_type = self.infer(node.left, scope)
-        # 顺带校验"这个运算合法吗"（比如 struct * 2 要在这里报错）
-        result_type = self.infer(node, scope)
+        # 顺带校验"这个运算合法吗"（比如 struct * 2 要在这里报错）。
+        # 出错时把运算本身也报出来——只说"类型不匹配"看不出是哪一步。
+        try:
+            result_type = self.infer(node, scope)
+        except InvalidTypeError as error:
+            raise InvalidTypeError(
+                f"二元运算 BinaryOp('{op}') 的操作数类型不匹配：{error}"
+            ) from None
 
         left = self.eval(node.left, scope)
         right = self.eval(node.right, scope)

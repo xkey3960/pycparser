@@ -48,6 +48,7 @@ from super_execute.domain.services.conversions import (
     integer_promote,
     usual_arithmetic_convert,
 )
+from super_execute.interface_adapters.ast.string_literal import decode_string_literal
 from super_execute.interface_adapters.ast.type_builder import TypeBuilder
 
 _COMPARISONS = frozenset({"==", "!=", "<", "<=", ">", ">=", "&&", "||"})
@@ -131,7 +132,9 @@ class TypeInferencer:
     @staticmethod
     def _constant(node: c_ast.Constant) -> CType:
         if node.type == "string":
-            raise UnsupportedTypeError("字符串字面量还没支持")
+            # 字符串字面量的类型是 char[N]（含结尾的 NUL），
+            # 在多数表达式里会退化成 char *（C99 6.3.2.1）
+            return ArrayType(CHAR, len(decode_string_literal(node.value)) + 1)
         return _CONST_TYPES.get(node.type, INT)
 
     def _identifier(self, name: str, scope: Scope) -> CType:

@@ -36,6 +36,9 @@ _WIDE_OFFSET_MAX = 0xFFFFFF  # 16 MiB
 #: 单个作用域可寻址的字节数（offset 取值域的大小）。
 SCOPE_REGION_SIZE = _SCOPE_OFFSET_MAX + 1
 
+#: 堆区可寻址的字节数（heap 把次高字节并入偏移）。
+HEAP_REGION_SIZE = _WIDE_OFFSET_MAX + 1
+
 
 class AddressRegion(IntEnum):
     """地址最高字节：这段地址落在哪个内存区。
