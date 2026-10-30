@@ -29,6 +29,7 @@ from super_execute.domain.entities.symbol import FunctionSymbol, VariableSymbol
 from super_execute.domain.exceptions import (
     DomainError,
     DuplicateSymbolError,
+    InvalidTypeError,
     LinkError,
     NotAValueError,
     StaticAssertError,
@@ -107,11 +108,16 @@ class Interpreter:
         self._globals: Scope | None = None
         self._globals_initialized = False
         self._call_stack: list[str] = []
+        #: 每个函数帧的多余实参（`...` 那部分），供 `va_arg` 取用
+        self._vararg_stack: list[list[Any]] = []
+        #: `va_list` 变量地址 → {args, index} 游标
+        self._va_lists: dict[int, dict[str, Any]] = {}
 
         # 函数调用要回到这里，用回填避免求值器与解释器互相依赖
         self._evaluator.set_call_handler(self._handle_call)
         # 语句表达式 `({ ... })` 要执行语句，同样回填给语句执行器
         self._evaluator.set_compound_handler(self._executor.execute_expression)
+        self._evaluator.set_va_arg_handler(self._va_arg)
 
     # ==================== 装载 ====================
 
@@ -309,6 +315,8 @@ class Interpreter:
         # 也能沿链看到外部符号——正是 C 的作用域规则
         scope = self._session.open(ScopeKind.FUNCTION, unit)
         self._call_stack.append(name)
+        # 可变参数：多出来的实参留给这个帧里的 `va_arg` 取
+        self._vararg_stack.append(self._extra_args(body, symbol.ctype, args))
         try:
             self._bind_parameters(scope, body, symbol.ctype, args)
             try:
@@ -334,6 +342,7 @@ class Interpreter:
         finally:
             self._session.close(scope)
             self._call_stack.pop()
+            self._vararg_stack.pop()
 
     def call_through(
         self, address: Any, args: Sequence[Any], scope: Scope | None = None
@@ -421,7 +430,60 @@ class Interpreter:
                 f"'{body.decl.name}' 只接受 {len(params)} 个参数，传了 {len(args)} 个"
             )
 
+    def _extra_args(
+        self, body: c_ast.FuncDef, ftype: FunctionType, args: Sequence[Any]
+    ) -> list[Any]:
+        """可变参数函数多出来的实参（``...`` 那部分）。"""
+        if not ftype.variadic:
+            return []
+        return list(args[len(_parameter_decls(body)) :])
+
+    # ==================== 可变参数 ====================
+
+    def _va_start(self, node: c_ast.FuncCall, scope: Scope) -> int:
+        """``va_start(ap, last)``：把当前帧的多余实参绑到 ``ap`` 上。
+
+        ``ap`` 在这里是个普通变量（``va_list`` 在 fake 头文件里是 ``int``），
+        所以按**它的地址**登记——这样 ``va_arg(ap, T)`` 能找回同一个游标。
+        """
+        args = node.args.exprs if node.args else []
+        if not args:
+            raise InvalidTypeError("va_start 至少要一个参数")
+        address = self._evaluator.lvalue(args[0], scope)
+        self._va_lists[address.packed] = {
+            "args": list(self._vararg_stack[-1]) if self._vararg_stack else [],
+            "index": 0,
+        }
+        return 0
+
+    def _va_arg(self, node: Any, scope: Scope) -> Any:
+        """``va_arg(ap, T)``：取下一个实参，按 ``T`` 转换。"""
+        from super_execute.interface_adapters.ast.va_arg import VaArgExpr
+
+        assert isinstance(node, VaArgExpr)
+        address = self._evaluator.lvalue(node.ap, scope)
+        cursor = self._va_lists.get(address.packed)
+        if cursor is None:
+            raise InvalidTypeError(
+                "va_arg 的 va_list 没有初始化（这个变量上没有调用过 va_start）"
+            )
+        if cursor["index"] >= len(cursor["args"]):
+            raise InvalidTypeError("va_arg 取完了所有可变参数")
+
+        value = cursor["args"][cursor["index"]]
+        cursor["index"] += 1
+        return convert_value(value, self._evaluator.from_type(node.type_name, scope))
+
     def _handle_call(self, node: c_ast.FuncCall, args: list[Any], scope: Scope) -> Any:
+        if isinstance(node.name, c_ast.ID):
+            # 这三个要拿变量的**地址**（或什么都不做），不能只拿值，所以走特判。
+            # 认两个名字：直接写的 `va_start`，和经真实 gcc 头文件展开后的
+            # `__builtin_va_start`（假头文件里它们也长这样）。
+            if node.name.name in ("va_start", "__builtin_va_start"):
+                return self._va_start(node, scope)
+            if node.name.name in ("va_end", "__builtin_va_end"):
+                return None
+
         if not isinstance(node.name, c_ast.ID):
             # `(*fp)(x)` / `table[i](x)`：先把被调表达式求成地址
             return self.call_through(
