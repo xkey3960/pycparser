@@ -411,11 +411,33 @@ class Evaluator:
             return 0 if self.eval(node.expr, scope) else 1
         raise UnsupportedTypeError(f"还不支持的一元运算: {op}")
 
-    def _address_of(self, node: Any, scope: Scope) -> Address:
-        """`&x`：变量取符号地址，函数取函数地址，其余走 lvalue。"""
+    def _address_of(self, node: Any, scope: Scope) -> Any:
+        """`&x`：变量取符号地址，函数取函数地址，其余走 lvalue。
+
+        **特例**：``&((T *)0)->m`` 是 ``offsetof`` 的标准写法。它算出来的不是
+        真地址（空指针加偏移在 ``Address`` 里没有合法表示），而是**整数偏移**，
+        所以这里直接返回 ``offsetof`` 的结果。
+        """
         if isinstance(node, c_ast.ID):
             return self._take_address(scope, node.name)
+        if isinstance(node, c_ast.StructRef) and node.type == "->":
+            offset = self._offsetof_null_base(node, scope)
+            if offset is not None:
+                return offset
         return self.lvalue(node, scope)
+
+    def _offsetof_null_base(self, node: c_ast.StructRef, scope: Scope) -> int | None:
+        """``&((T *)0)->m`` → 成员偏移；基址不是空指针时返回 None。"""
+        base = self.eval(node.name, scope)
+        if not isinstance(base, Address) or not base.is_null:
+            return None
+        owner = self.infer(node.name, scope)
+        if not isinstance(owner, PointerType):
+            return None
+        target = owner.target
+        if not isinstance(target, (StructType, UnionType)) or not target.is_complete:
+            return None
+        return target.offsetof(node.field.name)
 
     def _sizeof_operand(self, node: Any, scope: Scope) -> CType:
         if isinstance(node, c_ast.Typename):
@@ -441,7 +463,9 @@ class Evaluator:
         target = self.from_type(node.to_type, scope)
 
         if isinstance(target, PointerType):
-            return value  # 指针之间的强转在 Phase A 只是换解释，值不变
+            # 指针之间强转在 Phase A 只是换解释，值不变；但**整数 0 要变成空指针**，
+            # 否则 `&((T *)0)->m`（offsetof 的写法）会因为"基地址不是指针"失败。
+            return convert_value(value, target)
         if isinstance(target, BasicType):
             if target.is_float:
                 return float(value)

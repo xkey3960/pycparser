@@ -52,6 +52,35 @@ _TAG_KINDS = {
 }
 
 
+def _ext_class(name: str) -> Any:
+    """取 ``pycparserext`` 里的一个节点类；没装就返回 None。
+
+    GNU 扩展解析器不是硬依赖：朴素 ``CParser`` 一样能把大部分 C 跑起来，
+    只是 ``typeof``／``case 1...5`` 这类会解析失败。装不装都能工作。
+    """
+    try:
+        from pycparserext import ext_c_parser
+    except ImportError:  # pragma: no cover - 取决于环境
+        return None
+    return getattr(ext_c_parser, name, None)
+
+
+def _is_ext(node: Any, name: str) -> bool:
+    """按类名判断 Ext 节点。
+
+    不用 ``isinstance`` 是为了不把 pycparserext 变成导入期依赖
+    （没装时 ``isinstance(x, None)`` 会直接炸）。
+    """
+    return type(node).__name__ == name
+
+
+#: 函数声明符。``GnuCParser`` 产出的是 ``FuncDeclExt``，而它**不是**
+#: ``c_ast.FuncDecl`` 的子类（其余 Ext 节点都是），所以要单独列出来。
+_FUNC_DECLS: tuple[type, ...] = tuple(
+    cls for cls in (c_ast.FuncDecl, _ext_class("FuncDeclExt")) if isinstance(cls, type)
+)
+
+
 class TypeBuilder:
     """按当前作用域把声明符翻成 CType。
 
@@ -93,10 +122,14 @@ class TypeBuilder:
             return PointerType(self.build(node.type))
         if isinstance(node, c_ast.ArrayDecl):
             return ArrayType(self.build(node.type), self._dimension(node.dim))
-        if isinstance(node, c_ast.FuncDecl):
+        if isinstance(node, _FUNC_DECLS):
             return self._function(node)
         if isinstance(node, (c_ast.Struct, c_ast.Union, c_ast.Enum)):
             return self._tagged(node)
+        if _is_ext(node, "TypeOfExpression"):
+            return self._typeof_expression(node)
+        if _is_ext(node, "TypeOfDeclaration"):
+            return self._typeof_declaration(node)
         raise UnsupportedTypeError(f"还没支持的声明符: {type(node).__name__}")
 
     # ---- 派生类型 ----
@@ -114,7 +147,21 @@ class TypeBuilder:
             )
         return value
 
-    def _function(self, node: c_ast.FuncDecl) -> FunctionType:
+    def _typeof_expression(self, node: Any) -> CType:
+        """``typeof(表达式)``：取操作数的类型。
+
+        求类型是推断器的事，而推断器又依赖 TypeBuilder（`from_type`），
+        所以这里**延迟导入**，避免两个模块在导入期互相拉扯。
+        """
+        from super_execute.interface_adapters.ast.inference import TypeInferencer
+
+        return TypeInferencer(self._resolver).infer(node.expr, self._scope)
+
+    def _typeof_declaration(self, node: Any) -> CType:
+        """``typeof(声明)``：直接取那份声明的类型。"""
+        return self.build(node.declaration)
+
+    def _function(self, node: Any) -> FunctionType:
         ret = self.build(node.type)
         params: list[CType] = []
         variadic = False

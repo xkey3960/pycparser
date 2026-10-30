@@ -25,6 +25,19 @@ from super_execute.domain.exceptions import DomainError
 from super_execute.interface_adapters.ast.interpreter import Interpreter
 
 
+def _default_parser() -> Any:
+    """默认用 GNU 扩展解析器，和旧的 ``CProgram`` 一致。
+
+    没有 pycparserext 时退回朴素 ``CParser``：那样 ``typeof`` / ``case 1...5``
+    会解析失败，但其余 C 照常。这是**降级**，不是错误。
+    """
+    try:
+        from pycparserext.ext_c_parser import GnuCParser
+    except ImportError:  # pragma: no cover - 取决于环境
+        return None
+    return GnuCParser()
+
+
 class CProgram:
     """按旧接口装载 / 链接 / 运行一组 C 源文件。"""
 
@@ -48,10 +61,7 @@ class CProgram:
         self.cpp_args = (
             cpp_args if cpp_args is not None else ["-E", "-Iutils/fake_libc_include"]
         )
-        # 注意：这里用**朴素 CParser**，不是旧的 GnuCParser。
-        # GNU 扩展（typeof / 语句表达式 / __attribute__）还没进新适配器，
-        # 用朴素解析器会让那些夹具直接解析失败——这是明确的缺口，不是隐藏的错。
-        self.parser = parser
+        self.parser = parser if parser is not None else _default_parser()
         self.encoding = encoding
         self.strict = strict
         self.lazy = lazy
