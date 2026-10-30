@@ -29,7 +29,10 @@ from super_execute.domain.exceptions import DomainError, UnsupportedTypeError
 from super_execute.domain.value_objects import ScopeKind
 from super_execute.interface_adapters.ast.const_eval import fold
 from super_execute.interface_adapters.ast.declaration_loader import check_static_assert
-from super_execute.interface_adapters.ast.evaluator import Evaluator
+from super_execute.interface_adapters.ast.evaluator import (
+    Evaluator,
+    complete_from_string,
+)
 from super_execute.interface_adapters.ast.type_builder import TypeBuilder
 
 
@@ -273,6 +276,8 @@ class StatementExecutor:
             and ctype.count is None
         ):
             ctype = ctype.complete(len(node.init.exprs or []))
+        # `char buf[] = "hi";` 同理，长度含结尾 NUL
+        ctype = complete_from_string(ctype, node.init)
 
         initial = None
         if node.init is not None:
