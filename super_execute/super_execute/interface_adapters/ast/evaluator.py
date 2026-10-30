@@ -80,6 +80,47 @@ def _is_char_array(ctype: Any) -> bool:
     return isinstance(ctype, ArrayType) and ctype.element.name == "char"
 
 
+def _member_of(ctype: Any, name: str) -> Any:
+    """从（可能是指针的）结构体类型里按名字找成员。"""
+    if isinstance(ctype, PointerType):
+        ctype = ctype.target
+    if not isinstance(ctype, (StructType, UnionType)) or not ctype.is_complete:
+        return None
+    return next((member for member in ctype.members if member.name == name), None)
+
+
+def _bitfield_member(node: Any, scope: Scope, evaluator: Any) -> Any:
+    """如果这个左值是位域成员，返回它的 ``Member``；否则 None。"""
+    if not isinstance(node, c_ast.StructRef):
+        return None
+    member = _member_of(evaluator.infer(node.name, scope), node.field.name)
+    if member is None or member.bit_width is None:
+        return None
+    return member
+
+
+def _member_initial_value(value: Any, member: Any) -> Any:
+    """初始化器给成员的值：位域同样要收进宽度里（`struct S s = {9}`）。"""
+    if member.bit_width is None:
+        return value
+    return _fit_to_bitfield(value, member)
+
+
+def _fit_to_bitfield(value: Any, member: Any) -> int:
+    """把值**收进**位域的宽度里（C 的实现定义行为，这里对齐 gcc）。
+
+    ``unsigned a : 3`` 赋 9 → 低 3 位 = 1；
+    ``int b : 3`` 赋 5 → 低 3 位 = 101，符号扩展成 -3。
+    这两条都用 gcc 实测过（golden 值见测试）。
+    """
+    width = member.bit_width
+    mask = (1 << width) - 1
+    bits = int(value) & mask
+    if member.ctype.is_signed and bits >> (width - 1):
+        bits -= 1 << width  # 符号扩展
+    return bits
+
+
 def complete_from_string(ctype: Any, init: Any) -> Any:
     """``char buf[] = "hi";`` 的长度由字符串决定——含结尾 NUL。
 
@@ -330,7 +371,10 @@ class Evaluator:
         raise InvalidTypeError(f"'{base_type.name}' 不能取下标")
 
     def _load_lvalue(self, node: Any, scope: Scope) -> Any:
-        return self._load(self.lvalue(node, scope), self.infer(node, scope))
+        value = self._load(self.lvalue(node, scope), self.infer(node, scope))
+        # 读位域时按宽度掩码：防止存储里出现越界的旧值被原样读出来
+        member = _bitfield_member(node, scope, self)
+        return value if member is None else _fit_to_bitfield(value, member)
 
     # ==================== 赋值 ====================
 
@@ -347,6 +391,12 @@ class Evaluator:
             value = _apply(op, left, right, _step_of(ctype))
         # 赋值的最后一步是隐式转换：`int y = 5; y += 2.7;` 结果是 7
         value = convert_value(value, ctype)
+
+        # 位域还要**再按宽度截断**一次：`unsigned a : 3` 赋 9 存进去是 1
+        member = _bitfield_member(node.lvalue, scope, self)
+        if member is not None:
+            value = _fit_to_bitfield(value, member)
+
         self._store(target, value, ctype)
         return value
 
@@ -394,14 +444,18 @@ class Evaluator:
                     member = next((m for m in members if m.name == designator), None)
                     if member is None:
                         raise InvalidTypeError(f"{ctype.name} 没有成员 '{designator}'")
-                    values[member.name] = self.eval_init(expr, member.ctype, scope)
+                    values[member.name] = _member_initial_value(
+                        self.eval_init(expr, member.ctype, scope), member
+                    )
                     continue
                 if index >= len(members):
                     raise InvalidTypeError(
                         f"{ctype.name} 只有 {len(members)} 个成员，初始化器给多了"
                     )
                 member = members[index]
-                values[member.name] = self.eval_init(expr, member.ctype, scope)
+                values[member.name] = _member_initial_value(
+                    self.eval_init(expr, member.ctype, scope), member
+                )
                 index += 1
             return values
 
@@ -504,6 +558,12 @@ class Evaluator:
         target = owner.target
         if not isinstance(target, (StructType, UnionType)) or not target.is_complete:
             return None
+        member = _member_of(target, node.field.name)
+        if member is not None and member.bit_width is not None:
+            # C 明令禁止对位域取偏移：它不一定从字节边界开始
+            raise InvalidTypeError(
+                f"不能对位域 '{node.field.name}' 用 offsetof（C99 6.7.2.1）"
+            )
         return target.offsetof(node.field.name)
 
     def _sizeof_operand(self, node: Any, scope: Scope) -> CType:

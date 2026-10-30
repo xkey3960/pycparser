@@ -456,7 +456,7 @@ class TestBitFields:
 
     def test_read_write_like_ordinary_members(self):
         source = """
-            struct Flags { int a : 1; int b : 2; };
+            struct Flags { unsigned a : 1; unsigned b : 2; };
             int main(void) {
                 struct Flags f;
                 f.a = 1;
@@ -481,6 +481,92 @@ class TestBitFields:
             int main(void) { return 0; }
         """
         with pytest.raises(UnsupportedTypeError, match="常量"):
+            run(source)
+
+
+class TestBitFieldValues:
+    """位域的**值语义**：写进去按宽度截断，读出来按宽度掩码。
+
+    期望值都用 gcc 实测过（`struct S { unsigned a:3; int b:3; unsigned c:5; int d:4; }`）：
+
+        s.a = 9;   gcc → 1      s.b = 5;   gcc → -3
+        s.c = 33;  gcc → 1      s.d = 7;   gcc → 7
+    """
+
+    def test_unsigned_truncates_high_bits(self):
+        source = """
+            struct S { unsigned a : 3; };
+            int main(void) { struct S s; s.a = 9; return s.a; }
+        """
+        assert run(source) == 1
+
+    def test_signed_sign_extends(self):
+        """`int b : 3` 存 5 → 低 3 位 101 → 符号扩展成 -3。"""
+        source = """
+            struct S { int b : 3; };
+            int main(void) { struct S s; s.b = 5; return s.b; }
+        """
+        assert run(source) == -3
+
+    def test_signed_one_bit_is_minus_one(self):
+        """1 位有符号位域只能表示 0 和 -1。"""
+        source = """
+            struct S { int a : 1; };
+            int main(void) { struct S s; s.a = 1; return s.a; }
+        """
+        assert run(source) == -1
+
+    def test_value_that_fits_is_unchanged(self):
+        source = """
+            struct S { int d : 4; };
+            int main(void) { struct S s; s.d = 7; return s.d; }
+        """
+        assert run(source) == 7
+
+    def test_negative_value_stays(self):
+        source = """
+            struct S { int b : 3; };
+            int main(void) { struct S s; s.b = -4; return s.b; }
+        """
+        assert run(source) == -4
+
+    def test_unsigned_five_bit(self):
+        source = """
+            struct S { unsigned c : 5; };
+            int main(void) { struct S s; s.c = 33; return s.c; }
+        """
+        assert run(source) == 1
+
+    def test_compound_assignment_truncates(self):
+        """`a += 2` 之后同样要收进宽度：7 + 2 = 9 → 1。"""
+        source = """
+            struct S { unsigned a : 3; };
+            int main(void) { struct S s; s.a = 7; s.a += 2; return s.a; }
+        """
+        assert run(source) == 1
+
+    def test_initializer_list_truncates(self):
+        source = """
+            struct S { unsigned a : 3; unsigned b : 2; };
+            int main(void) { struct S s = { 9, 7 }; return s.a * 10 + s.b; }
+        """
+        assert run(source) == 1 * 10 + 3
+
+    def test_via_pointer_also_truncates(self):
+        source = """
+            struct S { unsigned a : 3; };
+            int main(void) { struct S s; struct S *p = &s; p->a = 9; return s.a; }
+        """
+        assert run(source) == 1
+
+    def test_offsetof_on_bitfield_rejected(self):
+        source = """
+            struct S { unsigned a : 3; };
+            int main(void) {
+                return (int)(unsigned long)&((struct S *)0)->a;
+            }
+        """
+        with pytest.raises(InvalidTypeError, match="offsetof"):
             run(source)
 
 
