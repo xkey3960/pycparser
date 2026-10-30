@@ -132,3 +132,10 @@ class DivisionByZeroError(DomainError):
     C 里这是未定义行为，但让 Python 的 ``ZeroDivisionError`` 漏到调用方是错的：
     它既不是 ``DomainError``，也没法被解释器的错误体系分类。
     """
+
+
+class UndefinedLabelError(DomainError):
+    """``goto`` 指向了当前函数里不存在的标签。
+
+    标签是**函数作用域**的，所以"找不到"要等到跳出整个函数体才能确定。
+    """

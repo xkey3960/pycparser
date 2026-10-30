@@ -27,6 +27,7 @@ from super_execute.domain.entities.symbol import (
 from super_execute.domain.exceptions import (
     AllocationError,
     DomainError,
+    DivisionByZeroError,
     DuplicateSymbolError,
     IncompleteTypeError,
     InvalidScopeError,
@@ -40,6 +41,7 @@ from super_execute.domain.exceptions import (
     RegionNotImplementedError,
     ScopeDestroyedError,
     UndefinedSymbolError,
+    UndefinedLabelError,
     UndefinedTypeError,
     UnresolvedTypeError,
     UnsupportedTypeError,
@@ -74,10 +76,16 @@ class LinkError(InterpreterError):
     pass
 
 
+class GotoException(InterpreterError):
+    """旧实现用这个名字表示"标签不存在"。"""
+
+
 _TRANSLATIONS: tuple[tuple[type, type], ...] = (
     (UndefinedSymbolError, UndefinedVariable),
     (UnresolvedTypeError, UndefinedVariable),
     (UndefinedTypeError, TypeError_),
+    (UndefinedLabelError, GotoException),
+    (DivisionByZeroError, TypeError_),
     (NotAValueError, TypeError_),
     (InvalidTypeError, TypeError_),
     (InvalidSymbolError, TypeError_),

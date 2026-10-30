@@ -46,6 +46,19 @@ class ContinueSignal(Exception):
     """``continue``：由最近的循环捕获。"""
 
 
+class GotoSignal(Exception):
+    """``goto``：向外层块传播，直到找到同名标签。
+
+    为什么用异常而不是"跳转表"：C 的标签是**函数作用域**的，`goto` 可以从
+    循环里跳到外层块。逐层块捕获、找不到就继续往外抛，正好复现这个语义，
+    也不需要给每个块预先建一张表。
+    """
+
+    def __init__(self, name: str) -> None:
+        super().__init__(name)
+        self.name = name
+
+
 class StatementExecutor:
     """语句执行器。"""
 
@@ -106,6 +119,13 @@ class StatementExecutor:
             raise BreakSignal()
         if isinstance(node, c_ast.Continue):
             raise ContinueSignal()
+        if isinstance(node, c_ast.Goto):
+            raise GotoSignal(node.name)
+        if isinstance(node, c_ast.Label):
+            # 顺序执行到标签 = 直接执行它挂的那条语句
+            if node.stmt is not None:
+                self.execute(node.stmt, scope)
+            return
         if isinstance(node, (c_ast.FuncDef,)):
             return  # 声明阶段已处理，运行期没有动作
         if isinstance(node, c_ast.Typedef):
@@ -120,10 +140,27 @@ class StatementExecutor:
     # ==================== 语句 ====================
 
     def _compound(self, node: c_ast.Compound, scope: Scope) -> None:
+        items = node.block_items or []
+        # 本块里定义了哪些标签（跳到标签 = 从那条语句继续执行）
+        labels = {
+            item.name: index
+            for index, item in enumerate(items)
+            if isinstance(item, c_ast.Label)
+        }
+
         block = self._session.open(ScopeKind.BLOCK, scope)
         try:
-            for item in node.block_items or []:
-                self.execute(item, block)
+            index = 0
+            while index < len(items):
+                try:
+                    self.execute(items[index], block)
+                except GotoSignal as signal:
+                    target = labels.get(signal.name)
+                    if target is None:
+                        raise  # 标签不在这一层，交给外层块
+                    index = target
+                    continue
+                index += 1
         finally:
             self._session.close(block)
 

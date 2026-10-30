@@ -13,7 +13,7 @@ from super_execute.domain.exceptions import DivisionByZeroError
 def c_div(left: int, right: int) -> int:
     """C 的整数除法：向零截断。"""
     if right == 0:
-        raise DivisionByZeroError("除数为 0")
+        raise DivisionByZeroError("除零（除数为 0）")
     quotient = abs(left) // abs(right)
     return quotient if (left >= 0) == (right >= 0) else -quotient
 
@@ -21,5 +21,5 @@ def c_div(left: int, right: int) -> int:
 def c_mod(left: int, right: int) -> int:
     """C 的取模：结果与被除数同号。"""
     if right == 0:
-        raise DivisionByZeroError("除数为 0")
+        raise DivisionByZeroError("除零（除数为 0）")
     return left - c_div(left, right) * right

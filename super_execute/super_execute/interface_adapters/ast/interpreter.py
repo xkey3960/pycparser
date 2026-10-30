@@ -21,12 +21,14 @@ from super_execute.application.ports.memory_port import MemoryPort
 from super_execute.application.ports.type_resolver_port import TypeResolverPort
 from super_execute.application.use_cases.scope_session import ScopeSession
 from super_execute.application.use_cases.variables import DeclareVariable
-from super_execute.domain.entities.c_types import FunctionType
+from super_execute.domain.entities.c_types import FunctionType, PointerType
 from super_execute.domain.entities.scope import Scope
 from super_execute.domain.entities.symbol import FunctionSymbol, VariableSymbol
 from super_execute.domain.exceptions import (
     DomainError,
     LinkError,
+    NotAValueError,
+    UndefinedLabelError,
     UndefinedSymbolError,
     UnsupportedTypeError,
 )
@@ -34,11 +36,12 @@ from super_execute.domain.services.defaults import default_value
 from super_execute.domain.services.conversions import array_to_pointer, convert_value
 from super_execute.domain.services.scope_id_allocator import ScopeIdAllocator
 from super_execute.domain.services.type_resolver import TypeResolver
-from super_execute.domain.value_objects import ScopeKind
+from super_execute.domain.value_objects import Address, AddressRegion, ScopeKind
 from super_execute.frameworks.memory import FunctionTable, SlotMemory
 from super_execute.interface_adapters.ast.declaration_loader import DeclarationLoader
 from super_execute.interface_adapters.ast.evaluator import Evaluator
 from super_execute.interface_adapters.ast.statements import (
+    GotoSignal,
     ReturnSignal,
     StatementExecutor,
 )
@@ -200,9 +203,28 @@ class Interpreter:
         except DomainError as error:
             # 最内层先记下调用链；外层发现已有值就不再覆盖
             raise error.with_call_chain(list(self._call_stack)) from None
+        except GotoSignal as signal:
+            # 一路跳出函数体还没找到标签 → 这个函数里根本没有它
+            raise UndefinedLabelError(f"未定义的标签 '{signal.name}'") from None
         finally:
             self._session.close(scope)
             self._call_stack.pop()
+
+    def call_through(
+        self, address: Any, args: Sequence[Any], scope: Scope | None = None
+    ) -> Any:
+        """按**函数地址**调用（函数指针）。
+
+        函数名当值时就是它的地址，所以 ``fp = inc; fp(41)`` 与 ``inc(41)`` 走的是
+        同一条路：从函数表把地址解析回符号，再按名字调用。
+        """
+        if (
+            not isinstance(address, Address)
+            or address.region is not AddressRegion.FUNCTION
+        ):
+            raise NotAValueError(f"函数指针的值不是函数地址: {address!r}")
+        target = self._functions.resolve(address)
+        return self.call(target.name, args, scope)
 
     # ==================== 内部 ====================
 
@@ -251,14 +273,26 @@ class Interpreter:
 
     def _handle_call(self, node: c_ast.FuncCall, args: list[Any], scope: Scope) -> Any:
         if not isinstance(node.name, c_ast.ID):
-            raise UnsupportedTypeError(
-                "暂时只支持直接用函数名调用（函数指针调用还没接）"
+            # `(*fp)(x)` / `table[i](x)`：先把被调表达式求成地址
+            return self.call_through(
+                self._evaluator.eval(node.name, scope), args, scope
+            )
+
+        symbol = scope.find(node.name.name)
+        if isinstance(symbol, VariableSymbol) and _is_function_pointer(symbol.ctype):
+            # `fp(x)` 里的 fp 是变量，不是函数名：读出它存的地址再调用
+            return self.call_through(
+                self._memory.read(symbol.address, symbol.ctype), args, scope
             )
         return self.call(node.name.name, args, scope)
 
 
 def _is_static(node: c_ast.FuncDef) -> bool:
     return "static" in (node.decl.storage or [])
+
+
+def _is_function_pointer(ctype: Any) -> bool:
+    return isinstance(ctype, PointerType) and isinstance(ctype.target, FunctionType)
 
 
 def _unit_owning(scope: Scope, symbol: Any) -> Scope | None:

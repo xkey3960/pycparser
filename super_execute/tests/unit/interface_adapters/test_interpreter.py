@@ -8,6 +8,8 @@ import pytest
 from pycparser.c_parser import CParser
 
 from super_execute.domain.exceptions import (
+    DomainError,
+    UndefinedLabelError,
     LinkError,
     UndefinedSymbolError,
     UnsupportedTypeError,
@@ -550,14 +552,116 @@ class TestUnsupported:
         with pytest.raises(UnsupportedTypeError):
             run(source)
 
-    def test_goto_not_supported(self):
-        with pytest.raises(UnsupportedTypeError):
-            run("int main(void) { goto end; end: return 0; }")
 
-    def test_function_pointer_call_not_supported(self):
+class TestGoto:
+    """CTRL-1：标签是函数作用域的，可以前跳、回跳、从循环/嵌套块里跳出去。"""
+
+    def test_forward_jump(self):
         source = """
-            int f(void) { return 1; }
-            int main(void) { int (*p)(void) = f; return p(); }
+            int main(void) {
+                int x = 0;
+                goto skip;
+                x = 100;
+            skip:
+                x += 5;
+                return x;
+            }
         """
-        with pytest.raises((UnsupportedTypeError, UnsupportedTypeError)):
+        assert run(source) == 5
+
+    def test_backward_jump_as_loop(self):
+        source = """
+            int main(void) {
+                int i = 0, sum = 0;
+            loop:
+                sum += i;
+                i++;
+                if (i < 5) goto loop;
+                return sum;
+            }
+        """
+        assert run(source) == 10
+
+    def test_jump_out_of_loop(self):
+        source = """
+            int main(void) {
+                int i;
+                for (i = 0; i < 100; i++) {
+                    if (i == 7) goto done;
+                }
+            done:
+                return i;
+            }
+        """
+        assert run(source) == 7
+
+    def test_jump_out_of_nested_block(self):
+        source = """
+            int main(void) {
+                int x = 0;
+                if (1) { goto out; }
+                x = 99;
+            out:
+                return x + 1;
+            }
+        """
+        assert run(source) == 1
+
+    def test_undefined_label(self):
+        with pytest.raises(UndefinedLabelError):
+            run("int main(void) { goto nowhere; return 0; }")
+
+
+class TestFunctionPointers:
+    """FnPtr：函数名当值就是它的地址，经变量可以照常调用。"""
+
+    def test_call_through_variable(self):
+        source = """
+            int inc(int x) { return x + 1; }
+            int main(void) { int (*fp)(int) = inc; return fp(41); }
+        """
+        assert run(source) == 42
+
+    def test_reassign_pointer(self):
+        source = """
+            int inc(int x) { return x + 1; }
+            int dbl(int x) { return x * 2; }
+            int main(void) {
+                int (*fp)(int);
+                fp = inc;
+                int a = fp(10);
+                fp = dbl;
+                int b = fp(10);
+                return a + b;
+            }
+        """
+        assert run(source) == 31
+
+    def test_address_of_function(self):
+        source = """
+            int inc(int x) { return x + 1; }
+            int main(void) { int (*fp)(int) = &inc; return fp(9); }
+        """
+        assert run(source) == 10
+
+    def test_pointer_as_parameter(self):
+        source = """
+            int inc(int x) { return x + 1; }
+            int apply(int (*fp)(int), int x) { return fp(x); }
+            int main(void) { return apply(inc, 41); }
+        """
+        assert run(source) == 42
+
+    def test_dereference_form(self):
+        source = """
+            int inc(int x) { return x + 1; }
+            int main(void) { int (*fp)(int) = inc; return (*fp)(9); }
+        """
+        assert run(source) == 10
+
+    def test_calling_null_pointer_fails(self):
+        source = """
+            int main(void) { int (*fp)(int) = 0; return fp(1); }
+        """
+        with pytest.raises(DomainError):
             run(source)

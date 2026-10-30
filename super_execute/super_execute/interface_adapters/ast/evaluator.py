@@ -54,7 +54,7 @@ from super_execute.domain.exceptions import (
 from super_execute.domain.services.addressing import element_address, member_address
 from super_execute.domain.services.arithmetic import c_div, c_mod
 from super_execute.domain.services.conversions import convert_value
-from super_execute.domain.value_objects import Address
+from super_execute.domain.value_objects import Address, AddressRegion
 from super_execute.interface_adapters.ast.inference import TypeInferencer
 
 CallHandler = Callable[[c_ast.FuncCall, list[Any], Scope], Any]
@@ -272,6 +272,10 @@ class Evaluator:
             address = self.eval(node.expr, scope)
             if not isinstance(address, Address):
                 raise InvalidTypeError("解引用的目标不是指针")
+            if address.region is AddressRegion.FUNCTION:
+                # 解引用函数指针得到"函数本身"，而函数当值时就是它的地址，
+                # 所以 `(*fp)(x)` 与 `fp(x)` 等价，不需要去读一块函数体存储
+                return address
             return self._load(address, self.infer(node, scope))
         if op in ("sizeof", "__alignof__"):
             ctype = self._sizeof_operand(node.expr, scope)
