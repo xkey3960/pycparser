@@ -5,6 +5,7 @@
 """
 
 from super_execute.application.use_cases.address import TakeAddress
+from super_execute.application.use_cases.functions import DeclareFunction
 from super_execute.application.use_cases.memory_access import LoadValue, StoreValue
 from super_execute.application.use_cases.scope_session import ScopeSession
 from super_execute.application.use_cases.variables import (
@@ -16,6 +17,7 @@ from super_execute.application.use_cases.variables import (
 )
 
 __all__ = [
+    "DeclareFunction",
     "DeclareVariable",
     "DeclareVariableOfName",
     "LoadValue",

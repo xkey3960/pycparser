@@ -30,6 +30,7 @@ from super_execute.domain.exceptions import (
     UnresolvedTypeError,
 )
 from super_execute.domain.services.defaults import default_value
+from super_execute.domain.value_objects import Linkage
 
 
 def require_variable(scope: Scope, name: str) -> VariableSymbol:
@@ -59,6 +60,7 @@ class DeclareVariable:
         name: str,
         ctype: CType,
         initial: Any = None,
+        linkage: Linkage = Linkage.NONE,
     ) -> VariableSymbol:
         if not isinstance(ctype, CType):
             raise InvalidTypeError(f"声明需要 CType，收到 {type(ctype).__name__}")
@@ -67,7 +69,7 @@ class DeclareVariable:
             raise DuplicateSymbolError(f"作用域里已经有 '{name}' 了")
 
         address = self._memory.allocate(scope.scope_id, ctype)
-        symbol = VariableSymbol(name, address, ctype=ctype)
+        symbol = VariableSymbol(name, address, ctype=ctype, linkage=linkage)
         scope.declare(symbol)
 
         # 先铺零值再写初值：`struct Point s; s.a = 1;` 需要成员容器已经存在
