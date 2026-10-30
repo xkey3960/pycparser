@@ -36,6 +36,8 @@ from super_execute.domain.entities.c_types import (
     BasicType,
     CType,
     PointerType,
+    StructType,
+    UnionType,
 )
 from super_execute.domain.entities.scope import Scope
 from super_execute.domain.entities.symbol import (
@@ -47,12 +49,14 @@ from super_execute.domain.exceptions import (
     DomainError,
     InvalidTypeError,
     NotAValueError,
+    OutOfBoundsError,
     UndefinedSymbolError,
     UnresolvedTypeError,
     UnsupportedTypeError,
 )
 from super_execute.domain.services.addressing import element_address, member_address
 from super_execute.domain.services.arithmetic import c_div, c_mod
+from super_execute.domain.services.defaults import default_value
 from super_execute.domain.services.conversions import convert_value
 from super_execute.domain.value_objects import Address, AddressRegion
 from super_execute.interface_adapters.ast.inference import TypeInferencer
@@ -66,10 +70,53 @@ def _unsupported_call(node: c_ast.FuncCall, args: list[Any], scope: Scope) -> An
     raise UnsupportedTypeError("还没有绑定函数调用处理器（set_call_handler）")
 
 
+def _unsupported_compound(node: c_ast.Compound, scope: Scope) -> Any:
+    raise UnsupportedTypeError("还没有绑定语句表达式处理器（set_compound_handler）")
+
+
+def _designator(entry: Any) -> tuple[Any, Any]:
+    """拆开指定初始化器：``{.b = 5}`` → ``('b', 值表达式)``，``{[1] = 7}`` → ``(1, …)``。
+
+    普通项返回 ``(None, 表达式)``，由调用方按键位顺序往下排。
+    """
+    if not isinstance(entry, c_ast.NamedInitializer) or not entry.name:
+        return None, entry
+
+    first = entry.name[0]
+    if isinstance(first, c_ast.ID):
+        return first.name.lstrip("."), entry.expr
+    # 注意：Python 版 pycparser 把 `[1]` 的设计符直接摊成 Constant，
+    # 而不是 ArrayRef——两种都要认。
+    if isinstance(first, c_ast.Constant) and first.type in (
+        "int",
+        "long",
+        "unsigned int",
+    ):
+        return int(first.value, 0), entry.expr
+    if isinstance(first, c_ast.ArrayRef):
+        index = first.subscript
+        if isinstance(index, c_ast.Constant) and index.type in (
+            "int",
+            "long",
+            "unsigned int",
+        ):
+            return int(index.value, 0), entry.expr
+        raise UnsupportedTypeError("指定初始化的下标必须是整型常量")
+    raise UnsupportedTypeError(f"不认识的指定初始化器: {type(first).__name__}")
+
+
 class Evaluator:
     """求值器：值、地址、类型推导三件事。"""
 
-    __slots__ = ("_memory", "_inferencer", "_take_address", "_load", "_store", "_call")
+    __slots__ = (
+        "_memory",
+        "_inferencer",
+        "_take_address",
+        "_load",
+        "_store",
+        "_call",
+        "_compound",
+    )
 
     def __init__(
         self,
@@ -83,10 +130,19 @@ class Evaluator:
         self._load = LoadValue(memory)
         self._store = StoreValue(memory)
         self._call: CallHandler = _unsupported_call
+        self._compound: CallHandler = _unsupported_compound
 
     def set_call_handler(self, handler: CallHandler) -> None:
         """函数调用要回到语句执行器/解释器，这里用回填避免双向依赖。"""
         self._call = handler
+
+    def set_compound_handler(self, handler: CallHandler) -> None:
+        """语句表达式 `({ ... })` 要执行语句，同样用回填。
+
+        求值器本身不持有作用域会话（开块作用域、关块作用域是语句执行器的事），
+        所以这里只留一个钩子。
+        """
+        self._compound = handler
 
     # ==================== 类型 ====================
 
@@ -137,6 +193,10 @@ class Evaluator:
                 self.eval(arg, scope) for arg in (node.args.exprs if node.args else [])
             ]
             return self._call(node, args, scope)
+        if isinstance(node, c_ast.Compound):
+            # GNU 语句表达式 `({ ... })`：出现在**表达式位置**的复合语句，
+            # 值是最后一条表达式语句的值
+            return self._compound(node, scope)
         raise UnsupportedTypeError(f"还没支持的表达式: {type(node).__name__}")
 
     def _eval_id(self, name: str, scope: Scope) -> Any:
@@ -231,6 +291,65 @@ class Evaluator:
         value = convert_value(value, ctype)
         self._store(target, value, ctype)
         return value
+
+    # ==================== 初始化器 ====================
+
+    def eval_init(self, init: Any, ctype: CType, scope: Scope) -> Any:
+        """按目标类型求一个初始化器的值。
+
+        ``{...}`` 不是表达式——它是**按类型铺开**的：数组按下标、结构体按成员，
+        缺的位置补零。所以不能走普通 ``eval``，必须带着目标类型递归。
+        """
+        if init is None:
+            return default_value(ctype)
+        if not isinstance(init, c_ast.InitList):
+            return convert_value(self.eval(init, scope), ctype)
+        return self._init_list(init, ctype, scope)
+
+    def _init_list(self, node: c_ast.InitList, ctype: CType, scope: Scope) -> Any:
+        entries = list(node.exprs or [])
+
+        if isinstance(ctype, ArrayType):
+            count = ctype.count if ctype.count is not None else len(entries)
+            values = [default_value(ctype.element) for _ in range(count)]
+            index = 0
+            for entry in entries:
+                designator, expr = _designator(entry)
+                if designator is not None:
+                    index = designator
+                if not 0 <= index < count:
+                    raise OutOfBoundsError(f"初始化器下标 {index} 超出数组长度 {count}")
+                values[index] = self.eval_init(expr, ctype.element, scope)
+                index += 1
+            return values
+
+        if isinstance(ctype, (StructType, UnionType)):
+            members = list(ctype.members)
+            values = {member.name: default_value(member.ctype) for member in members}
+            index = 0
+            for entry in entries:
+                designator, expr = _designator(entry)
+                if designator is not None:
+                    member = next((m for m in members if m.name == designator), None)
+                    if member is None:
+                        raise InvalidTypeError(f"{ctype.name} 没有成员 '{designator}'")
+                    values[member.name] = self.eval_init(expr, member.ctype, scope)
+                    continue
+                if index >= len(members):
+                    raise InvalidTypeError(
+                        f"{ctype.name} 只有 {len(members)} 个成员，初始化器给多了"
+                    )
+                member = members[index]
+                values[member.name] = self.eval_init(expr, member.ctype, scope)
+                index += 1
+            return values
+
+        # 标量写成 `int x = {5};` —— 只取第一项
+        return (
+            self.eval_init(entries[0], ctype, scope)
+            if entries
+            else default_value(ctype)
+        )
 
     # ==================== 运算 ====================
 

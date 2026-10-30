@@ -211,9 +211,12 @@ class ArrayType(CType):
             )
         if element.has_flexible_array:
             raise InvalidTypeError("数组元素不能是含弹性数组成员的结构体")
-        if count is not None and count <= 0:
-            # C99 没有零长数组；FAM 走 count=None 这条路径
-            raise InvalidTypeError(f"数组长度必须为正: {count}")
+        if count is not None and count < 0:
+            # 负长度在任何方言里都是错的。
+            raise InvalidTypeError(f"数组长度不能为负: {count}")
+        # 注意：count == 0 是允许的。C99 要求长度为正，但 GNU C 的零长数组
+        # （`char s[0];`）在实践中很常见，旧实现也接受。它和 `count=None`
+        # （不完整数组 / 弹性数组成员）是**不同**的东西：0 是确定的空数组。
         self._element = element
         self._count = count
 

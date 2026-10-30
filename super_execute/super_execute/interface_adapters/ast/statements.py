@@ -22,7 +22,7 @@ from super_execute.application.ports.memory_port import MemoryPort
 from super_execute.application.ports.type_resolver_port import TypeResolverPort
 from super_execute.application.use_cases.scope_session import ScopeSession
 from super_execute.application.use_cases.variables import DeclareVariable
-from super_execute.domain.entities.c_types import BasicType
+from super_execute.domain.entities.c_types import ArrayType, BasicType
 from super_execute.domain.entities.scope import Scope
 from super_execute.domain.entities.symbol import TypedefSymbol
 from super_execute.domain.exceptions import DomainError
@@ -57,6 +57,33 @@ class GotoSignal(Exception):
     def __init__(self, name: str) -> None:
         super().__init__(name)
         self.name = name
+
+
+_STATEMENT_TYPES = (
+    c_ast.Compound,
+    c_ast.Decl,
+    c_ast.DeclList,
+    c_ast.If,
+    c_ast.While,
+    c_ast.DoWhile,
+    c_ast.For,
+    c_ast.Switch,
+    c_ast.Case,
+    c_ast.Default,
+    c_ast.Return,
+    c_ast.Break,
+    c_ast.Continue,
+    c_ast.Goto,
+    c_ast.Label,
+    c_ast.Typedef,
+    c_ast.Pragma,
+    c_ast.EmptyStatement,
+)
+
+
+def _produces_value(node: Any) -> bool:
+    """这条语句会不会产生值（语句表达式取最后一条表达式的值）。"""
+    return not isinstance(node, _STATEMENT_TYPES)
 
 
 class StatementExecutor:
@@ -164,6 +191,30 @@ class StatementExecutor:
         finally:
             self._session.close(block)
 
+    def execute_expression(self, node: c_ast.Compound, scope: Scope) -> Any:
+        """GNU 语句表达式 ``({ ... })``：执行一个块，返回最后一条表达式的值。
+
+        块里可以有声明（``({ int a = 3; a + 4; })``），所以要用**新开的块作用域**，
+        使得里面的变量不泄漏到外面。
+        """
+        items = list(node.block_items or [])
+        block = self._session.open(ScopeKind.BLOCK, scope)
+        try:
+            for item in items[:-1]:
+                self.execute(item, block)
+            if not items:
+                return None
+            last = items[-1]
+            if isinstance(last, c_ast.Compound):
+                # 嵌套的语句表达式：`({ int a = 2; ({ a * 5; }); })` 里内层那个
+                return self.execute_expression(last, block)
+            if _produces_value(last):
+                return self._evaluator.eval(last, block)
+            self.execute(last, block)  # 最后一条不是表达式 → 语句表达式的值未定义
+            return None
+        finally:
+            self._session.close(block)
+
     def _declaration(self, node: c_ast.Decl, scope: Scope) -> None:
         builder = TypeBuilder(self._resolver, scope)
         if not node.name:
@@ -171,7 +222,17 @@ class StatementExecutor:
             return
 
         ctype = builder.build(node.type)
-        initial = None if node.init is None else self._evaluator.eval(node.init, scope)
+        # `int a[] = {1,2,3};` 的长度由初始化器决定（C99 6.7.9p22）
+        if (
+            isinstance(node.init, c_ast.InitList)
+            and isinstance(ctype, ArrayType)
+            and ctype.count is None
+        ):
+            ctype = ctype.complete(len(node.init.exprs or []))
+
+        initial = None
+        if node.init is not None:
+            initial = self._evaluator.eval_init(node.init, ctype, scope)
         self._declare(scope, node.name, ctype, initial)
 
     def _typedef(self, node: c_ast.Typedef, scope: Scope) -> None:

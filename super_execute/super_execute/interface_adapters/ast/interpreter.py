@@ -94,6 +94,8 @@ class Interpreter:
 
         # 函数调用要回到这里，用回填避免求值器与解释器互相依赖
         self._evaluator.set_call_handler(self._handle_call)
+        # 语句表达式 `({ ... })` 要执行语句，同样回填给语句执行器
+        self._evaluator.set_compound_handler(self._executor.execute_expression)
 
     # ==================== 装载 ====================
 

@@ -110,7 +110,21 @@ class TypeInferencer:
             if not node.exprs:
                 raise UnsupportedTypeError("空的逗号表达式")
             return self.infer(node.exprs[-1], scope)
+        if isinstance(node, c_ast.Compound):
+            return self._compound(node, scope)
         raise UnsupportedTypeError(f"还没支持的表达式类型: {type(node).__name__}")
+
+    def _compound(self, node: c_ast.Compound, scope: Scope) -> CType:
+        """GNU 语句表达式 `({ ... })` 的类型 = 最后一条表达式语句的类型。
+
+        中间那些声明/语句不产生值，所以要跳过——注意语句表达式里可以夹
+        ``Decl``（`({ int a = 3; a + 4; })`）。
+        """
+        for item in reversed(node.block_items or []):
+            if isinstance(item, (c_ast.Decl, c_ast.Typedef, c_ast.Pragma)):
+                continue
+            return self.infer(item, scope)
+        raise UnsupportedTypeError("语句表达式里没有产生值的语句")
 
     # ---- 基础 ----
 

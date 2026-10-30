@@ -193,6 +193,17 @@ class SlotMemory:
         return chunk, address.offset - chunk.offset
 
 
+def _needs_descent(element: CType, want: CType) -> bool:
+    """偏移正好落在元素/成员的起点，但调用方要的是它**内部**的东西时，还得往下走。
+
+    典型场景：`m[i][j]` 里 i=0，delta 落在 `int[3]` 的起点；此时 want 是
+    `int`，不能就地返回 `int[3]`。少了这一条，二维数组永远读第 0 行就炸。
+    """
+    if not isinstance(element, (ArrayType, StructType, UnionType)):
+        return False
+    return not _compatible(element, want)
+
+
 def _resolve(
     value: Any, ctype: CType, delta: int, want: CType
 ) -> tuple[Any, str | int, CType]:
@@ -215,9 +226,10 @@ def _resolve(
                 f"{ctype.name} 的元素下标越界: {index}（值不是 list 或长度不足）"
             )
         rest = delta - index * step
-        if rest == 0:
-            return value, index, ctype.element
-        return _resolve(value[index], ctype.element, rest, want)
+        element = ctype.element
+        if rest == 0 and not _needs_descent(element, want):
+            return value, index, element
+        return _resolve(value[index], element, rest, want)
 
     if isinstance(ctype, (StructType, UnionType)):
         candidates: list[tuple[Any, int]] = []
@@ -240,7 +252,7 @@ def _resolve(
             ((m, r) for m, r in candidates if _compatible(m.ctype, want)),
             candidates[0],
         )
-        if rest == 0:
+        if rest == 0 and not _needs_descent(member.ctype, want):
             if not isinstance(value, dict):
                 raise OutOfBoundsError(f"{ctype.name} 的值不是 dict，无法解析成员")
             return value, member.name, member.ctype

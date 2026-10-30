@@ -97,11 +97,17 @@ class TestArrayType:
         with pytest.raises(IncompleteTypeError, match="不完整数组"):
             a.sizeof()
 
-    def test_zero_and_negative(self):
-        """C99 没有零长数组（FAM 走 count=None），两者都必须报错。"""
-        with pytest.raises(InvalidTypeError, match="必须为正"):
-            ArrayType(INT, 0)
-        with pytest.raises(InvalidTypeError):
+    def test_zero_length_is_allowed(self):
+        """零长数组是 GNU 扩展（`char s[0];`），但和"不完整数组"不是一回事。"""
+        zero = ArrayType(INT, 0)
+        assert zero.count == 0
+        assert zero.is_complete  # 长度确定，只是为 0
+        assert zero.sizeof() == 0
+        assert ArrayType(INT).count is None  # 不完整数组才是 None
+        assert not ArrayType(INT).is_complete
+
+    def test_negative_length_rejected(self):
+        with pytest.raises(InvalidTypeError, match="不能为负"):
             ArrayType(INT, -1)
 
     def test_equality(self):

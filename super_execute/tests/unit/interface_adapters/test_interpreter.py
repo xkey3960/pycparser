@@ -199,6 +199,99 @@ class TestStaticIsolation:
         assert interpreter.run("get") == 5
 
 
+class TestInitializers:
+    """初始化列表与指定初始化器（C99 6.7.9，也覆盖 GNU 扩展）。"""
+
+    def test_flat_array(self):
+        assert run("int main(void){ int a[3]={1,2,3}; return a[0]+a[1]+a[2]; }") == 6
+
+    def test_length_deduced_from_initializer(self):
+        source = "int main(void){ int a[]={4,5,6}; return sizeof(a)/sizeof(a[0]); }"
+        assert run(source) == 3
+
+    def test_missing_elements_are_zero(self):
+        source = "int main(void){ int a[5]={1,2}; return a[2]+a[3]+a[4]; }"
+        assert run(source) == 0
+
+    def test_nested_array(self):
+        source = """
+            int main(void) {
+                int m[2][3] = {{1,2,3},{4,5,6}};
+                int sum = 0;
+                for (int i = 0; i < 2; i++)
+                    for (int j = 0; j < 3; j++) sum += m[i][j];
+                return sum;
+            }
+        """
+        assert run(source) == 21
+
+    def test_struct_positional(self):
+        source = """
+            struct P { int x; int y; };
+            int main(void) { struct P p = {3, 4}; return p.x * 10 + p.y; }
+        """
+        assert run(source) == 34
+
+    def test_struct_nested_initializer(self):
+        source = """
+            struct In { int a; int b; };
+            struct Out { struct In in; int c; };
+            int main(void) {
+                struct Out o = {{1, 2}, 3};
+                return o.in.a + o.in.b * 10 + o.c * 100;
+            }
+        """
+        assert run(source) == 321
+
+    def test_designated_members_out_of_order(self):
+        source = """
+            struct S { int a; int b; };
+            int main(void) { struct S s = { .b = 5, .a = 2 }; return s.a * 10 + s.b; }
+        """
+        assert run(source) == 25
+
+    def test_designated_array_indices(self):
+        source = "int main(void){ int a[3] = { [1]=7, [2]=3 }; return a[0]+a[1]*10; }"
+        assert run(source) == 70
+
+    def test_too_many_initializers(self):
+        with pytest.raises(DomainError):
+            run("struct S{int a;}; int main(void){ struct S s = {1,2}; return s.a; }")
+
+    def test_unknown_designator(self):
+        with pytest.raises(DomainError):
+            run("struct S{int a;}; int main(void){ struct S s = {.zz=1}; return s.a; }")
+
+
+class TestStatementExpressions:
+    """GNU 语句表达式 `({ ... })`：值是最后一条表达式语句。"""
+
+    def test_returns_last_expression(self):
+        source = "int main(void){ int x = ({ int a=3; int b=4; a+b; }); return x; }"
+        assert run(source) == 7
+
+    def test_inner_variables_do_not_leak(self):
+        source = """
+            int main(void) {
+                int a = 100;
+                int x = ({ int a = 3; a + 1; });
+                return a + x;
+            }
+        """
+        assert run(source) == 104
+
+    def test_side_effects_visible(self):
+        source = "int main(void){ int n=0; int x = ({ n = 5; n + 1; }); return x + n; }"
+        assert run(source) == 11
+
+    def test_nested(self):
+        source = "int main(void){ int x = ({ int a = 2; ({ a * 5; }); }); return x; }"
+        assert run(source) == 10
+
+    def test_no_value_when_last_is_statement(self):
+        assert run("int main(void){ ({ int a = 1; }); return 42; }") == 42
+
+
 class TestBasics:
     def test_arithmetic_precedence(self):
         assert run("int main(void) { return 1 + 2 * 3; }") == 7

@@ -340,6 +340,44 @@ class TestValueSemantics:
         assert memory.read(address, INT) == 42
 
 
+class TestNestedAggregates:
+    """嵌套聚合在偏移 0 处不能"提前返回"。
+
+    这是二维数组读第 0 行时的经典 bug：`m[0][1]` 的偏移 1 落在 `int[3]`
+    内部，但如果外层在 delta=0 时就把 `int[3]` 当结果返回，访问类型就对不上。
+    """
+
+    def test_read_inner_element_of_2d_array(self, memory):
+        inner = ArrayType(INT, 3)
+        outer = ArrayType(inner, 2)
+        address = memory.allocate(SCOPE, outer)
+        memory.write(address, [[1, 2, 3], [4, 5, 6]], outer)
+
+        # m[0][0] —— 偏移 0，最容易踩坑的那个
+        assert memory.read(address, INT) == 1
+        assert memory.read(address + 4, INT) == 2
+        assert memory.read(address + 12, INT) == 4
+
+    def test_write_inner_element_of_2d_array(self, memory):
+        inner = ArrayType(INT, 3)
+        outer = ArrayType(inner, 2)
+        address = memory.allocate(SCOPE, outer)
+        memory.write(address, [[0, 0, 0], [0, 0, 0]], outer)
+
+        memory.write(address + 12 + 4, 99, INT)
+        assert memory.read(address, outer) == [[0, 0, 0], [0, 99, 0]]
+
+    def test_read_nested_member_at_zero_offset(self, memory):
+        inner = _struct("In", Member("x", INT), Member("y", INT))
+        outer = _struct("Out", Member("head", INT), Member("in", inner))
+        address = memory.allocate(SCOPE, outer)
+        memory.write(address, {"head": 1, "in": {"x": 7, "y": 8}}, outer)
+
+        member_offset = outer.offsetof("in")
+        assert memory.read(address + member_offset, INT) == 7
+        assert memory.read(address + member_offset + 4, INT) == 8
+
+
 class TestDestroyedScope:
     """D3：作用域销毁后，属于它的地址必须报错，而不是静默读到脏数据。"""
 
