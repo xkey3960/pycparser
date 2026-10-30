@@ -36,6 +36,8 @@ class CProgram:
         cpp_args: Any = None,
         parser: Any = None,
         encoding: str | None = None,
+        strict: bool = False,
+        lazy: bool = True,
         **_ignored: Any,
     ) -> None:
         self.files = list(files)
@@ -51,8 +53,12 @@ class CProgram:
         # 用朴素解析器会让那些夹具直接解析失败——这是明确的缺口，不是隐藏的错。
         self.parser = parser
         self.encoding = encoding
+        self.strict = strict
+        self.lazy = lazy
         self.asts: list[Any] = []
-        self.interpreter = Interpreter()
+        # 装载阶段**总是**惰性（出错先记下、不中断）：旧实现的 load() 也只登记，
+        # 全量检查发生在 link()。要不要报错由 link() 按 lazy 决定。
+        self.interpreter = Interpreter(lazy=True)
 
     # ---- 装载 ----
 
@@ -83,11 +89,16 @@ class CProgram:
     # ---- 链接 ----
 
     def link(self) -> "CProgram":
-        """新实现装载时就已经登记完符号，这里没有额外动作。
+        """``lazy=False`` 时做全量检查，把惰性装载攒下的错误抛出来。
 
         旧的 ``link()`` 顺带做了入口定位，但入口检查挪到了 ``run()``——
         否则"故意没有 main、只想验证冲突检测"的用例会先撞上入口错误。
         """
+        if not self.lazy:
+            try:
+                self.interpreter.raise_pending()
+            except DomainError as error:
+                raise translate(error) from None
         return self
 
     # ---- 运行 ----

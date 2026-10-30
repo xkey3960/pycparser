@@ -57,11 +57,17 @@ class Interpreter:
         allocator: ScopeIdAllocator | None = None,
         functions: FunctionTable | None = None,
         resolver: TypeResolverPort | None = None,
+        lazy: bool = False,
     ) -> None:
         self._memory = memory if memory is not None else SlotMemory()
         self._allocator = allocator if allocator is not None else ScopeIdAllocator()
         self._functions = functions if functions is not None else FunctionTable()
         self._resolver = resolver if resolver is not None else TypeResolver()
+
+        #: 惰性装载：单个声明出错时**记下来但不中断**，等到 `link()`（全量检查）
+        #: 或真正用到那个符号时再报。C 编译器对未使用的坏代码也是这样宽容的。
+        self._lazy = lazy
+        self.pending_errors: list[DomainError] = []
 
         self._session = ScopeSession(self._allocator, self._memory)
         self._loader = DeclarationLoader(self._memory, self._resolver, self._functions)
@@ -113,7 +119,15 @@ class Interpreter:
         unit = self._session.open(ScopeKind.UNIT, self._globals)
         produced: list[Any] = []
         for node in file_ast.ext:
-            symbol = self._loader.load_node(self._globals, node, unit)
+            try:
+                symbol = self._loader.load_node(self._globals, node, unit)
+            except DomainError as error:
+                if not self._lazy:
+                    raise
+                # 惰性模式：记下来，继续装载下一个声明。标签在这一步之前已经
+                # 登记过（只是没布局），所以"用了才报"能正常触发。
+                self.pending_errors.append(error)
+                continue
             if symbol is not None:
                 produced.append(symbol)
             if not isinstance(node, c_ast.FuncDef) or symbol is None:
@@ -132,6 +146,20 @@ class Interpreter:
         return self._globals
 
     # ---- 供兼容层投影用（只读） ----
+
+    @property
+    def tag_registry(self) -> dict[tuple[str, str], Any]:
+        """登记过的标签 ``(kind, 名字) -> CType``（惰性模式下可能只有壳）。"""
+        return self._loader.tag_registry
+
+    def loaded_files(self) -> list[str]:
+        """装载过的翻译单元名（按装载顺序）。"""
+        return list(self._units.keys())
+
+    def raise_pending(self) -> None:
+        """把惰性模式攒下的错误抛出去（``link()`` 的全量检查走这里）。"""
+        if self.pending_errors:
+            raise self.pending_errors[0]
 
     def unit_symbols(self, name: str) -> list[Any]:
         """某个源文件装载时产生的符号（不含跨文件共享的那些）。"""

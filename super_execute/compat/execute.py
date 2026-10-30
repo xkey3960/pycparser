@@ -222,7 +222,62 @@ def __getattr__(name: str) -> Any:
         return _static_global_values()
     if name == "g_functions":
         return _external_functions()
+    if name == "g_types":
+        return g_types
     raise AttributeError(f"module 'execute' has no attribute {name!r}")
+
+
+class _LegacyType:
+    """把新实现的 ``CType`` 包一层，把 ``is_complete`` 还原成**方法**。
+
+    新领域模型里 ``is_complete`` 是属性（`if ctype.is_complete:`），旧 API 里是
+    方法（`ctype.is_complete()`）。兼容层负责这个形状差异，不改领域模型。
+    """
+
+    __slots__ = ("_ctype",)
+
+    def __init__(self, ctype: Any) -> None:
+        self._ctype = ctype
+
+    def is_complete(self) -> bool:
+        return bool(getattr(self._ctype, "is_complete", False))
+
+    def sizeof(self) -> int:
+        return self._ctype.sizeof()
+
+    def alignof(self) -> int:
+        return self._ctype.alignof()
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._ctype, name)
+
+    def __repr__(self) -> str:
+        return f"LegacyType({self._ctype!r})"
+
+
+class _TypeTable:
+    """``g_types`` 的替身：只需要 ``lookup_tag(kind, name)``。
+
+    旧实现的类型表是全局扁平的；新实现把标签存在作用域的 tags 命名空间里。
+    这里投影"登记过哪些标签"——**注意**：惰性模式下类型可能只注册、没布局，
+    ``is_complete()`` 因此是 False，这正是旧测试要观察的状态。
+    """
+
+    def lookup_tag(self, kind: str, name: str) -> Any:
+        interpreter = compat_state.get_current()
+        if interpreter is None:
+            return None
+        ctype = interpreter.tag_registry.get((kind, name))
+        return None if ctype is None else _LegacyType(ctype)
+
+    def __str__(self) -> str:
+        interpreter = compat_state.get_current()
+        if interpreter is None:
+            return "TypeTable()"
+        return str(sorted(interpreter.tag_registry))
+
+
+g_types = _TypeTable()
 
 
 def execute(node, *_args, **_kwargs):  # pragma: no cover - 旧测试基本不用

@@ -59,11 +59,17 @@ class TypeBuilder:
     以及 struct/union/enum 的**标签**（同名标签在不同作用域是不同类型）。
     """
 
-    __slots__ = ("_resolver", "_scope")
+    __slots__ = ("_resolver", "_scope", "_tag_sink")
 
-    def __init__(self, resolver: TypeResolverPort, scope: Scope) -> None:
+    def __init__(
+        self,
+        resolver: TypeResolverPort,
+        scope: Scope,
+        tag_sink: dict[tuple[str, str], Any] | None = None,
+    ) -> None:
         self._resolver = resolver
         self._scope = scope
+        self._tag_sink = tag_sink
 
     @property
     def scope(self) -> Scope:
@@ -101,9 +107,10 @@ class TypeBuilder:
             return None
         value = fold(dim, self._scope, self._resolver)
         if not isinstance(value, int):
+            unknown = _unknown_names(dim, self._scope)
+            detail = f"（{', '.join(unknown)} 未定义或不是常量）" if unknown else ""
             raise UnsupportedTypeError(
-                f"数组长度必须是整型常量表达式：{type(dim).__name__} 折不成常量"
-                "（引用了变量、或用了未定义的标识符）"
+                f"数组长度必须是整型常量表达式：{type(dim).__name__} 折不成常量{detail}"
             )
         return value
 
@@ -236,6 +243,10 @@ class TypeBuilder:
 
         ctype = builder(name)
         self._scope.redeclare(TagSymbol(name, kind, ctype))
+        if self._tag_sink is not None:
+            # 记一份"登记过哪些标签"：惰性模式下类型可能只注册未布局，
+            # 兼容层要靠它把 g_types.lookup_tag 投影出来
+            self._tag_sink[(kind.value, name)] = ctype
         return ctype
 
 
@@ -243,3 +254,26 @@ def _bit_width(decl: c_ast.Decl) -> int | None:
     if getattr(decl, "bitsize", None) is None:
         return None
     raise UnsupportedTypeError("位域（bit-field）尚未实现")
+
+
+def _unknown_names(node: Any, scope: Scope) -> list[str]:
+    """找出表达式里"查不到"的标识符，好让数组维度的报错说清是谁的问题。"""
+    unknown: list[str] = []
+    stack = [node]
+    while stack:
+        current = stack.pop()
+        if isinstance(current, c_ast.ID):
+            if scope.find(current.name) is None:
+                unknown.append(current.name)
+            continue
+        stack.extend(
+            child
+            for child in (
+                getattr(current, "left", None),
+                getattr(current, "right", None),
+                getattr(current, "expr", None),
+                getattr(current, "name", None),
+            )
+            if isinstance(child, c_ast.Node)
+        )
+    return unknown

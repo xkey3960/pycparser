@@ -41,13 +41,14 @@ def install_compat() -> None:
         if entry not in sys.path:
             sys.path.insert(0, entry)
 
-    for name in ("execute", "program"):
+    # sources 也要换掉：仓库根真有一个旧的 sources.py，旧测试会 import 它
+    for name in ("execute", "program", "sources"):
         spec = importlib.util.spec_from_file_location(name, COMPAT_DIR / f"{name}.py")
         module = importlib.util.module_from_spec(spec)
         sys.modules[name] = module
         spec.loader.exec_module(module)
 
-    for name in ("execute", "program"):
+    for name in ("execute", "program", "sources"):
         location = Path(sys.modules[name].__file__).resolve()
         assert location.parent == COMPAT_DIR, f"{name} 没有指向兼容壳: {location}"
 

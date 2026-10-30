@@ -45,6 +45,7 @@ class DeclarationLoader:
         "_declare_var",
         "_declare_func",
         "deferred_initializers",
+        "tag_registry",
     )
 
     def __init__(
@@ -61,6 +62,10 @@ class DeclarationLoader:
         #: 折不成常量的全局初值：``(目标作用域, 变量名, 初值表达式)``，按声明顺序。
         #: 由解释器在所有翻译单元装载完之后统一求值。
         self.deferred_initializers: list[tuple[Scope, str, Any]] = []
+
+        #: 登记过的标签 ``(kind, 名字) -> CType``。惰性模式下类型可能只注册未布局，
+        #: 兼容层要靠它投影 ``g_types.lookup_tag``。
+        self.tag_registry: dict[tuple[str, str], Any] = {}
 
     def load(
         self, scope: Scope, file_ast: c_ast.FileAST, unit: Scope | None = None
@@ -93,7 +98,7 @@ class DeclarationLoader:
     # ---- 各类声明 ----
 
     def _typedef(self, scope: Scope, node: c_ast.Typedef) -> TypedefSymbol:
-        builder = TypeBuilder(self._resolver, scope)
+        builder = TypeBuilder(self._resolver, scope, self.tag_registry)
         ctype = builder.build(node.type)
 
         # 跨文件重复 typedef（头文件内容被各文件展开）→ 相同就静默去重
@@ -110,7 +115,7 @@ class DeclarationLoader:
     def _function(
         self, scope: Scope, decl: c_ast.Decl, unit: Scope | None = None
     ) -> Any:
-        builder = TypeBuilder(self._resolver, scope)
+        builder = TypeBuilder(self._resolver, scope, self.tag_registry)
         ctype = builder.build(decl.type)
         if not isinstance(ctype, FunctionType):
             raise UnsupportedTypeError(f"'{decl.name}' 不是函数声明")
@@ -119,7 +124,7 @@ class DeclarationLoader:
         return self._declare_func(target, decl.name, ctype, linkage)
 
     def _decl(self, scope: Scope, decl: c_ast.Decl, unit: Scope | None = None) -> Any:
-        builder = TypeBuilder(self._resolver, scope)
+        builder = TypeBuilder(self._resolver, scope, self.tag_registry)
 
         if not decl.name:
             # 裸类型（`struct S { ... };`）：只登记标签，不产生变量
