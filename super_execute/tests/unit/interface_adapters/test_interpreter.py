@@ -398,6 +398,52 @@ class TestStringLiterals:
             run('int main(void){ int x; x = x + "abc"; return 0; }')
 
 
+class TestCharArrayInitialization:
+    """``char buf[N] = "abc";`` —— 内容是**拷贝**进数组的，不是存指针。"""
+
+    def test_copies_content_and_pads(self):
+        source = """
+            int main(void) {
+                char buf[8] = "ab";
+                return buf[0] * 1000 + buf[1] * 100 + buf[2];
+            }
+        """
+        assert run(source) == ord("a") * 1000 + ord("b") * 100 + 0
+
+    def test_length_deduced_with_nul(self):
+        source = """
+            int main(void) {
+                char buf[] = "hi";
+                return sizeof(buf) * 10 + strlen(buf);
+            }
+        """
+        assert run(source) == 3 * 10 + 2
+
+    def test_exact_fit_has_no_nul(self):
+        """`char buf[3] = "abc"` 合法：正好放下，没有结尾 NUL。"""
+        source = """
+            int main(void) {
+                char buf[3] = "abc";
+                return sizeof(buf) * 10 + buf[2];
+            }
+        """
+        assert run(source) == 30 + ord("c")
+
+    def test_too_long_rejected(self):
+        with pytest.raises(InvalidTypeError, match="太长"):
+            run('int main(void){ char buf[2] = "abc"; return 0; }')
+
+    def test_writable_buffer_for_strcpy(self):
+        source = """
+            int main(void) {
+                char buf[16] = "ab";
+                strcpy(buf, "hello");
+                return strlen(buf);
+            }
+        """
+        assert run(source) == 5
+
+
 class TestBitFields:
     """位域：宽度必须是常量表达式；Phase A 不打包，每个位域占满声明类型。"""
 

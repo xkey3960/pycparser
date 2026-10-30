@@ -76,6 +76,42 @@ def _unsupported_compound(node: c_ast.Compound, scope: Scope) -> Any:
     raise UnsupportedTypeError("还没有绑定语句表达式处理器（set_compound_handler）")
 
 
+def _is_char_array(ctype: Any) -> bool:
+    return isinstance(ctype, ArrayType) and ctype.element.name == "char"
+
+
+def complete_from_string(ctype: Any, init: Any) -> Any:
+    """``char buf[] = "hi";`` 的长度由字符串决定——含结尾 NUL。
+
+    类型不完整时补上长度；其他情况原样返回。声明处（局部与全局）都要用。
+    """
+    if isinstance(ctype, ArrayType) and ctype.count is None:
+        if _is_char_array(ctype) and _is_string_literal(init):
+            return ctype.complete(len(decode_string_literal(init.value)) + 1)
+    return ctype
+
+
+def _is_string_literal(node: Any) -> bool:
+    return isinstance(node, c_ast.Constant) and node.type == "string"
+
+
+def _string_into_array(text: str, ctype: ArrayType) -> list[int]:
+    """把字符串**拷贝**进字符数组，多余位置补零。
+
+    ``char buf[4] = "abc";`` 合法（正好放下，没有 NUL）；
+    ``char buf[2] = "abc";`` 不合法——C 不允许丢掉结尾以外的字符。
+    """
+    chars = [ord(char) for char in text]
+    count = ctype.count
+    if count is None:
+        return chars + [0]
+    if len(chars) > count:
+        raise InvalidTypeError(
+            f"初始化字符串太长：{len(chars)} 个字符放不进 char[{count}]"
+        )
+    return chars + [0] * (count - len(chars))
+
+
 def _designator(entry: Any) -> tuple[Any, Any]:
     """拆开指定初始化器：``{.b = 5}`` → ``('b', 值表达式)``，``{[1] = 7}`` → ``(1, …)``。
 
@@ -325,6 +361,9 @@ class Evaluator:
         if init is None:
             return default_value(ctype)
         if not isinstance(init, c_ast.InitList):
+            # `char buf[16] = "ab";` —— 字符串字面量初始化字符数组，内容是**拷贝**进去的
+            if _is_char_array(ctype) and _is_string_literal(init):
+                return _string_into_array(decode_string_literal(init.value), ctype)
             return convert_value(self.eval(init, scope), ctype)
         return self._init_list(init, ctype, scope)
 
