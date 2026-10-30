@@ -8,12 +8,14 @@ import pytest
 from pycparser import c_ast
 from pycparser.c_parser import CParser
 
+from super_execute.application.use_cases import DeclareVariable
 from super_execute.domain.entities.scope import Scope
 from super_execute.domain.services.scope_id_allocator import ScopeIdAllocator
 from super_execute.domain.services.type_resolver import TypeResolver
 from super_execute.domain.value_objects import ScopeKind
 from super_execute.frameworks.memory import FunctionTable, SlotMemory
 from super_execute.interface_adapters.ast.declaration_loader import DeclarationLoader
+from super_execute.interface_adapters.ast.evaluator import Evaluator
 from super_execute.interface_adapters.ast.type_builder import TypeBuilder
 
 
@@ -47,6 +49,17 @@ def decl_type(parse):
 
 
 @pytest.fixture
+def expr(parse):
+    """把一段表达式塞进 ``return`` 里，取出那个表达式节点。"""
+
+    def _expr(source: str):
+        ast = parse(f"int __probe__(void) {{ return {source}; }}")
+        return ast.ext[0].body.block_items[0].expr
+
+    return _expr
+
+
+@pytest.fixture
 def empty_scope():
     return Scope(1, ScopeKind.FILE)
 
@@ -58,16 +71,49 @@ def builder(empty_scope):
 
 @pytest.fixture
 def runtime():
-    """文件作用域 + 内存 + 函数表 + 装载器。"""
+    """文件作用域 + 内存 + 函数表 + 装载器 + 求值器。"""
     memory = SlotMemory()
     allocator = ScopeIdAllocator()
-    session_scope = allocator.open(ScopeKind.FILE)
-    memory.create_scope(session_scope.scope_id)
+    scope = allocator.open(ScopeKind.FILE)
+    memory.create_scope(scope.scope_id)
     functions = FunctionTable()
-    loader = DeclarationLoader(memory, TypeResolver(), functions)
     return {
-        "scope": session_scope,
+        "scope": scope,
         "memory": memory,
         "functions": functions,
-        "loader": loader,
+        "loader": DeclarationLoader(memory, TypeResolver(), functions),
+        "declare": DeclareVariable(memory),
+        "evaluator": Evaluator(memory, TypeResolver(), functions),
     }
+
+
+@pytest.fixture
+def world(runtime):
+    """一套标准变量：标量 / 结构体 / 数组 / 指针。"""
+    from super_execute.domain.entities.c_types import (
+        ArrayType,
+        Member,
+        PointerType,
+        StructType,
+    )
+    from super_execute.domain.entities.symbol import TagSymbol
+    from super_execute.domain.services.builtin_types import CHAR, DOUBLE, INT, SHORT
+    from super_execute.domain.value_objects import TagKind
+
+    declare = runtime["declare"]
+    scope = runtime["scope"]
+
+    point = StructType("Point")
+    point.define([Member("a", SHORT), Member("b", INT)])
+    scope.declare(TagSymbol("Point", TagKind.STRUCT, point))
+
+    declare(scope, "i", INT, initial=3)
+    declare(scope, "c", CHAR, initial=1)
+    declare(scope, "d", DOUBLE, initial=1.5)
+    declare(scope, "s", point, initial={"a": 1, "b": 2})
+    declare(scope, "arr", ArrayType(INT, 3), initial=[10, 20, 30])
+    declare(scope, "pi", PointerType(INT), initial=None)
+    declare(scope, "p", PointerType(point), initial=None)
+
+    runtime["point"] = point
+    return runtime
