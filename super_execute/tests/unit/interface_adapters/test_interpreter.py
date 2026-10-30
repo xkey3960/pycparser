@@ -9,8 +9,9 @@ from pycparser.c_parser import CParser
 
 from super_execute.domain.exceptions import (
     DomainError,
-    UndefinedLabelError,
     LinkError,
+    NullPointerError,
+    UndefinedLabelError,
     UndefinedSymbolError,
     UnsupportedTypeError,
 )
@@ -290,6 +291,39 @@ class TestStatementExpressions:
 
     def test_no_value_when_last_is_statement(self):
         assert run("int main(void){ ({ int a = 1; }); return 42; }") == 42
+
+
+class TestMainReturnValue:
+    """C99 5.1.2.2.3：``main`` 执行到结尾的 ``}`` 等价于 ``return 0;``。"""
+
+    def test_main_without_return_returns_zero(self):
+        assert run("int main(void) { int x = 1; }") == 0
+
+    def test_main_with_empty_body_returns_zero(self):
+        assert run("int main(void) { }") == 0
+
+    def test_explicit_return_wins(self):
+        assert run("int main(void) { return 7; }") == 7
+
+    def test_only_main_gets_the_default(self):
+        """别的非 void 函数落到结尾仍是未定义行为，不给默认值。"""
+        interpreter = Interpreter()
+        interpreter.load(
+            parse("int helper(void) { int x = 1; } int main(void) { return 0; }")
+        )
+        assert interpreter.run("helper") is None
+
+
+class TestNullDereference:
+    def test_message_mentions_address(self):
+        """报错要说清是"地址"层面的问题，不能只说"指针"。"""
+        with pytest.raises(NullPointerError, match="地址"):
+            run("int main(void) { int *p = 0; return *p; }")
+
+    def test_uninitialized_pointer_is_null(self):
+        """本实现把未初始化的指针当 NULL（有意偏差，C 里是未定义值）。"""
+        with pytest.raises(NullPointerError):
+            run("int main(void) { int *p; return *p; }")
 
 
 class TestBasics:

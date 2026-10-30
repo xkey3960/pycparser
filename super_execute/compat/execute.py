@@ -21,6 +21,7 @@ from typing import Any
 import compat_state
 
 from super_execute.domain.entities.symbol import (
+    ConstantSymbol,
     FunctionSymbol,
     VariableSymbol,
 )
@@ -111,6 +112,21 @@ def translate(error: DomainError) -> InterpreterError:
     return InterpreterError(str(error))
 
 
+def _symbol_value(interpreter: Any, symbol: Any) -> Any:
+    """旧符号表里 ``get(name)`` 拿到的"值"。
+
+    常量直接是值、变量从内存读，函数和类型没有值，就把符号本身给出去。
+    """
+    if isinstance(symbol, ConstantSymbol):
+        return symbol.value
+    if isinstance(symbol, VariableSymbol) and symbol.ctype is not None:
+        try:
+            return interpreter.memory.read(symbol.address, symbol.ctype)
+        except Exception:  # 地址还没初始化好（例如装载阶段）→ 退回符号
+            return symbol
+    return symbol
+
+
 # ==================== 旧 API ====================
 
 
@@ -123,7 +139,9 @@ class _ScopeFacade:
     """``g_scope`` 的替身。
 
     旧测试拿它做三件事：``print``、``g_scope.get(name)``、``g_scope._symbols``。
-    前两个能如实回答（从当前解释器的作用域里查）；``_symbols`` 给一份快照。
+
+    **``get`` 返回的是"值"，不是符号**——旧的符号表就存着值。所以常量给
+    ``.value``、变量去内存里读，函数/类型这类没有值的给符号本身。
     """
 
     def _interpreter(self) -> Any:
@@ -133,8 +151,10 @@ class _ScopeFacade:
         interpreter = self._interpreter()
         if interpreter is None:
             return default
-        found = interpreter.globals.find(name)
-        return default if found is None else found
+        symbol = interpreter.globals.find(name)
+        if symbol is None:
+            return default
+        return _symbol_value(interpreter, symbol)
 
     @property
     def _symbols(self) -> dict[str, Any]:

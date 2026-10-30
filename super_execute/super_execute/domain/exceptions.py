@@ -97,7 +97,7 @@ class RegionNotImplementedError(MemoryAccessError):
 
 
 class NullPointerError(MemoryAccessError):
-    """解引用 NULL 指针。"""
+    """解引用 NULL 地址（指针为空或未初始化）。"""
 
 
 # ==================== 类型 ====================
