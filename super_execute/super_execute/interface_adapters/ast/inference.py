@@ -50,6 +50,7 @@ from super_execute.domain.services.conversions import (
 )
 from super_execute.interface_adapters.ast.string_literal import decode_string_literal
 from super_execute.interface_adapters.ast.type_builder import TypeBuilder
+from super_execute.interface_adapters.ast.va_arg import VaArgExpr
 
 _COMPARISONS = frozenset({"==", "!=", "<", "<=", ">", ">=", "&&", "||"})
 _SHIFTS = frozenset({"<<", ">>"})
@@ -113,6 +114,9 @@ class TypeInferencer:
             return self.infer(node.exprs[-1], scope)
         if isinstance(node, c_ast.Compound):
             return self._compound(node, scope)
+        if isinstance(node, VaArgExpr):
+            # `va_arg(ap, T)` 的类型就是那个类型名
+            return self.from_type(node.type_name, scope)
         raise UnsupportedTypeError(f"还没支持的表达式类型: {type(node).__name__}")
 
     def _compound(self, node: c_ast.Compound, scope: Scope) -> CType:

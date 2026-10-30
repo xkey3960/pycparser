@@ -181,7 +181,49 @@ int main(void) {
 * `malloc` / `calloc` 返回的存储**没有声明类型**，随后按什么类型访问都行
   （见下面"原始存储"）；`free` 是空操作——Phase A 的堆不回收。
 * `exit(n)` 不是错误：它终止程序，`main` 的结果就是 `n`。
-* 内建函数没有 `va_arg`：能调用，但函数体里拿不到多余实参。
+
+## 可变参数（`va_arg`）
+
+`va_arg(ap, int)` 的第二个实参是**类型名**，不是表达式——标准 C 语法分析器不认它
+（pycparser 会报 `Invalid expression`）。这里用**继承**的办法补上，**没有改上游代码**：
+
+```python
+from super_execute.interface_adapters.ast.va_arg import VaArgParser
+
+ast = VaArgParser().parse(source, "sum.c")     # 而不是 CParser()
+interpreter.load(ast, "sum.c")
+```
+
+`VaArgParser` 只是 `CParser` 的子类，重载了 `_parse_postfix_expression`：看到
+`va_arg` 紧跟 `(` 就自己解析那两个实参，其余全部交回父类——标准语法一点没变。
+
+```c
+typedef int va_list;            /* 没走 cpp 时自己声明 */
+
+int sum(int n, ...)
+{
+    va_list ap;
+    int total = 0;
+    va_start(ap, n);
+    for (int i = 0; i < n; i++)
+        total += va_arg(ap, int);
+    va_end(ap);
+    return total;
+}
+```
+
+几条要注意的：
+
+* `va_list` 必须是**已声明的类型**。走 `cpp` 时由头文件提供；
+  不走 `cpp` 就自己 `typedef`（fake 头文件里它就是 `int`）。
+* 真实的 gcc `stdarg.h` 会把 `va_arg` 展开成 `__builtin_va_arg(ap, int)`，
+  两个名字解析器都认。
+* **`utils/fake_libc_include` 的假头文件不能用**：它是
+  `#define va_arg(_ap, _type) __builtin_va_arg((_ap))`——把类型丢了。
+  要用 `va_arg` 就别走那套假头文件。
+* `va_arg(ap, T)` 取到值后按 `T` 转换（`va_arg(ap, double)` 拿到的就是 double）。
+* C 的默认实参提升没有模拟（`char`/`short` 不会自动提升成 `int`），
+  所以按 `int` 取 `char` 实参这种写法拿到的仍是原值。
 
 ## 已知限制与刻意的偏差
 
@@ -195,7 +237,7 @@ int main(void) {
 | **数组越界报错** | C 里是未定义行为；这里检测并报 `OutOfBounds` |
 | **类型双关受限** | 普通变量按另一种类型读同一块存储会被拒绝。**但 `malloc` 的原始存储不在此列**——它本来就没有声明类型 |
 | **没有 `setjmp`/`longjmp`** | 需要跨帧 unwind，未实现 |
-| **没有 `va_arg`** | 可变参数函数能声明、能调用，但函数体贴不到多余实参 |
+| **`va_arg` 要用自定义解析器** | `va_arg(ap, T)` 的第二个实参是类型名，标准语法不认。用 `VaArgParser`（`CParser` 的子类）即可，上游代码没改 |
 | **switch 不能从外部跳进** | `goto` 跳进 `switch` 内部不支持（跳出去可以） |
 
 另外两条实现细节：字符串字面量放在 HEAP 区，**相同字面量只分配一次**；

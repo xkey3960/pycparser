@@ -26,6 +26,8 @@ from typing import Any, Callable
 
 from pycparser import c_ast
 
+from super_execute.interface_adapters.ast.va_arg import VaArgExpr
+
 from super_execute.application.ports.function_table_port import FunctionTablePort
 from super_execute.application.ports.memory_port import MemoryPort
 from super_execute.application.ports.type_resolver_port import TypeResolverPort
@@ -74,6 +76,10 @@ def _unsupported_call(node: c_ast.FuncCall, args: list[Any], scope: Scope) -> An
 
 def _unsupported_compound(node: c_ast.Compound, scope: Scope) -> Any:
     raise UnsupportedTypeError("还没有绑定语句表达式处理器（set_compound_handler）")
+
+
+def _unsupported_va_arg(node: Any, scope: Scope) -> Any:
+    raise UnsupportedTypeError("还没有绑定 va_arg 处理器（set_va_arg_handler）")
 
 
 def _is_char_array(ctype: Any) -> bool:
@@ -195,6 +201,7 @@ class Evaluator:
         "_store",
         "_call",
         "_compound",
+        "_va",
         "_strings",
     )
 
@@ -211,7 +218,15 @@ class Evaluator:
         self._store = StoreValue(memory)
         self._call: CallHandler = _unsupported_call
         self._compound: CallHandler = _unsupported_compound
+        self._va: CallHandler = _unsupported_va_arg
         self._strings: dict[str, Address] = {}
+
+    def set_va_arg_handler(self, handler: CallHandler) -> None:
+        """``va_arg(ap, T)`` 要访问当前调用帧的可变参数，同样用回填。
+
+        参数栈在解释器手里（它负责开帧、绑参），求值器只负责求值。
+        """
+        self._va = handler
 
     def set_call_handler(self, handler: CallHandler) -> None:
         """函数调用要回到语句执行器/解释器，这里用回填避免双向依赖。"""
@@ -280,6 +295,8 @@ class Evaluator:
             # GNU 语句表达式 `({ ... })`：出现在**表达式位置**的复合语句，
             # 值是最后一条表达式语句的值
             return self._compound(node, scope)
+        if isinstance(node, VaArgExpr):
+            return self._va(node, scope)
         raise UnsupportedTypeError(f"还没支持的表达式: {type(node).__name__}")
 
     def _string_literal(self, node: c_ast.Constant) -> Address:
