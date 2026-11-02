@@ -11,14 +11,30 @@ cd pycparser/super_execute
 py examples/run_hello.py
 # → 1hello.c 的 main() 返回 25
 #   ↑ printf 的输出（example 里 malloc 了一个 struct 并打印它的 x）
+
+py examples/run_varargs.py
+# → sum   = 6
+#   bonus = 22
+#   grade = 3
+#   varargs.c 的 main() 返回 25
 ```
 
-`examples/` 里是一对最小样例：
+`examples/` 里有两对样例：
 
 | 文件 | 内容 |
 |---|---|
 | `examples/hello.c` | 结构体数组、按值传参、循环、`switch`、三目、`malloc`、`printf` |
 | `examples/run_hello.py` | 读文件 → 解析 → 装载 → 运行 → 打印返回值 |
+| `examples/varargs.c` | **可变参数**（`va_arg`）+ GNU 区间分支 + 语句表达式 + `typeof` |
+| `examples/run_varargs.py` | 同上，但解析器换成 `GnuVaArgParser` |
+
+两个示例的差别只有**解析器**这一行：
+
+| 解析器 | 认什么 | 用在 |
+|---|---|---|
+| `CParser` | 标准 C | `run_hello.py` |
+| `VaArgParser` | 标准 C + `va_arg` | 只需要可变参数时 |
+| `GnuVaArgParser` | GNU 扩展 + `va_arg` | `run_varargs.py`（`typeof` / `case 1 ... 5` 也要） |
 
 ## 三步跑一个 C 程序
 
@@ -188,34 +204,50 @@ int main(void) {
 （pycparser 会报 `Invalid expression`）。这里用**继承**的办法补上，**没有改上游代码**：
 
 ```python
-from super_execute.interface_adapters.ast.va_arg import VaArgParser
+from super_execute.interface_adapters.ast.va_arg import GnuVaArgParser
 
-ast = VaArgParser().parse(source, "sum.c")     # 而不是 CParser()
+ast = GnuVaArgParser().parse(source, "sum.c")   # 而不是 CParser()
 interpreter.load(ast, "sum.c")
 ```
 
-`VaArgParser` 只是 `CParser` 的子类，重载了 `_parse_postfix_expression`：看到
-`va_arg` 紧跟 `(` 就自己解析那两个实参，其余全部交回父类——标准语法一点没变。
+两个现成的解析器，都是 `CParser` 子类，只重载 `_parse_postfix_expression`
+（看到 `va_arg` 紧跟 `(` 就自己解析那两个实参，其余交回父类）：
+
+| 类 | 基类 | 认什么 |
+|---|---|---|
+| `VaArgParser` | `CParser` | 标准 C + `va_arg` |
+| `GnuVaArgParser` | `GnuCParser` | GNU 扩展（`typeof`、`case 1 ... 5`、语句表达式 …）+ `va_arg` |
+
+`examples/varargs.c` 是一个把两者混在一起的完整例子：
 
 ```c
-typedef int va_list;            /* 没走 cpp 时自己声明 */
-
-int sum(int n, ...)
-{
+int sum(int n, ...) {                       /* 可变参数 */
     va_list ap;
-    int total = 0;
     va_start(ap, n);
-    for (int i = 0; i < n; i++)
+    ...
         total += va_arg(ap, int);
     va_end(ap);
     return total;
+}
+
+int grade(int score) {
+    switch (score) {
+        case 90 ... 100: return 4;          /* GNU 区间 */
+        ...
+    }
+}
+
+int main(void) {
+    typeof(int) bonus = ({ int t = sum(2, 5, 6); t * 2; });   /* typeof + 语句表达式 */
+    ...
 }
 ```
 
 几条要注意的：
 
 * `va_list` 必须是**已声明的类型**。走 `cpp` 时由头文件提供；
-  不走 `cpp` 就自己 `typedef`（fake 头文件里它就是 `int`）。
+  不走 `cpp` 就自己 `typedef`（fake 头文件里它就是 `int`），
+  参考 `examples/varargs.c` 的第一行。
 * 真实的 gcc `stdarg.h` 会把 `va_arg` 展开成 `__builtin_va_arg(ap, int)`，
   两个名字解析器都认。
 * **`utils/fake_libc_include` 的假头文件不能用**：它是
@@ -224,6 +256,8 @@ int sum(int n, ...)
 * `va_arg(ap, T)` 取到值后按 `T` 转换（`va_arg(ap, double)` 拿到的就是 double）。
 * C 的默认实参提升没有模拟（`char`/`short` 不会自动提升成 `int`），
   所以按 `int` 取 `char` 实参这种写法拿到的仍是原值。
+* `GnuVaArgParser` 需要 `pycparserext`；没装时它一构造就报清楚的 `ImportError`，
+  而 `VaArgParser` 不受影响。
 
 ## 已知限制与刻意的偏差
 

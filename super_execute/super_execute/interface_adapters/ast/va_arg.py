@@ -1,14 +1,20 @@
 """``va_arg`` 支持：自定义解析器 + 自定义 AST 节点。
 
 **不改 pycparser 本体**。这个仓库的 pycparser 是手写递归下降解析器，
-所以扩展方式是**继承 + 重载**：子类只在 ``_parse_postfix_expression`` 里
-加一条"下一个 token 是 ``va_arg (`` 就走特判"，其余全部交回父类。
+所以扩展方式是**继承 + 重载**：只重载 ``_parse_postfix_expression``，
+看到 ``va_arg`` 紧跟 ``(`` 就自己解析那两个实参，其余全部交回父类。
 
 为什么必须动解析器：``va_arg(ap, int)`` 的第二个实参是**类型名**，不是表达式，
 标准语法分析器不认识它（实测 ``ParseError: Invalid expression, INT``）。
 真实 C 里 ``va_arg`` 是预处理阶段的宏，这里是解释器，只能让语法层认识它。
 
-产出的节点是下面的 :class:`VaArgExpr`，求值/推断各自处理。
+两个现成的解析器：
+
+* :class:`VaArgParser` —— 标准 C + ``va_arg``；
+* :class:`GnuVaArgParser` —— GNU 扩展（``typeof`` / ``case 1 ... 5`` /
+  语句表达式 ...）+ ``va_arg``，需要 ``pycparserext``。
+
+两者共用一个 mixin，所以新增的语法只有一处。
 """
 
 from __future__ import annotations
@@ -40,11 +46,11 @@ class VaArgExpr(c_ast.Node):
         return tuple(out)
 
 
-class VaArgParser(CParser):
-    """在标准 C 语法上加一条 ``va_arg(expression, type_name)``。
+class _VaArgMixin:
+    """只加一条语法：``va_arg(expression, type_name)``。
 
-    只重载一个方法：``_parse_postfix_expression``。看到 ``va_arg`` 紧跟 ``(``
-    就自己解析这两个实参，其他情况原样交给父类——所以标准语法一点没变。
+    用 mixin 是为了让"标准解析器"和"GNU 扩展解析器"共用这一条规则——
+    两边都只多这一处，上游代码零改动。
 
     两个名字都认：
 
@@ -79,4 +85,37 @@ class VaArgParser(CParser):
         return VaArgExpr(ap, type_name, coord)
 
 
-__all__ = ["VaArgExpr", "VaArgParser"]
+class VaArgParser(_VaArgMixin, CParser):
+    """标准 C + ``va_arg``。"""
+
+
+try:  # pycparserext 是可选依赖
+    from pycparserext.ext_c_parser import GnuCParser as _GnuCParser
+except ImportError:  # pragma: no cover - 取决于环境
+    _GnuCParser = None  # type: ignore[assignment,misc]
+
+
+if _GnuCParser is not None:
+
+    class GnuVaArgParser(_VaArgMixin, _GnuCParser):  # type: ignore[misc,valid-type]
+        """GNU 扩展 + ``va_arg``。
+
+        ``GnuCParser`` 自己也重载了 ``_parse_postfix_expression``（处理
+        ``__builtin_types_compatible_p``），所以 MRO 是
+        ``GnuVaArgParser → _VaArgMixin → GnuCParser → CParser``：
+        先看是不是 ``va_arg``，不是就交给 GNU 那一层，再交给标准层。
+        """
+
+else:  # pragma: no cover - 取决于环境
+
+    class GnuVaArgParser:  # type: ignore[no-redef]
+        """没有 ``pycparserext`` 时的占位：一构造就报清楚的错。"""
+
+        def __init__(self, *args, **kwargs) -> None:
+            raise ImportError(
+                "GnuVaArgParser 需要 pycparserext（pip install pycparserext）；"
+                "只用标准 C 的话请改用 VaArgParser"
+            )
+
+
+__all__ = ["GnuVaArgParser", "VaArgExpr", "VaArgParser"]
