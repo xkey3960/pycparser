@@ -10,7 +10,11 @@ import pytest
 
 from super_execute.domain.exceptions import InvalidTypeError, UnsupportedTypeError
 from super_execute.interface_adapters.ast.interpreter import Interpreter
-from super_execute.interface_adapters.ast.va_arg import VaArgExpr, VaArgParser
+from super_execute.interface_adapters.ast.va_arg import (
+    GnuVaArgParser,
+    VaArgExpr,
+    VaArgParser,
+)
 
 #: 没有走预处理器时，`va_list` 得自己声明（fake 头文件里它就是 int）
 VA_LIST = "typedef int va_list;\n"
@@ -195,6 +199,52 @@ class TestErrors:
         """
         with pytest.raises(InvalidTypeError, match="取完"):
             run(source)
+
+
+class TestGnuParser:
+    """GNU 扩展 + `va_arg` 一起用：`GnuVaArgParser`。"""
+
+    def test_gnu_features_and_va_arg_together(self):
+        source = """
+            int sum(int n, ...) {
+                va_list ap;
+                int total = 0;
+                va_start(ap, n);
+                for (int i = 0; i < n; i++)
+                    total += va_arg(ap, int);
+                va_end(ap);
+                return total;
+            }
+            int small(int x) {
+                switch (x) {
+                    case 1 ... 5: return 1;
+                    default:      return 0;
+                }
+            }
+            int main(void) {
+                typeof(int) base = ({ int t = sum(2, 3, 4); t; });
+                return base + small(3) * 100;
+            }
+        """
+        interpreter = Interpreter()
+        interpreter.load(GnuVaArgParser().parse(VA_LIST + source, "<gnu>"))
+        assert interpreter.run() == 107
+
+    def test_plain_gnu_parser_rejects_va_arg(self):
+        """对照组：GnuCParser 不认 va_arg——所以需要这个组合。"""
+        from pycparserext.ext_c_parser import GnuCParser
+
+        with pytest.raises(Exception, match="Invalid expression"):
+            GnuCParser().parse(
+                VA_LIST + "int f(va_list ap) { return va_arg(ap, int); }"
+            )
+
+    def test_plain_va_arg_parser_rejects_gnu_syntax(self):
+        """反过来也一样：VaArgParser 不认 `case 1 ... 5`。"""
+        with pytest.raises(Exception):
+            VaArgParser().parse(
+                "int f(int x) { switch (x) { case 1 ... 5: return 1; } return 0; }"
+            )
 
 
 class TestWithoutVaArgParser:
