@@ -61,6 +61,7 @@ from super_execute.domain.services.arithmetic import c_div, c_mod
 from super_execute.domain.services.builtin_types import CHAR
 from super_execute.domain.services.defaults import default_value
 from super_execute.domain.services.conversions import convert_value
+from super_execute.domain.services.equivalence import types_equivalent
 from super_execute.domain.value_objects import Address, AddressRegion
 from super_execute.interface_adapters.ast.inference import TypeInferencer
 from super_execute.interface_adapters.ast.string_literal import decode_string_literal
@@ -138,6 +139,31 @@ def complete_from_string(ctype: Any, init: Any) -> Any:
     return ctype
 
 
+def complete_array_type(ctype: Any, init: Any) -> Any:
+    """按初值把不完整数组类型补全。
+
+    三种写法都长这样：
+
+        int  g[]   = {1, 2, 3};      /* 个数决定长度 */
+        char g[]   = "abc";          /* 字符串决定长度（含 NUL） */
+        int *p     = (int[]){5, 6};  /* 复合字面量同理 */
+
+    局部声明、全局声明、复合字面量三处必须一致，所以只留这一个实现。
+    """
+    if isinstance(ctype, ArrayType) and ctype.count is None:
+        if isinstance(init, c_ast.InitList):
+            entries = list(init.exprs or [])
+            # `char a[] = {"hi"};`：长度由花括号里那个字符串决定
+            if (
+                len(entries) == 1
+                and _is_char_array(ctype)
+                and _is_string_literal(entries[0])
+            ):
+                return ctype.complete(len(decode_string_literal(entries[0].value)) + 1)
+            return ctype.complete(len(entries))
+    return complete_from_string(ctype, init)
+
+
 def _is_string_literal(node: Any) -> bool:
     return isinstance(node, c_ast.Constant) and node.type == "string"
 
@@ -159,35 +185,42 @@ def _string_into_array(text: str, ctype: ArrayType) -> list[int]:
     return chars + [0] * (count - len(chars))
 
 
-def _designator(entry: Any) -> tuple[Any, Any]:
-    """拆开指定初始化器：``{.b = 5}`` → ``('b', 值表达式)``，``{[1] = 7}`` → ``(1, …)``。
+def _is_types_compatible_call(node: c_ast.FuncCall) -> bool:
+    """是不是 ``__builtin_types_compatible_p``（实参是类型列表的那种调用）。"""
+    name = getattr(node.name, "name", None)
+    return name == "__builtin_types_compatible_p" and hasattr(node.args, "types")
 
-    普通项返回 ``(None, 表达式)``，由调用方按键位顺序往下排。
+
+def _designator(entry: Any) -> tuple[Any, Any]:
+    """拆开指定初始化器，返回 ``(设计符节点或 None, 值表达式)``。
+
+    **设计符的种类由目标类型决定**（这正是 C 的规则），所以这里不猜：
+
+    * 初始化数组时，``[e]`` 里的 ``e`` 是**下标表达式**——``[Test1]`` 这种用枚举
+      常量当下标的写法也就自然成立；
+    * 初始化结构体时，``.m`` 里的 ``m`` 是**成员名字**。
+
+    pycparser 把两种都记成 ``ID`` 节点，形状一样，只能靠上下文区分。
     """
     if not isinstance(entry, c_ast.NamedInitializer) or not entry.name:
         return None, entry
 
-    first = entry.name[0]
-    if isinstance(first, c_ast.ID):
-        return first.name.lstrip("."), entry.expr
-    # 注意：Python 版 pycparser 把 `[1]` 的设计符直接摊成 Constant，
-    # 而不是 ArrayRef——两种都要认。
-    if isinstance(first, c_ast.Constant) and first.type in (
-        "int",
-        "long",
-        "unsigned int",
-    ):
-        return int(first.value, 0), entry.expr
-    if isinstance(first, c_ast.ArrayRef):
-        index = first.subscript
-        if isinstance(index, c_ast.Constant) and index.type in (
-            "int",
-            "long",
-            "unsigned int",
-        ):
-            return int(index.value, 0), entry.expr
-        raise UnsupportedTypeError("指定初始化的下标必须是整型常量")
-    raise UnsupportedTypeError(f"不认识的指定初始化器: {type(first).__name__}")
+    designators = list(entry.name)
+    expr = entry.expr
+    # `.p.v = 6` / `[1][2] = 5`：多重设计符拆成"一层套一层"的初始化列表。
+    # 这样递归的 `_init_list` 什么都不用改就能处理任意深度。
+    for designator in reversed(designators[1:]):
+        expr = c_ast.InitList([c_ast.NamedInitializer([designator], expr)])
+    return designators[0], expr
+
+
+def _designator_name(designator: Any) -> str:
+    """结构体初始化里，把设计符取成成员名字。"""
+    if isinstance(designator, c_ast.ID):
+        return designator.name.lstrip(".")
+    raise InvalidTypeError(
+        f"结构体的指定初始化要用 '.成员名'，收到 {type(designator).__name__}"
+    )
 
 
 class Evaluator:
@@ -262,6 +295,13 @@ class Evaluator:
             raise error.with_coord(getattr(node, "coord", None)) from None
 
     def _eval(self, node: Any, scope: Scope) -> Any:
+        # 数组在**求值语境**里退化成指向首元素的指针（C99 6.3.2.1）。
+        # 变量那条已经在 `_eval_id` 里处理了；这里补上"数组类型的成员 / 元素 /
+        # 复合字面量"——`char g[][4]; strlen(g[1])` 要拿到 `char *` 而不是 char[4] 的值。
+        if isinstance(node, (c_ast.ArrayRef, c_ast.StructRef, c_ast.CompoundLiteral)):
+            if isinstance(self.infer(node, scope), ArrayType):
+                return self.lvalue(node, scope)
+
         if isinstance(node, c_ast.Constant):
             if node.type == "string":
                 return self._string_literal(node)
@@ -287,6 +327,10 @@ class Evaluator:
                 result = self.eval(expr, scope)
             return result
         if isinstance(node, c_ast.FuncCall):
+            # `__builtin_types_compatible_p(T1, T2)` 的实参是**类型**，不是表达式，
+            # 所以必须在求值实参之前拦下来。
+            if _is_types_compatible_call(node):
+                return self._types_compatible(node, scope)
             args = [
                 self.eval(arg, scope) for arg in (node.args.exprs if node.args else [])
             ]
@@ -295,6 +339,11 @@ class Evaluator:
             # GNU 语句表达式 `({ ... })`：出现在**表达式位置**的复合语句，
             # 值是最后一条表达式语句的值
             return self._compound(node, scope)
+        if isinstance(node, c_ast.CompoundLiteral):
+            # `(struct S){1,2}` 当**值**用：算出聚合值本身。
+            # 要地址的场景（`&(...)`、`.m`、`[i]`）走 `lvalue`，那里才分配存储。
+            ctype = complete_array_type(self.from_type(node.type, scope), node.init)
+            return self.eval_init(node.init, ctype, scope)
         if isinstance(node, VaArgExpr):
             return self._va(node, scope)
         raise UnsupportedTypeError(f"还没支持的表达式: {type(node).__name__}")
@@ -356,7 +405,22 @@ class Evaluator:
             return self._struct_ref_address(node, scope)
         if isinstance(node, c_ast.ArrayRef):
             return self._array_ref_address(node, scope)
+        if isinstance(node, c_ast.CompoundLiteral):
+            return self._compound_literal_address(node, scope)
         raise UnsupportedTypeError(f"还不能作为赋值目标: {type(node).__name__}")
+
+    def _compound_literal_address(
+        self, node: c_ast.CompoundLiteral, scope: Scope
+    ) -> Address:
+        """复合字面量的**存储**：`&(struct S){1,2}` 要一个真地址。
+
+        C 说它的生存期是所在块，这里放在堆区（Phase A 的堆不回收，所以更长寿，
+        观察不到差别）。同一个字面量节点每次求值都新分配——`for` 循环里反复取
+        地址会得到不同对象，这和 C 一致。
+        """
+        ctype = complete_array_type(self.from_type(node.type, scope), node.init)
+        value = self.eval_init(node.init, ctype, scope)
+        return self._memory.allocate_heap(ctype, value)
 
     def _struct_ref_address(self, node: c_ast.StructRef, scope: Scope) -> Address:
         base, owner = self._struct_base(node, scope)
@@ -479,17 +543,49 @@ class Evaluator:
             return convert_value(self.eval(init, scope), ctype)
         return self._init_list(init, ctype, scope)
 
+    def _types_compatible(self, node: c_ast.FuncCall, scope: Scope) -> int:
+        """``__builtin_types_compatible_p(T1, T2)`` —— 1 表示两类型等价。
+
+        实参是 ``TypeList``（``pycparserext`` 造的），里面装的是 ``Typename``，
+        不能当表达式求值。
+        """
+        types = getattr(node.args, "types", None) or []
+        if len(types) != 2:
+            raise InvalidTypeError("__builtin_types_compatible_p 需要两个类型实参")
+        left = self.from_type(types[0], scope)
+        right = self.from_type(types[1], scope)
+        return 1 if types_equivalent(left, right) else 0
+
+    def _designator_index(self, designator: Any, scope: Scope) -> int:
+        """把 ``[e]`` 的设计符算成下标——字面量、枚举常量、常量表达式都行。"""
+        if isinstance(designator, int) and not isinstance(designator, bool):
+            return designator
+        value = self.eval(designator, scope)
+        if not isinstance(value, int) or isinstance(value, bool):
+            raise InvalidTypeError(f"数组下标必须是整数，收到 {type(value).__name__}")
+        return value
+
     def _init_list(self, node: c_ast.InitList, ctype: CType, scope: Scope) -> Any:
         entries = list(node.exprs or [])
 
         if isinstance(ctype, ArrayType):
+            # `char a[] = {"hi"};` —— 花括号里只有一个字符串，按字符串整段填
+            if (
+                len(entries) == 1
+                and _is_char_array(ctype)
+                and _is_string_literal(entries[0])
+            ):
+                return _string_into_array(
+                    decode_string_literal(entries[0].value), ctype
+                )
+
             count = ctype.count if ctype.count is not None else len(entries)
             values = [default_value(ctype.element) for _ in range(count)]
             index = 0
             for entry in entries:
                 designator, expr = _designator(entry)
                 if designator is not None:
-                    index = designator
+                    index = self._designator_index(designator, scope)
                 if not 0 <= index < count:
                     raise OutOfBoundsError(f"初始化器下标 {index} 超出数组长度 {count}")
                 values[index] = self.eval_init(expr, ctype.element, scope)
@@ -503,9 +599,10 @@ class Evaluator:
             for entry in entries:
                 designator, expr = _designator(entry)
                 if designator is not None:
-                    member = next((m for m in members if m.name == designator), None)
+                    name = _designator_name(designator)
+                    member = next((m for m in members if m.name == name), None)
                     if member is None:
-                        raise InvalidTypeError(f"{ctype.name} 没有成员 '{designator}'")
+                        raise InvalidTypeError(f"{ctype.name} 没有成员 '{name}'")
                     values[member.name] = _member_initial_value(
                         self.eval_init(expr, member.ctype, scope), member
                     )

@@ -22,16 +22,17 @@ from super_execute.application.ports.memory_port import MemoryPort
 from super_execute.application.ports.type_resolver_port import TypeResolverPort
 from super_execute.application.use_cases.scope_session import ScopeSession
 from super_execute.application.use_cases.variables import DeclareVariable
-from super_execute.domain.entities.c_types import ArrayType, BasicType
+from super_execute.domain.entities.c_types import BasicType
 from super_execute.domain.entities.scope import Scope
 from super_execute.domain.entities.symbol import TypedefSymbol
 from super_execute.domain.exceptions import DomainError, UnsupportedTypeError
+from super_execute.domain.services.defaults import default_value
 from super_execute.domain.value_objects import ScopeKind
 from super_execute.interface_adapters.ast.const_eval import fold
 from super_execute.interface_adapters.ast.declaration_loader import check_static_assert
 from super_execute.interface_adapters.ast.evaluator import (
     Evaluator,
-    complete_from_string,
+    complete_array_type,
 )
 from super_execute.interface_adapters.ast.type_builder import TypeBuilder
 
@@ -269,20 +270,18 @@ class StatementExecutor:
             return
 
         ctype = builder.build(node.type)
-        # `int a[] = {1,2,3};` 的长度由初始化器决定（C99 6.7.9p22）
-        if (
-            isinstance(node.init, c_ast.InitList)
-            and isinstance(ctype, ArrayType)
-            and ctype.count is None
-        ):
-            ctype = ctype.complete(len(node.init.exprs or []))
-        # `char buf[] = "hi";` 同理，长度含结尾 NUL
-        ctype = complete_from_string(ctype, node.init)
+        # `int a[] = {1,2,3};` / `char buf[] = "hi";` —— 长度由初始化器决定
+        # （C99 6.7.9p22）。局部、全局、复合字面量三处共用同一个实现。
+        ctype = complete_array_type(ctype, node.init)
 
-        initial = None
+        # C 的顺序是**先声明、后求初值**（6.7p5：声明符引入名字时初始值还没算）。
+        # 所以 `struct S *p = malloc(sizeof *p);` 里 `*p` 认得 p——
+        # 先建符号（零值），再算初值、写进去。
+        self._declare(scope, node.name, ctype, default_value(ctype))
         if node.init is not None:
-            initial = self._evaluator.eval_init(node.init, ctype, scope)
-        self._declare(scope, node.name, ctype, initial)
+            value = self._evaluator.eval_init(node.init, ctype, scope)
+            symbol = scope.find(node.name)
+            self._memory.write(symbol.address, value, ctype)
 
     def _typedef(self, node: c_ast.Typedef, scope: Scope) -> None:
         """函数体内的 typedef（旧的扁平类型表正是漏在这里）。"""

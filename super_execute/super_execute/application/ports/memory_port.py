@@ -60,6 +60,16 @@ class MemoryPort(Protocol):
         这个不带——调用方随后想当什么用就当什么用。
         """
 
+    def realloc_raw(self, address: Address, size: int) -> Address:
+        """把原始存储换成长度 ``size`` 的一块，**保住旧内容**（丢尾部）。
+
+        为什么不让内建函数自己逐字节搬：Phase A 的原始存储是**按值**存的
+        （``(偏移, 类型名) -> 值``），逐字节读会把 int 读成 char 而丢值。
+        """
+
+    def raw_size(self, address: Address) -> int:
+        """从该地址起还能访问多少字节（``realloc`` 要知道旧块多大）。"""
+
     def read_member(self, address: Address, compound: CType, member_name: str) -> Any:
         """读复合对象在某地址处的成员。
 
