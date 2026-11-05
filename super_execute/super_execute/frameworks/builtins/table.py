@@ -35,6 +35,7 @@ from super_execute.domain.services.builtin_types import (
     UNSIGNED_LONG,
     VOID,
 )
+from super_execute.domain.services.conversions import convert_value
 from super_execute.domain.value_objects import Address
 
 _CHAR_PTR = PointerType(CHAR)
@@ -65,7 +66,10 @@ SIGNATURES: dict[str, FunctionType] = {
     # 内存
     "malloc": _fn(_VOID_PTR, (UNSIGNED_LONG,)),
     "calloc": _fn(_VOID_PTR, (UNSIGNED_LONG, UNSIGNED_LONG)),
+    "realloc": _fn(_VOID_PTR, (_VOID_PTR, UNSIGNED_LONG)),
     "free": _fn(VOID, (_VOID_PTR,)),
+    "sprintf": _fn(INT, (_CHAR_PTR, _CHAR_PTR), variadic=True),
+    "snprintf": _fn(INT, (_CHAR_PTR, UNSIGNED_LONG, _CHAR_PTR), variadic=True),
     # 数值
     "abs": _fn(INT, (INT,)),
     "atoi": _fn(INT, (_CHAR_PTR,)),
@@ -113,7 +117,10 @@ class BuiltinTable:
             "memset": self._memset,
             "malloc": self._malloc,
             "calloc": self._calloc,
+            "realloc": self._realloc,
             "free": self._free,
+            "sprintf": self._sprintf,
+            "snprintf": self._snprintf,
             "abs": lambda a: abs(int(_arg(a, 0))),
             "atoi": self._atoi,
             "sqrt": lambda a: math.sqrt(float(_arg(a, 0))),
@@ -269,9 +276,46 @@ class BuiltinTable:
         size = max(int(_arg(args, 1)), 0)
         return self._memory.allocate_raw(count * size)
 
+    def _realloc(self, args: list[Any]) -> Any:
+        """``realloc(p, n)``：换一块 n 字节，**保住**旧内容里放得下的部分。"""
+        address = _arg(args, 0)
+        size = max(int(_arg(args, 1)), 0)
+        if not isinstance(address, Address) or address.is_null:
+            return self._memory.allocate_raw(size)  # realloc(NULL, n) == malloc(n)
+        if size == 0:
+            return convert_value(0, _VOID_PTR)  # realloc(p, 0) 释放并返回空指针
+        return self._memory.realloc_raw(address, size)
+
     def _free(self, args: list[Any]) -> None:
         # Phase A 的堆不回收（没有真正的分配器），free 是显式的空操作。
         return None
+
+    def _sprintf(self, args: list[Any]) -> int:
+        """``sprintf(dst, fmt, ...)``：格式化后写进 dst（C 里没有边界，这里也不查）。"""
+        return self._format_into(_arg(args, 0), args[1:], limit=None)
+
+    def _snprintf(self, args: list[Any]) -> int:
+        """``snprintf(dst, n, fmt, ...)``：最多写 n-1 个字符 + NUL。
+
+        返回值是 C 的语义：**本该写多少**，而不是实际写了多少。
+        """
+        return self._format_into(
+            _arg(args, 0), args[2:], limit=max(int(_arg(args, 1)), 0)
+        )
+
+    def _format_into(self, destination: Any, args: list[Any], limit: int | None) -> int:
+        if not args:
+            return 0
+        template = _python_format(self._read_cstr(args[0]))
+        values = [self._print_value(value) for value in args[1:]]
+        try:
+            text = template % tuple(values)
+        except (TypeError, ValueError) as error:
+            raise ValueError(f"格式化串与实参不匹配: {error!r}") from error
+
+        payload = text if limit is None else text[: max(limit - 1, 0)]
+        self._write_cstr(destination, payload)
+        return len(text)  # C 返回"本该写多少"
 
     def _atoi(self, args: list[Any]) -> int:
         text = self._read_cstr(_arg(args, 0)).strip()

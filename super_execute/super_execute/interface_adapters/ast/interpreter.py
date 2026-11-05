@@ -402,8 +402,10 @@ class Interpreter:
             symbol = target.find(name)
             if not isinstance(symbol, VariableSymbol) or symbol.ctype is None:
                 raise LinkError(f"全局初值的目标 '{name}' 不是变量")
-            # 在**它所属的那一层**求值：static 全局的初值要能看见本文件的符号
-            value = self._evaluator.eval(expression, target)
+            # 在**它所属的那一层**求值：static 全局的初值要能看见本文件的符号。
+            # 走 `eval_init` 而不是 `eval`：`int g[3] = {1,2,3};` 的花括号列表
+            # 不是表达式，要按目标类型铺开（和局部声明同一条路）。
+            value = self._evaluator.eval_init(expression, symbol.ctype, target)
             self._memory.write(symbol.address, value, symbol.ctype)
 
     def _bind_parameters(

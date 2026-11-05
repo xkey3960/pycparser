@@ -185,7 +185,8 @@ int main(void) {
 |---|---|
 | 输出 | `printf` `puts` `putchar` `exit` `_exit` |
 | 字符串 | `strlen` `strcmp` `strncmp` `strcpy` `strcat` `memcmp` `memcpy` `memset` |
-| 内存 | `malloc` `calloc` `free` |
+| 内存 | `malloc` `calloc` `realloc` `free` |
+| 格式化到缓冲区 | `sprintf` `snprintf` |
 | 数值 | `abs` `atoi` `sqrt` `pow` `fabs` `floor` `ceil` `fmod` `sin` `cos` `tan` `exp` `log` |
 | 字符 | `isdigit` `isalpha` `isalnum` `isspace` `isupper` `islower` `toupper` `tolower` |
 
@@ -273,6 +274,32 @@ int main(void) {
 | **没有 `setjmp`/`longjmp`** | 需要跨帧 unwind，未实现 |
 | **`va_arg` 要用自定义解析器** | `va_arg(ap, T)` 的第二个实参是类型名，标准语法不认。用 `VaArgParser`（`CParser` 的子类）即可，上游代码没改 |
 | **switch 不能从外部跳进** | `goto` 跳进 `switch` 内部不支持（跳出去可以） |
+
+### 还有什么没支持？
+
+完整清单一目了然，而且是**可执行的**——见
+[`tests/unit/test_unsupported.py`](tests/unit/test_unsupported.py)：
+每条"不支持"都对应一个测试，跑一遍就知道清单还准不准；新增能力时把对应行删掉，
+测试会提醒你。
+
+目前没做的（都实测确认过）：
+
+| 类别 | 缺什么 | 卡在哪 |
+|---|---|---|
+| 语法 | `(T){...}.m` / `(T){...}[i]`（复合字面量直接接后缀） | pycparser 的语法 |
+| 语法 | `_Generic`（C11） | pycparser 的语法 |
+| 语法 | 计算 `goto`（`&&label` / `goto *p`）、GNU 嵌套函数 | pycparserext 的语法 |
+| 语法 | 预处理指令（不走 `cpp` 时） | 预处理器 |
+| 类型 | `long double`、`_Complex` | 类型系统里没有这两个基础类型 |
+| 语义 | 结构体的三元运算（`c ? a : b` 取结构体） | 三元要求算术类型 |
+| 语义 | 整型宽度不回绕、未初始化按零、越界报错 | 见上表（Phase A 的选择） |
+| 库 | `qsort`（要函数指针回调）、`alloca`、`setjmp`/`longjmp` | 内建表里没有 |
+| 库 | `printf` 的 `%a`、宽字符 `%ls` | 格式翻译只覆盖常用转换 |
+
+注意**别被这张表误导**：很多"以为没做"的其实已经通了——全局聚合初始化、
+枚举常量做下标设计符、复合字面量、二维数组元素退化、弹性数组成员、
+`realloc` 保留内容、`sizeof *p` 自引用、`union`、位域截断、
+`__builtin_types_compatible_p` 都在 `TestWhatDoesWork` 里钉着。
 
 另外两条实现细节：字符串字面量放在 HEAP 区，**相同字面量只分配一次**；
 `main` 执行到结尾的 `}` 等价于 `return 0;`（C99 5.1.2.2.3）。

@@ -21,6 +21,17 @@ int grade(int score)
     }
 }
 
+typedef enum tagTestEnum {
+    Test1,
+    Test2,
+    TestMax,
+}TestEnum;
+
+char *g_apcTestString[TestMax] = {
+    [Test1] = "Test1",
+    [Test2] = "Test2",
+};
+
 int main(void)
 {
     typeof(int) bonus = ({ int t = sum(2, 5, 6); t * 2; });

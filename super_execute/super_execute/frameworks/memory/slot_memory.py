@@ -208,6 +208,32 @@ class SlotMemory:
 
     # ==================== 读写 ====================
 
+    def realloc_raw(self, address: Address, size: int) -> Address:
+        """换一块新存储，把旧内容里放得下的部分搬过去。"""
+        chunk, delta = self._locate(address)
+        if not isinstance(chunk.value, RawBuffer):
+            raise AllocationError("realloc 只能用在 malloc/calloc 出来的存储上")
+
+        previous = chunk.value
+        replacement = self.allocate_raw(size)
+        new_chunk, _ = self._locate(replacement)
+        buffer = new_chunk.value
+        assert isinstance(buffer, RawBuffer)
+
+        # 按值搬：只保留新长度起点装得下的槽（放不下的等于被尾部截断）
+        for (offset, type_name), value in previous.values.items():
+            local = offset - delta
+            if 0 <= local < max(size, 1):
+                buffer.values[(local, type_name)] = value
+        return replacement
+
+    def raw_size(self, address: Address) -> int:
+        """从该地址起还能访问多少字节。"""
+        chunk, delta = self._locate(address)
+        if isinstance(chunk.value, RawBuffer):
+            return max(chunk.value.size - delta, 0)
+        return max(chunk.size - delta, 0)
+
     def read_member(self, address: Address, compound: CType, member_name: str) -> Any:
         chunk, delta = self._locate(address)
         member = compound.member(member_name)

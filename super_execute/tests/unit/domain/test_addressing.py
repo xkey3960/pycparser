@@ -85,10 +85,14 @@ class TestElementAddress:
         base = _base(0)
         assert element_address(base, array, 3) == base + 24
 
-    @pytest.mark.parametrize("index", [-1, 3, 99])
+    @pytest.mark.parametrize("index", [3, 99])
     def test_index_out_of_range(self, index):
         with pytest.raises(OutOfBoundsError, match="越界"):
             element_address(_base(), ArrayType(INT, 3), index)
+
+    def test_negative_index_rejected(self):
+        with pytest.raises(OutOfBoundsError, match="为负"):
+            element_address(_base(), ArrayType(INT, 3), -1)
 
     def test_bool_index_rejected(self):
         with pytest.raises(InvalidTypeError, match="整数"):
@@ -98,9 +102,12 @@ class TestElementAddress:
         with pytest.raises(InvalidTypeError, match="不是数组"):
             element_address(_base(), INT, 0)
 
-    def test_incomplete_array_rejected(self):
-        with pytest.raises(IncompleteTypeError):
-            element_address(_base(), ArrayType(INT), 0)
+    def test_incomplete_array_computes_offset(self):
+        """弹性数组成员（`int a[]`）长度未知，但**地址要能算**。
+
+        边界检查做不了，交给存储层兜底——真越界了访问会报错。
+        """
+        assert element_address(_base(), ArrayType(INT), 2) == _base() + 8
 
     def test_offset_overflow_is_caught_by_address(self):
         """偏移越过 64 KiB 时由 Address 自己挡住，不会悄悄回绕。"""

@@ -40,13 +40,17 @@ def member_address(base: Address, compound: CType, member_name: str) -> Address:
 
 
 def element_address(base: Address, array: CType, index: int) -> Address:
-    """``&arr[i]``：数组基地址 + i * sizeof(元素)。"""
+    """``&arr[i]``：数组基地址 + i * sizeof(元素)。
+
+    **弹性数组成员**（``int a[]``）长度未知，边界检查做不了——照算地址，
+    由存储层去兜底（真越界了访问会报错）。
+    """
     if not isinstance(array, ArrayType):
         raise InvalidTypeError(f"{array.name} 不是数组，不能用下标取地址")
-    if array.count is None:
-        raise IncompleteTypeError(f"{array.name} 缺长度，无法计算元素地址")
     if not isinstance(index, int) or isinstance(index, bool):
         raise InvalidTypeError(f"下标必须是整数，收到 {type(index).__name__}")
-    if not 0 <= index < array.count:
+    if index < 0:
+        raise OutOfBoundsError(f"下标 {index} 为负（{array.name}）")
+    if array.count is not None and index >= array.count:
         raise OutOfBoundsError(f"下标 {index} 越界（{array.name} 长度 {array.count}）")
     return base + index * array.element.sizeof()

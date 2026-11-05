@@ -36,6 +36,17 @@ from super_execute.interface_adapters.ast.const_eval import fold
 from super_execute.interface_adapters.ast.type_builder import TypeBuilder
 
 
+def _complete_array(ctype: Any, init: Any) -> Any:
+    """``int g[] = {1,2,3};`` / ``char g[] = "abc";`` 的长度由初值决定。
+
+    局部声明、全局声明、复合字面量共用同一个实现（``complete_array_type``），
+    否则同一个写法在函数内外行为不同。
+    """
+    from super_execute.interface_adapters.ast.evaluator import complete_array_type
+
+    return complete_array_type(ctype, init)
+
+
 class DeclarationLoader:
     """把 ``FileAST`` 的顶层节点逐条变成用例调用。"""
 
@@ -147,6 +158,7 @@ class DeclarationLoader:
             return None
 
         ctype = builder.build(decl.type)
+        ctype = _complete_array(ctype, decl.init)
         linkage = self._linkage(scope, decl)
         target = _binding_scope(scope, unit, linkage)
 

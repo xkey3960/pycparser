@@ -114,6 +114,9 @@ class TypeInferencer:
             return self.infer(node.exprs[-1], scope)
         if isinstance(node, c_ast.Compound):
             return self._compound(node, scope)
+        if isinstance(node, c_ast.CompoundLiteral):
+            # `(struct S){1,2}` 的类型就是括号里那个类型名
+            return self.from_type(node.type, scope)
         if isinstance(node, VaArgExpr):
             # `va_arg(ap, T)` 的类型就是那个类型名
             return self.from_type(node.type_name, scope)
